@@ -10,6 +10,7 @@
       "FEATURE_SMARTBROWZ": "off",
       "FEATURE_MAIL": "off",
       "PUBLIC_DEMO": "true",
+      "FORCE_FIXTURE_TABLES": "AggMonthly,AnomalyAlert,OffenderProfile,NetworkEdge,StationRisk,HotspotCluster,ForecastMonthly,CaseAnomaly,Victim,Accused",
       "QUICKML_OUTCOME_URL": "",
       "QUICKML_LLM_URL": "",
       "QUICKML_API_KEY": "",

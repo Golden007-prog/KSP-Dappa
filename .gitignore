@@ -28,3 +28,11 @@ pipeline/.fixture/
 
 # generated static-demo API snapshot (rebuilt in CI by scripts/demo_snapshot.mjs)
 client/public/demo/
+
+# data-load runtime state (local only)
+scripts/.import_jobs.json
+scripts/.apiload_state.json
+scripts/.bulkload_state.json
+Import_*.zip
+pipeline/.bool_fixed/
+pipeline/.import_batch/

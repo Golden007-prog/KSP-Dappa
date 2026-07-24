@@ -224,6 +224,17 @@ for (const utterance of CANNED_UTTERANCES) {
   const digest = await post('/notify/test-digest', {}, { Authorization: 'Bearer demo-admin' });
   check('digest flag-off fallback', digest.status === 200 && digest.json.data.sent === false && digest.json.data.mode === 'disabled' && digest.json.meta.source === 'fallback-local');
   check('digest preview built', digest.json.data.preview && digest.json.data.preview.lines.length > 0);
+
+  const biNoAuth = await post('/admin/bulk-insert', { table: 'State', rows: [{ StateID: 1 }] });
+  check('bulk-insert without auth -> 403', biNoAuth.status === 403);
+  const biBadTable = await post('/admin/bulk-insert', { table: 'bad name;', rows: [{ a: 1 }] }, { 'x-admin-token': 'demo-admin' });
+  check('bulk-insert invalid table -> 400', biBadTable.status === 400);
+  const biNoRows = await post('/admin/bulk-insert', { table: 'State', rows: [] }, { 'x-admin-token': 'demo-admin' });
+  check('bulk-insert empty rows -> 400', biNoRows.status === 400);
+  const biTooMany = await post('/admin/bulk-insert', { table: 'State', rows: Array.from({ length: 201 }, () => ({ a: 1 })) }, { 'x-admin-token': 'demo-admin' });
+  check('bulk-insert >200 rows -> 400', biTooMany.status === 400);
+  const biLocal = await post('/admin/bulk-insert', { table: 'State', rows: [{ StateID: 1 }] }, { 'x-admin-token': 'demo-admin' });
+  check('bulk-insert local run -> 503 catalyst unavailable', biLocal.status === 503);
 }
 
 // --- auth hardening: only the REAL token unlocks admin actions ---------------

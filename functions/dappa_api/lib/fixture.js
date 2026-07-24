@@ -251,9 +251,24 @@ function resetFixtureFallback() {
  * the stub's rawLog AND applied to the memoized fixture tables (simple UPDATE
  * grammar), so demo-mode actions like alert ack survive the client's refetch.
  */
+/**
+ * Tables listed in FORCE_FIXTURE_TABLES (comma-separated env) are answered
+ * from the fixture even when real ZCQL succeeds. Used while a table's data
+ * load is incomplete: a partially-loaded table returns real-but-WRONG numbers
+ * (no error, so the error-only fallback never triggers). Remove a table from
+ * the env var once its load is verified complete.
+ */
+function forcedFixtureTables() {
+  return new Set((process.env.FORCE_FIXTURE_TABLES || '').split(',').map((s) => s.trim()).filter(Boolean));
+}
+
 function wrapClientWithFixtureFallback(client) {
   return {
     async execute(sql, q) {
+      if (q && q.table && forcedFixtureTables().has(q.table)) {
+        state.queries += 1;
+        return fixtureClient().execute(sql, q);
+      }
       try {
         return await client.execute(sql, q);
       } catch (e) {
@@ -274,6 +289,7 @@ async function fixtureNetworkGraph() {
 module.exports = {
   buildFixtureTables,
   fixtureClient,
+  forcedFixtureTables,
   wrapClientWithFixtureFallback,
   fixtureNetworkGraph,
   getFallbackState,

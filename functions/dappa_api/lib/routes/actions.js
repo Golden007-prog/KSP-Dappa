@@ -200,6 +200,26 @@ function register(router) {
     ok(res, { sent: false, mode: 'disabled', preview }, { source: 'fallback-local' });
   }));
 
+  // Admin data loader — inserts rows through the regular Data Store row API
+  // (zcatalyst SDK insertRows), NOT the bulk-write job API whose free-tier
+  // allowance is a separate, easily-exhausted quota. Used by
+  // scripts/load_via_api.mjs to stream pipeline CSVs into the live tables.
+  router.post('/admin/bulk-insert', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    if (!requireAdmin(req, res, ctx.flags)) return;
+    const { table, rows } = req.body || {};
+    if (!table || typeof table !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) {
+      return fail(res, 400, 'valid table name required');
+    }
+    if (!Array.isArray(rows) || !rows.length) return fail(res, 400, 'rows[] required');
+    if (rows.length > 200) return fail(res, 400, 'max 200 rows per call');
+    let capp = null;
+    try { capp = require('zcatalyst-sdk-node').initialize(req); } catch (e) { /* local run */ }
+    if (!capp) return fail(res, 503, 'catalyst unavailable (deployed only)');
+    const out = await capp.datastore().table(table).insertRows(rows);
+    ok(res, { table, inserted: Array.isArray(out) ? out.length : rows.length });
+  }));
+
   router.get('/healthz', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const health = { status: 'ok', datastore: { ok: false, rowCounts: {} }, cache: { ok: false, backend: null }, nosql: { ok: false }, flags: ctx.flags };
@@ -211,6 +231,8 @@ function register(router) {
       ));
       countTables.forEach(([table], i) => { health.datastore.rowCounts[table] = results[i]; });
       health.datastore.ok = results.some((r) => r !== null);
+      const forced = require('../fixture').forcedFixtureTables();
+      if (forced.size) health.datastore.forcedFixtureTables = [...forced];
     } catch (e) {
       health.datastore.ok = false;
     }
