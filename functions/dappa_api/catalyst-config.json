@@ -12,7 +12,7 @@
       "PUBLIC_DEMO": "true",
       "QUICKML_OUTCOME_URL": "",
       "QUICKML_LLM_URL": "",
-      "CATALYST_QUICKML_KEY": "",
+      "QUICKML_API_KEY": "",
       "MAIL_FROM": "",
       "DIGEST_TO": "",
       "APP_BASE_URL": ""

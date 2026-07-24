@@ -1,6 +1,6 @@
 'use strict';
 // Case-outcome prediction. Flag path POSTs the QuickML deployment endpoint
-// (env QUICKML_OUTCOME_URL + CATALYST_QUICKML_KEY); fallback evaluates the
+// (env QUICKML_OUTCOME_URL + QUICKML_API_KEY); fallback evaluates the
 // embedded logistic model in assets/outcome_model.json. Identical shape.
 
 const fs = require('fs');
@@ -112,8 +112,8 @@ async function predictOutcome(body, deps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Zoho-oauthtoken ${process.env.CATALYST_QUICKML_KEY || ''}`,
-          'X-QuickML-Key': process.env.CATALYST_QUICKML_KEY || ''
+          Authorization: `Zoho-oauthtoken ${process.env.QUICKML_API_KEY || ''}`,
+          'X-QuickML-Key': process.env.QUICKML_API_KEY || ''
         },
         body: JSON.stringify({ data: body })
       });

@@ -52,7 +52,7 @@ function register(router) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Zoho-oauthtoken ${process.env.CATALYST_QUICKML_KEY || ''}`
+            Authorization: `Zoho-oauthtoken ${process.env.QUICKML_API_KEY || ''}`
           },
           body: JSON.stringify({ question: q })
         });
