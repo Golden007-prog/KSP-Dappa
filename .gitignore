@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.buildcheck/
+pipeline/out/
+__pycache__/
+*.pyc
+.env
+.env.local
+.catalyst/
+.catalystrc
+*.log
+.DS_Store
+.mcp.json
+docs/screenshots/*.png
+# strategy kit docs stay local — not for the public repo
+docs/00_START_HERE.md
+docs/01_PROJECT_BLUEPRINT.md
+docs/02_CLAUDE_CODE_MASTER_PROMPT.md
+docs/03_MCP_TOOLING_SETUP.md
+docs/04_SUBMISSION_KIT.md
+pipeline/.fixture/
