@@ -7,9 +7,18 @@ import Card from '../../components/Card.jsx';
 import MiniChoropleth from '../../components/MiniChoropleth.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
+import { useTheme } from '../../components/ThemeProvider.jsx';
 import { polygonForUnit } from '../../lib/districtGeoMap.js';
 
+// Legend gradients mirror MiniChoropleth's internal ramp per app theme —
+// dark: #233150 → #F5A623, light: #DBE4F5 → #D97706.
+const LEGEND_GRADIENT = {
+  dark: 'linear-gradient(90deg,#233150,#F5A623)',
+  light: 'linear-gradient(90deg,#DBE4F5,#D97706)',
+};
+
 export default function RiskMap({ rows, loading, error, onRetry, onPolygonClick }) {
+  const { theme } = useTheme();
   const values = useMemo(() => {
     const out = {};
     for (const r of rows) {
@@ -45,7 +54,7 @@ export default function RiskMap({ rows, loading, error, onRetry, onPolygonClick 
           />
           <div className="flex items-center gap-2 mt-2 text-[10px] text-muted">
             <span>Low risk</span>
-            <span className="h-1.5 w-24 rounded-full" style={{ background: 'linear-gradient(90deg,#233150,#F5A623)' }} />
+            <span className="h-1.5 w-24 rounded-full" style={{ background: LEGEND_GRADIENT[theme] || LEGEND_GRADIENT.dark }} />
             <span>High risk</span>
           </div>
         </>

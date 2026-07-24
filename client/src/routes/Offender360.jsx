@@ -1,8 +1,10 @@
-// Offender 360 — identity card + alias chips, Karnataka mini-map with district
-// hops, vertical case timeline, MO signature chips, community link back to the
-// Network Explorer. Spec: master prompt §7 route 5.
-import { useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+// Offender 360 — identity card with risk gauge + percentile + activity
+// sparkline, alias chips, Karnataka mini-map with district hops, mini ego
+// graph, filterable case timeline (year-grouped), MO signature chips,
+// add-to-compare, printable dossier, community link back to the Network
+// Explorer. Spec: master prompt §7 route 5.
+import { useEffect, useMemo } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useOffender, useOffenders } from '../lib/api.js';
 import { UNITS, unitInfo, aggregateCountsPerPolygon } from '../lib/districtGeoMap.js';
 import Card from '../components/Card.jsx';
@@ -10,9 +12,16 @@ import EmptyState from '../components/EmptyState.jsx';
 import LoadingSkeleton from '../components/LoadingSkeleton.jsx';
 import Badge from '../components/Badge.jsx';
 import MiniChoropleth from '../components/MiniChoropleth.jsx';
+import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt, dateLabel } from '../lib/format.js';
-import { RiskBadge, OutcomeBadge, MoChips } from './offenders/common.jsx';
 import { communityColor } from './network/graphUtils.js';
+import RiskGauge from './offenders/RiskGauge.jsx';
+import MiniEgoGraph from './offenders/MiniEgoGraph.jsx';
+import YearSparkline from './offenders/YearSparkline.jsx';
+import OffenderTimeline from './offenders/Timeline.jsx';
+import { addToCompare, COMPARE_MAX } from './offenders/compareStore.js';
+import { pushRecent } from './offenders/recentStore.js';
+import './offenders/offender360-print.css';
 
 /** CrimeNo = [cat 1][district 4][unit 4][year 4][serial 5] → district unit code. */
 function districtCodeFromCrimeNo(crimeNo) {
@@ -32,17 +41,36 @@ function Fact({ label, children }) {
 
 export default function Offender360() {
   const { personKey } = useParams();
+  const navigate = useNavigate();
+  const toast = useToast();
   const off = useOffender(personKey);
   const registry = useOffenders({ perPage: 200 }); // associate name enrichment (cached with /offenders)
 
   const p = off.data || {};
   const timeline = p.timeline || [];
 
+  // Recently-viewed ring for the /offenders chip row.
+  useEffect(() => {
+    if (off.data?.personKey) pushRecent(off.data.personKey, off.data.canonicalName);
+  }, [off.data]);
+
   const nameByKey = useMemo(() => {
     const m = new Map();
     for (const r of registry.data?.rows || []) m.set(String(r.personKey), r.canonicalName);
     return m;
   }, [registry.data]);
+
+  // Risk percentile against the loaded registry slice (top 200 by risk) —
+  // computed client-side, so it is a relative position, not a global rank.
+  const riskPercentile = useMemo(() => {
+    const rows = registry.data?.rows || [];
+    const n = Number(p.riskScore);
+    if (!rows.length || !Number.isFinite(n)) return null;
+    const scored = rows.filter((r) => Number.isFinite(Number(r.riskScore)));
+    if (scored.length < 2) return null;
+    const below = scored.filter((r) => Number(r.riskScore) < n).length;
+    return Math.round((below / scored.length) * 100);
+  }, [registry.data, p.riskScore]);
 
   // Cases per district — parsed from each CrimeNo (digits 2–5 are the district
   // code, per the pinned format); profile district names as fallback.
@@ -93,6 +121,13 @@ export default function Offender360() {
 
   const hasCommunity = p.communityId !== null && p.communityId !== undefined && p.communityId !== '';
 
+  const addCompare = () => {
+    const r = addToCompare(p.personKey || personKey);
+    if (r.status === 'added') toast.success('Added to compare — open the tray on the Offenders registry.');
+    else if (r.status === 'exists') toast.info('Already in the compare tray.');
+    else toast.info(`Compare holds up to ${COMPARE_MAX} offenders — remove one in the registry first.`);
+  };
+
   if (off.isLoading) {
     return (
       <div className="space-y-4">
@@ -133,32 +168,61 @@ export default function Offender360() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="off-print-root space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Link to="/offenders" className="text-xs text-muted hover:text-amber transition-colors">← Offenders</Link>
+          <Link to="/offenders" className="no-print inline-flex items-center min-h-[36px] text-xs text-muted hover:text-amber transition-colors">← Offenders</Link>
           <h1 className="page-title mt-0.5">{p.canonicalName || personKey}</h1>
           <p className="page-subtitle num">{p.personKey || personKey}</p>
         </div>
-        {hasCommunity && (
-          <Link
-            to={`/network?communityId=${encodeURIComponent(p.communityId)}&focus=${encodeURIComponent(p.personKey || personKey)}`}
-            className="btn-primary !py-1.5 text-xs inline-flex items-center gap-1.5"
+        <div className="no-print flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
+            onClick={addCompare}
           >
-            <span className="h-2 w-2 rounded-full" style={{ background: communityColor(p.communityId) }} />
-            Community #{String(p.communityId)} in Network →
-          </Link>
-        )}
+            ＋ Compare
+          </button>
+          <button
+            type="button"
+            className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
+            onClick={() => window.print()}
+            title="Print this profile as a dossier (ink-on-white)"
+          >
+            Print dossier
+          </button>
+          {hasCommunity && (
+            <Link
+              to={`/network?communityId=${encodeURIComponent(p.communityId)}&focus=${encodeURIComponent(p.personKey || personKey)}`}
+              className="btn-primary !py-1.5 text-xs min-h-[40px] inline-flex items-center gap-1.5"
+            >
+              <span className="h-2 w-2 rounded-full" style={{ background: communityColor(p.communityId) }} />
+              Community #{String(p.communityId)} in Network →
+            </Link>
+          )}
+        </div>
       </div>
 
       <Card title="Identity" subtitle="Single resolved person across multiple FIR name spellings">
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
-          <Fact label="Risk score"><RiskBadge score={p.riskScore} pulse /></Fact>
-          <Fact label="Cases">{fmtInt(p.caseCount)}</Fact>
-          <Fact label="Districts">{fmtInt((p.districts || []).length)}</Fact>
-          <Fact label="Network degree">{fmtInt(p.degree)}</Fact>
-          <Fact label="First seen">{dateLabel(p.firstSeen)}</Fact>
-          <Fact label="Last seen">{dateLabel(p.lastSeen)}</Fact>
+        <div className="grid grid-cols-1 sm:grid-cols-[11rem_minmax(0,1fr)] gap-4 items-start">
+          <div>
+            <RiskGauge score={p.riskScore} height={150} />
+            {riskPercentile !== null && (
+              <p className="text-[11px] text-muted text-center mt-1.5">
+                Higher risk than <span className="num text-ink">{riskPercentile}%</span> of the loaded registry
+              </p>
+            )}
+          </div>
+          <div className="space-y-2 min-w-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+              <Fact label="Cases">{fmtInt(p.caseCount)}</Fact>
+              <Fact label="Districts">{fmtInt((p.districts || []).length)}</Fact>
+              <Fact label="Network degree">{fmtInt(p.degree)}</Fact>
+              <Fact label="First seen">{dateLabel(p.firstSeen)}</Fact>
+              <Fact label="Last seen">{dateLabel(p.lastSeen)}</Fact>
+            </div>
+            <YearSparkline timeline={timeline} />
+          </div>
         </div>
         <div className="mt-3">
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">Known aliases</p>
@@ -176,7 +240,7 @@ export default function Offender360() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+      <div className="print-stack grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <div className="space-y-4">
           <Card title="Operating area" subtitle="Cases per district, decoded from CrimeNo">
             <MiniChoropleth values={choroValues} markers={markers} height={260} />
@@ -207,21 +271,35 @@ export default function Offender360() {
 
           <Card title="Known associates" subtitle="Co-accused links from the network graph">
             {(p.associates || []).length ? (
-              <ul className="divide-y divide-grid/50">
-                {[...(p.associates || [])]
-                  .sort((a, b) => (b.sharedCases || 0) - (a.sharedCases || 0))
-                  .slice(0, 8)
-                  .map((a) => (
-                    <li key={a.personKey} className="py-1.5 first:pt-0 last:pb-0">
-                      <Link to={`/offenders/${encodeURIComponent(a.personKey)}`} className="flex items-center gap-2 group">
-                        <span className="text-xs text-ink truncate flex-1 group-hover:text-amber transition-colors">
-                          {nameByKey.get(String(a.personKey)) || a.personKey}
-                        </span>
-                        <Badge tone="slate">{fmtInt(a.sharedCases)} shared</Badge>
-                      </Link>
-                    </li>
-                  ))}
-              </ul>
+              <>
+                <div className="no-print mb-2 rounded-lg border border-grid/60 overflow-hidden">
+                  <MiniEgoGraph
+                    personKey={p.personKey || personKey}
+                    name={p.canonicalName}
+                    communityId={p.communityId}
+                    associates={p.associates || []}
+                    nameByKey={nameByKey}
+                    height={210}
+                    onTapPerson={(k) => navigate(`/offenders/${encodeURIComponent(k)}`)}
+                  />
+                  <p className="text-[10px] text-muted text-center pb-1.5">Tap an associate to open their profile</p>
+                </div>
+                <ul className="divide-y divide-grid/50">
+                  {[...(p.associates || [])]
+                    .sort((a, b) => (b.sharedCases || 0) - (a.sharedCases || 0))
+                    .slice(0, 8)
+                    .map((a) => (
+                      <li key={a.personKey} className="py-1.5 first:pt-0 last:pb-0">
+                        <Link to={`/offenders/${encodeURIComponent(a.personKey)}`} className="flex items-center gap-2 min-h-[36px] group">
+                          <span className="text-xs text-ink truncate flex-1 group-hover:text-amber transition-colors">
+                            {nameByKey.get(String(a.personKey)) || a.personKey}
+                          </span>
+                          <Badge tone="slate">{fmtInt(a.sharedCases)} shared</Badge>
+                        </Link>
+                      </li>
+                    ))}
+                </ul>
+              </>
             ) : (
               <EmptyState compact title="No associates" message="No shared-case links for this person." />
             )}
@@ -233,33 +311,7 @@ export default function Offender360() {
           title="Case timeline"
           subtitle={`${fmtInt(timeline.length)} linked FIR${timeline.length === 1 ? '' : 's'}, most recent first`}
         >
-          {timeline.length ? (
-            <ol className="relative border-l border-grid ml-2 space-y-4">
-              {timeline.map((t) => (
-                <li key={t.caseMasterId || t.crimeNo} className="ml-4 relative">
-                  <span className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full bg-amber border-2 border-panel" aria-hidden="true" />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Link
-                      to={`/cases/${encodeURIComponent(t.caseMasterId)}`}
-                      className="text-sm font-medium text-ink num hover:text-amber transition-colors"
-                    >
-                      {t.crimeNo}
-                    </Link>
-                    <OutcomeBadge status={t.statusName} />
-                  </div>
-                  <p className="text-xs text-muted mt-0.5">
-                    {t.subHeadName || t.headName || 'Case'} · {t.unitName || 'Unknown station'} · {dateLabel(t.registeredDate)}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <EmptyState
-              compact
-              title="No linked cases"
-              message="The network snapshot has no shared cases recorded for this person."
-            />
-          )}
+          <OffenderTimeline timeline={timeline} />
         </Card>
       </div>
     </div>

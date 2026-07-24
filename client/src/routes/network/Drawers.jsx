@@ -4,8 +4,10 @@ import { Link } from 'react-router-dom';
 import { useOffender } from '../../lib/api.js';
 import Badge from '../../components/Badge.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
+import { useToast } from '../../components/ToastProvider.jsx';
 import { fmtInt, fmtNum } from '../../lib/format.js';
 import { communityColor } from './graphUtils.js';
+import { addToCompare, COMPARE_MAX } from '../offenders/compareStore.js';
 
 function DrawerShell({ title, subtitle, onClose, children }) {
   return (
@@ -15,7 +17,12 @@ function DrawerShell({ title, subtitle, onClose, children }) {
           <p className="text-sm font-semibold text-ink truncate">{title}</p>
           {subtitle && <p className="text-[11px] text-muted num truncate">{subtitle}</p>}
         </div>
-        <button type="button" className="text-muted hover:text-ink text-sm leading-none px-1" onClick={onClose} aria-label="Close panel">
+        <button
+          type="button"
+          className="flex h-10 w-10 -mt-2 -mr-2 shrink-0 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
+          onClick={onClose}
+          aria-label="Close panel"
+        >
           ✕
         </button>
       </div>
@@ -35,9 +42,17 @@ function Stat({ label, children }) {
 
 /** Node tap → offender identity drawer (enriched via GET /offenders/:key). */
 export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEgo = false }) {
+  const toast = useToast();
   const detail = useOffender(node?.id || '');
   const d = detail.data || {};
   const hasCommunity = node?.communityId !== null && node?.communityId !== undefined && node?.communityId !== '';
+
+  const compare = () => {
+    const r = addToCompare(node?.id);
+    if (r.status === 'added') toast.success(`${node?.label || node?.id} added to compare — open the Offenders registry tray.`);
+    else if (r.status === 'exists') toast.info('Already in the compare tray.');
+    else toast.info(`Compare holds up to ${COMPARE_MAX} offenders — remove one in the registry first.`);
+  };
 
   return (
     <DrawerShell
@@ -86,30 +101,33 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
       {detail.error && <p className="text-[11px] text-muted">Profile detail unavailable — {detail.error.message}</p>}
 
       <div className="flex flex-wrap gap-2 pt-1">
-        <Link to={`/offenders/${encodeURIComponent(node?.id || '')}`} className="btn-primary !py-1.5 !px-3 text-xs">
+        <Link to={`/offenders/${encodeURIComponent(node?.id || '')}`} className="btn-primary !py-1.5 !px-3 text-xs min-h-[40px]">
           Offender 360 →
         </Link>
         {hasCommunity && (
-          <button type="button" className="btn !py-1.5 !px-3 text-xs" onClick={() => onIsolate?.(node.communityId)}>
+          <button type="button" className="btn !py-1.5 !px-3 text-xs min-h-[40px]" onClick={() => onIsolate?.(node.communityId)}>
             Isolate group #{String(node.communityId)}
           </button>
         )}
         {onEgo && (
           <button
             type="button"
-            className={`btn !py-1.5 !px-3 text-xs ${isEgo ? '!border-teal/60 text-teal' : ''}`}
+            className={`btn !py-1.5 !px-3 text-xs min-h-[40px] ${isEgo ? '!border-teal/60 text-teal' : ''}`}
             onClick={() => onEgo(isEgo ? null : node?.id)}
           >
             {isEgo ? 'Exit ego focus' : 'Focus ego network'}
           </button>
         )}
       </div>
-      <div className="flex gap-2">
-        <button type="button" className="btn !py-1 !px-2 text-[11px]" onClick={() => onSetPathEnd?.('a', node?.id)}>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={() => onSetPathEnd?.('a', node?.id)}>
           Set as path A
         </button>
-        <button type="button" className="btn !py-1 !px-2 text-[11px]" onClick={() => onSetPathEnd?.('b', node?.id)}>
+        <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={() => onSetPathEnd?.('b', node?.id)}>
           Set as path B
+        </button>
+        <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={compare}>
+          ＋ Compare
         </button>
       </div>
     </DrawerShell>
@@ -125,7 +143,7 @@ export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode }) {
   const endpoint = (n, fallbackId) => (
     <button
       type="button"
-      className="chip hover:border-amber/50 transition-colors max-w-full"
+      className="chip !py-1.5 min-h-[40px] hover:border-amber/50 transition-colors max-w-full"
       onClick={() => n && onSelectNode?.(n)}
       title="Open person panel"
     >
@@ -148,7 +166,10 @@ export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode }) {
           <ul className="space-y-1 max-h-56 overflow-y-auto pr-1">
             {caseIds.map((cid) => (
               <li key={cid}>
-                <Link to={`/cases/${encodeURIComponent(cid)}`} className="text-xs text-amber hover:underline num break-all">
+                <Link
+                  to={`/cases/${encodeURIComponent(cid)}`}
+                  className="inline-flex items-center min-h-[36px] text-xs text-amber hover:underline num break-all"
+                >
                   Case {String(cid)}
                 </Link>
               </li>

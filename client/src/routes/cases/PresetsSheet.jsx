@@ -1,8 +1,10 @@
 // Saved filter presets — named snapshots of the explorer URL params, persisted
 // in localStorage ('dappa-cases-presets'). Save the current combination, apply
 // one tap later (also from a fresh session), delete stale ones. Saving under an
-// existing name overwrites it.
-import { useState } from 'react';
+// existing name overwrites it. v2: a preset can optionally capture the table
+// view (visible columns + sort) alongside the filters — old entries without
+// `view` keep working, and appliers ignore keys they don't know.
+import { useEffect, useState } from 'react';
 import Sheet from '../../components/Sheet.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
@@ -17,10 +19,17 @@ const readPresets = () => {
   return Array.isArray(list) ? list.filter((p) => p && p.name && p.params) : [];
 };
 
-export default function PresetsSheet({ open, onClose, currentParams, activeCount = 0, onApply }) {
+export default function PresetsSheet({ open, onClose, currentParams, activeCount = 0, onApply, currentView, onApplyView }) {
   const toast = useToast();
   const [presets, setPresets] = useState(readPresets);
   const [name, setName] = useState('');
+  const [includeView, setIncludeView] = useState(false);
+
+  // Re-read on every open so presets written by another tab (or another
+  // session between opens) show up without a full reload.
+  useEffect(() => {
+    if (open) setPresets(readPresets());
+  }, [open]);
 
   const persist = (next) => {
     setPresets(next);
@@ -30,7 +39,12 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
   const save = () => {
     const trimmed = name.trim();
     if (!trimmed || activeCount === 0) return;
-    const entry = { name: trimmed, params: currentParams, savedAt: new Date().toISOString().slice(0, 10) };
+    const entry = {
+      name: trimmed,
+      params: currentParams,
+      savedAt: new Date().toISOString().slice(0, 10),
+      ...(includeView && currentView ? { view: currentView } : {}),
+    };
     const existing = presets.some((p) => p.name === trimmed);
     persist([entry, ...presets.filter((p) => p.name !== trimmed)]);
     setName('');
@@ -39,6 +53,7 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
 
   const apply = (p) => {
     onApply(p.params);
+    if (p.view && typeof onApplyView === 'function') onApplyView(p.view);
     onClose();
     toast.info(`Preset “${p.name}” applied`);
   };
@@ -68,8 +83,18 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
             Save
           </button>
         </form>
+        <label className="flex min-h-[36px] items-center gap-2 text-xs text-muted cursor-pointer select-none -mt-1">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-[var(--c-amber)]"
+            checked={includeView}
+            disabled={activeCount === 0}
+            onChange={(e) => setIncludeView(e.target.checked)}
+          />
+          Also capture visible columns &amp; sort
+        </label>
         {activeCount > 0 && (
-          <p className="text-[11px] text-muted -mt-1">
+          <p className="text-[11px] text-muted -mt-2">
             Saves the current {activeCount}-filter combination for one-tap reuse.
           </p>
         )}
@@ -90,11 +115,12 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
                     {Object.keys(p.params).length} params · saved {dateLabel(p.savedAt)}
                   </p>
                 </div>
+                {p.view ? <Badge tone="teal">+view</Badge> : null}
                 <Badge tone="slate">{Object.keys(p.params).length}</Badge>
                 <button type="button" className="btn !py-1 !px-2.5 text-xs" onClick={() => apply(p)}>Apply</button>
                 <button
                   type="button"
-                  className="btn-ghost !p-1.5 text-signal"
+                  className="btn-ghost !p-0 flex h-9 w-9 items-center justify-center text-signal"
                   aria-label={`Delete preset ${p.name}`}
                   onClick={() => remove(p)}
                 >

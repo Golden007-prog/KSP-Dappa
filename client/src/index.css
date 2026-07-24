@@ -283,7 +283,9 @@ html[data-density='compact'] {
   }
 }
 
-/* ---- reduced motion: collapse every animation/transition ----------------- */
+/* ---- reduced motion: collapse every animation/transition -----------------
+   Honors BOTH the OS-level setting and the in-app override (More sheet /
+   command palette write html[data-motion='reduce'], persisted + pre-painted) */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -292,6 +294,14 @@ html[data-density='compact'] {
   }
   html { scroll-behavior: auto !important; }
 }
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+html[data-motion='reduce'] { scroll-behavior: auto !important; }
 
 /* ---- print base (used by /print/brief; SmartBrowz renders this route) ---- */
 .print-page {
@@ -308,6 +318,12 @@ html[data-density='compact'] {
   body { background: #ffffff !important; color: #111827 !important; }
   .no-print, aside, .skip-link { display: none !important; }
   main { overflow: visible !important; padding: 0 !important; }
+  /* the app's real scroll container is the #main-scroll div, not <main> —
+     un-clamp the whole height chain so Ctrl+P prints the full page, not one
+     viewport's worth */
+  html, body, #root { height: auto !important; }
+  #root > div { display: block !important; height: auto !important; min-height: 0 !important; }
+  #main-scroll { overflow: visible !important; height: auto !important; flex: none !important; }
   .print-page { max-width: none; padding: 0; min-height: 0; }
   @page { size: A4; margin: 12mm; }
 }

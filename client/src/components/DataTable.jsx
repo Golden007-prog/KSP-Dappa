@@ -12,36 +12,66 @@
 //   dense?       — tighter row padding (overrides the global DensityToggle)
 //   stickyFirst? — default true; pins the first column while the table scrolls
 //                 horizontally on narrow screens
+//   exportable?  — default true; adds an "Export CSV" footer button that
+//                 downloads the VISIBLE (filtered + sorted) rows client-side
+//   exportFilename? — CSV basename (default 'dappa-export')
+//   filterable?  — opt-in client-side quick-filter box that searches every
+//                 column of the current rows (raw row values)
+//   filterPlaceholder?
 // Row padding follows the global density (--density-y via .td-pad) unless dense.
 import { useMemo, useState } from 'react';
 import LoadingSkeleton from './LoadingSkeleton.jsx';
 import EmptyState from './EmptyState.jsx';
+import { useToast } from './ToastProvider.jsx';
 import { fmtInt } from '../lib/format.js';
 
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' };
 
+const csvCell = (v) => {
+  const s = v === undefined || v === null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
 export default function DataTable({
   columns = [], rows = [], rowKey, loading = false, emptyMessage,
   total, page = 1, perPage = 50, onPageChange,
-  sort, onSortChange, onRowClick, dense = false, stickyFirst = true, className = '',
+  sort, onSortChange, onRowClick, dense = false, stickyFirst = true,
+  exportable = true, exportFilename = 'dappa-export',
+  filterable = false, filterPlaceholder, className = '',
 }) {
   const [localSort, setLocalSort] = useState(null);
+  const [quickFilter, setQuickFilter] = useState('');
+  const toast = useToast();
   const activeSort = onSortChange ? sort : localSort;
 
+  const filteredRows = useMemo(() => {
+    const q = quickFilter.trim().toLowerCase();
+    if (!filterable || !q) return rows;
+    return rows.filter((row) => columns.some((col) => {
+      const v = row?.[col.key];
+      return v !== undefined && v !== null && String(v).toLowerCase().includes(q);
+    }));
+  }, [rows, columns, filterable, quickFilter]);
+
   const displayRows = useMemo(() => {
-    if (onSortChange || !activeSort) return rows;
+    if (onSortChange || !activeSort) return filteredRows;
     const { key, dir } = activeSort;
     const mul = dir === 'desc' ? -1 : 1;
-    return [...rows].sort((a, b) => {
+    return [...filteredRows].sort((a, b) => {
       const av = a?.[key]; const bv = b?.[key];
       if (av === bv) return 0;
       if (av === undefined || av === null) return 1;
       if (bv === undefined || bv === null) return -1;
+      const as = String(av); const bs = String(bv);
+      // 16+-digit ID strings (18-digit CrimeNo) exceed Number precision — order by length, then lexically
+      if (/^\d{16,}$/.test(as) && /^\d{16,}$/.test(bs)) {
+        return (as.length !== bs.length ? as.length - bs.length : as.localeCompare(bs)) * mul;
+      }
       const an = Number(av); const bn = Number(bv);
       if (Number.isFinite(an) && Number.isFinite(bn)) return (an - bn) * mul;
-      return String(av).localeCompare(String(bv)) * mul;
+      return as.localeCompare(bs) * mul;
     });
-  }, [rows, activeSort, onSortChange]);
+  }, [filteredRows, activeSort, onSortChange]);
 
   const toggleSort = (col) => {
     if (!col.sortable) return;
@@ -58,13 +88,61 @@ export default function DataTable({
     return i;
   };
 
+  const exportCsv = () => {
+    const head = columns.map((c) => csvCell(c.label ?? c.key)).join(',');
+    const lines = displayRows.map((row) => columns.map((c) => csvCell(row?.[c.key])).join(','));
+    // BOM so Excel opens the en-IN text correctly
+    const blob = new Blob(['\uFEFF' + [head, ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${exportFilename}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.success(`Exported ${fmtInt(displayRows.length)} row${displayRows.length === 1 ? '' : 's'} to CSV.`);
+  };
+
   const cellPad = dense ? 'px-3 py-1.5' : 'px-3 td-pad';
   const stickyCls = (i) => (stickyFirst && i === 0 ? ' td-sticky' : '');
   const pages = total && perPage ? Math.max(1, Math.ceil(total / perPage)) : 1;
   const showFooter = total !== undefined && typeof onPageChange === 'function';
+  const showExport = exportable && !loading && displayRows.length > 0;
+
+  const exportBtn = showExport ? (
+    <button
+      type="button"
+      onClick={exportCsv}
+      className="btn-ghost !py-1.5 !px-2 !text-[11px] shrink-0"
+      aria-label="Export visible rows as CSV"
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 4v11m-5-4 5 5 5-5" /><path d="M4.5 20h15" />
+      </svg>
+      CSV
+    </button>
+  ) : null;
 
   return (
     <div className={`overflow-hidden ${className}`}>
+      {filterable && (
+        <div className="px-3 py-2 border-b border-grid/60">
+          <div className="relative sm:max-w-xs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" />
+            </svg>
+            <input
+              type="search"
+              className="input-dark !py-2 !pl-8 w-full min-h-[40px]"
+              value={quickFilter}
+              onChange={(e) => setQuickFilter(e.target.value)}
+              placeholder={filterPlaceholder || 'Filter rows…'}
+              aria-label={filterPlaceholder || 'Filter rows'}
+            />
+          </div>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -113,8 +191,12 @@ export default function DataTable({
             {!loading && displayRows.map((row, i) => (
               <tr
                 key={keyOf(row, i)}
-                className={`border-b border-grid/40 ${onRowClick ? 'row-click cursor-pointer hover:bg-grid/30 transition-colors' : ''}`}
+                className={`border-b border-grid/40 ${onRowClick ? 'row-click cursor-pointer hover:bg-grid/30 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary -outline-offset-2' : ''}`}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={onRowClick ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row); }
+                } : undefined}
               >
                 {columns.map((col, ci) => (
                   <td key={col.key} className={`${cellPad} ${ALIGN[col.align] || 'text-left'} num ${col.className || ''}${stickyCls(ci)}`}>
@@ -126,19 +208,33 @@ export default function DataTable({
           </tbody>
         </table>
         {!loading && displayRows.length === 0 && (
-          <EmptyState compact title="No rows" message={emptyMessage || 'No records match the current filters.'} />
+          <EmptyState
+            compact
+            title="No rows"
+            message={filterable && quickFilter.trim()
+              ? `No rows match “${quickFilter.trim()}”.`
+              : (emptyMessage || 'No records match the current filters.')}
+          />
         )}
       </div>
       {showFooter && (
         <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-grid text-xs text-muted">
-          <span className="num">
-            {total === 0 ? '0 rows' : `${fmtInt((page - 1) * perPage + 1)}–${fmtInt(Math.min(page * perPage, total))} of ${fmtInt(total)}`}
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="num truncate">
+              {total === 0 ? '0 rows' : `${fmtInt((page - 1) * perPage + 1)}–${fmtInt(Math.min(page * perPage, total))} of ${fmtInt(total)}`}
+            </span>
+            {exportBtn}
+          </div>
           <div className="flex items-center gap-1.5">
             <button type="button" className="btn !py-1.5 !px-2.5" disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)} aria-label="Previous page">‹ Prev</button>
             <span className="num px-1" aria-live="polite">{fmtInt(page)} / {fmtInt(pages)}</span>
             <button type="button" className="btn !py-1.5 !px-2.5" disabled={page >= pages || loading} onClick={() => onPageChange(page + 1)} aria-label="Next page">Next ›</button>
           </div>
+        </div>
+      )}
+      {!showFooter && exportBtn && (
+        <div className="flex items-center justify-end px-3 py-1.5 border-t border-grid/60">
+          {exportBtn}
         </div>
       )}
     </div>

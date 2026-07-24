@@ -1,9 +1,11 @@
 // /alerts — anomaly feed. Severity chips (URL-synced ?sev=) + district/type/
-// period filters, group-by toggle (severity/district/date, persisted), red-pulse
-// cards with observed-vs-expected sparklines, optimistic acknowledge with
-// demo-mode 403 toast, local mark-all-read, opt-in sound/desktop notifications
-// for newly arriving anomalies (60s poll while enabled), and CSV export.
-import { useEffect, useMemo, useRef } from 'react';
+// period filters, text search (?q=), unread-only toggle (?unread=1), group-by
+// and sort (?group= / ?sort=, defaulting from localStorage), saved views,
+// red-pulse cards with observed-vs-expected sparklines, optimistic acknowledge
+// with demo-mode handling, snooze-24h, per-card copy, local mark-all-read,
+// opt-in sound/desktop notifications (60s poll while enabled, with a test
+// button), keyboard shortcuts (j/k/a/m/s/c/e/u//, 0–4), and CSV export.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAlerts, useLookups } from '../lib/api.js';
@@ -18,9 +20,15 @@ import SegmentedControl from '../components/SegmentedControl.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import AlertCard from './alerts/AlertCard.jsx';
+import OverviewStrip from './alerts/OverviewStrip.jsx';
+import SavedViews from './alerts/SavedViews.jsx';
+import OptionsSheet from './alerts/OptionsSheet.jsx';
 import useAckAlertOptimistic from './alerts/useAckAlertOptimistic.js';
-import { useAlertPrefs } from './alerts/useAlertPrefs.js';
+import useAlertShortcuts from './alerts/useAlertShortcuts.js';
+import { useAlertPrefs, GROUP_MODES, SORT_MODES } from './alerts/useAlertPrefs.js';
 import { exportAlertsCsv } from './alerts/csv.js';
+import { alertShareText } from './alerts/share.js';
+import { copyText } from './copilot/clipboard.js';
 import {
   playChime, desktopSupported, ensureDesktopPermission, showDesktopNotification,
 } from './alerts/notify.js';
@@ -33,6 +41,17 @@ const bySeverity = (a, b) =>
   sevRank(b.severity) - sevRank(a.severity)
   || Math.abs(Number(b.zScore) || 0) - Math.abs(Number(a.zScore) || 0);
 
+/** Comparators behind the Sort control (URL ?sort=). */
+const CMPS = {
+  severity: bySeverity,
+  z: (a, b) =>
+    Math.abs(Number(b.zScore) || 0) - Math.abs(Number(a.zScore) || 0)
+    || sevRank(b.severity) - sevRank(a.severity),
+  recent: (a, b) =>
+    String(b.periodEnd || b.periodStart || '').localeCompare(String(a.periodEnd || a.periodStart || ''))
+    || bySeverity(a, b),
+};
+
 const SEV_FILTERS = [
   ['', 'All'], ['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low'],
 ];
@@ -41,6 +60,12 @@ const GROUP_OPTIONS = [
   { value: 'severity', label: 'Severity' },
   { value: 'district', label: 'District' },
   { value: 'date', label: 'Date' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'severity', label: 'Severity' },
+  { value: 'z', label: 'z-score' },
+  { value: 'recent', label: 'Recent' },
 ];
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -61,7 +86,7 @@ function stationsForAlert(a, units) {
   };
 }
 
-/** Partition the (already severity-sorted) open alerts into labelled groups. */
+/** Partition the (already sorted) open alerts into labelled groups. */
 function groupAlerts(open, groupBy) {
   const groups = new Map();
   const push = (key, label, a) => {
@@ -88,19 +113,21 @@ function groupAlerts(open, groupBy) {
 }
 
 const ICON = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+// 44px touch targets on mobile, compact on sm+ pointer screens.
+const TOOL_BTN = 'btn !px-2.5 !text-xs min-h-[44px] sm:min-h-[30px]';
 
-function ToggleChip({ on, onClick, label, tip, children }) {
+function ToggleChip({ on, onClick, label, tip, className = '', children }) {
   return (
-    <Tooltip label={tip}>
+    <Tooltip label={tip} className={className}>
       <button
         type="button"
         aria-pressed={on}
         aria-label={label}
         onClick={onClick}
-        className={`btn !px-2.5 !text-xs ${on ? '!border-primary/60 !text-primary' : ''}`}
+        className={`${TOOL_BTN} ${on ? '!border-primary/60 !text-primary' : ''}`}
       >
         {children}
-        <span className="hidden sm:inline">{label}</span>
+        <span className="hidden md:inline">{label}</span>
       </button>
     </Tooltip>
   );
@@ -114,30 +141,78 @@ export default function Alerts() {
   const ack = useAckAlertOptimistic();
   const toast = useToast();
   const qc = useQueryClient();
-  const { groupBy, setGroupBy, notify, setNotify, readIds, markRead } = useAlertPrefs();
+  const {
+    groupBy, setGroupBy, sortBy, setSortBy, notify, setNotify, readIds, markRead,
+    snoozes, snooze, unsnooze, views, saveView, deleteView,
+  } = useAlertPrefs();
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [showSnoozed, setShowSnoozed] = useState(false);
+  const [focusId, setFocusId] = useState(null);
+  const cardRefs = useRef(new Map());
+  const searchRef = useRef(null);
 
-  // Severity filter lives in the URL (?sev=) so alert views are shareable.
-  const sev = (searchParams.get('sev') || '').toLowerCase();
-  const setSev = (v) => {
+  /** Set/clear one URL search param in place (replace — no history spam). */
+  const setParam = (key, value) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (v) next.set('sev', v); else next.delete('sev');
+      if (value) next.set(key, value); else next.delete(key);
       return next;
     }, { replace: true });
   };
 
+  // Severity filter lives in the URL (?sev=) so alert views are shareable.
+  const sev = (searchParams.get('sev') || '').toLowerCase();
+  const setSev = (v) => setParam('sev', v);
+  const q = (searchParams.get('q') || '').trim();
+  const unreadOnly = searchParams.get('unread') === '1';
+
+  // Group-by / sort: URL wins (?group= / ?sort= → shareable), localStorage
+  // pref is the default; changing either writes both.
+  const urlGroup = (searchParams.get('group') || '').toLowerCase();
+  const group = GROUP_MODES.includes(urlGroup) ? urlGroup : groupBy;
+  const changeGroup = (v) => { setGroupBy(v); setParam('group', v); };
+  const urlSort = (searchParams.get('sort') || '').toLowerCase();
+  const sort = SORT_MODES.includes(urlSort) ? urlSort : sortBy;
+  const changeSort = (v) => { setSortBy(v); setParam('sort', v); };
+  const cmp = CMPS[sort] || bySeverity;
+
   const rows = alerts.data || [];
+  const searched = useMemo(() => {
+    if (!q) return rows;
+    const needle = q.toLowerCase();
+    return rows.filter((a) =>
+      [a.narrative, a.districtName, a.districtId, a.headName, a.severity]
+        .filter(Boolean).join(' ').toLowerCase().includes(needle));
+  }, [rows, q]);
   const filtered = useMemo(
-    () => (sev ? rows.filter((a) => String(a.severity || '').toLowerCase() === sev) : rows),
-    [rows, sev],
+    () => (sev ? searched.filter((a) => String(a.severity || '').toLowerCase() === sev) : searched),
+    [searched, sev],
   );
-  const open = useMemo(() => filtered.filter((a) => !isAcked(a)).sort(bySeverity), [filtered]);
-  const acked = useMemo(() => filtered.filter(isAcked).sort(bySeverity), [filtered]);
-  const openAll = rows.filter((a) => !isAcked(a));
-  const groups = useMemo(() => groupAlerts(open, groupBy), [open, groupBy]);
-  const unreadCount = useMemo(
+  const openAll = useMemo(() => rows.filter((a) => !isAcked(a)), [rows]);
+  const openFiltered = useMemo(() => filtered.filter((a) => !isAcked(a)), [filtered]);
+  const openVisible = useMemo(
+    () => (unreadOnly ? openFiltered.filter((a) => !readIds.has(String(a.alertId))) : openFiltered),
+    [openFiltered, unreadOnly, readIds],
+  );
+  const snoozedList = useMemo(
+    () => [...openVisible.filter((a) => (snoozes[String(a.alertId)] || 0) > Date.now())].sort(cmp),
+    [openVisible, snoozes, cmp],
+  );
+  const open = useMemo(
+    () => [...openVisible.filter((a) => !((snoozes[String(a.alertId)] || 0) > Date.now()))].sort(cmp),
+    [openVisible, snoozes, cmp],
+  );
+  const acked = useMemo(() => [...filtered.filter(isAcked)].sort(cmp), [filtered, cmp]);
+  const groups = useMemo(() => groupAlerts(open, group), [open, group]);
+  const flatOpen = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+
+  const unreadOpenCount = useMemo(
     () => openAll.filter((a) => !readIds.has(String(a.alertId))).length,
     [openAll, readIds],
+  );
+  const totalUnread = useMemo(
+    () => rows.filter((a) => !readIds.has(String(a.alertId))).length,
+    [rows, readIds],
   );
 
   const sevCounts = useMemo(() => {
@@ -198,32 +273,127 @@ export default function Alerts() {
     }
   };
 
+  const testNotification = () => {
+    playChime();
+    if (notify.desktop) {
+      showDesktopNotification(
+        'DAPPA — test alert',
+        'Critical · Vehicle Theft — sample anomaly. Your desktop alerts are working.',
+      );
+      toast.info('Test chime played and a sample desktop notification was sent.');
+    } else {
+      toast.info('Test chime played — enable Desktop to also get pop-up notifications.');
+    }
+  };
+
   const markAllRead = () => {
-    markRead(rows.map((a) => a.alertId));
-    toast.success(`Marked ${fmtInt(unreadCount)} alert${unreadCount === 1 ? '' : 's'} as read`);
+    const ids = rows.map((a) => String(a.alertId)).filter((id) => !readIds.has(id));
+    if (!ids.length) return;
+    markRead(ids);
+    toast.success(`Marked ${fmtInt(ids.length)} alert${ids.length === 1 ? '' : 's'} as read`);
   };
 
   const exportCsv = () => {
-    if (!filtered.length) { toast.info('Nothing to export for the current filters.'); return; }
-    const n = exportAlertsCsv(filtered);
+    const exportRows = unreadOnly ? openVisible : filtered;
+    if (!exportRows.length) { toast.info('Nothing to export for the current filters.'); return; }
+    const n = exportAlertsCsv(exportRows);
     toast.success(`Exported ${fmtInt(n)} alert${n === 1 ? '' : 's'} to CSV`);
   };
 
+  const doSnooze = (id) => {
+    snooze(id);
+    toast.info('Snoozed for 24 h — it moves to the Snoozed section below (unsnooze anytime).');
+  };
+  const doUnsnooze = (id) => {
+    unsnooze(id);
+    toast.success('Alert restored to the open feed.');
+  };
+  const copyAlert = async (a) => {
+    const ok = await copyText(alertShareText(a));
+    if (ok) toast.success('Alert copied as text — paste into WhatsApp or e-mail.');
+    else toast.error('Copy failed in this browser.');
+  };
+
+  // Keyboard shortcuts: j/k move a focus ring through the open feed.
+  const focusedAlert = useMemo(
+    () => flatOpen.find((a) => String(a.alertId) === String(focusId)) || null,
+    [flatOpen, focusId],
+  );
+  const moveFocus = (dir) => {
+    const ids = flatOpen.map((a) => String(a.alertId));
+    if (!ids.length) return;
+    const i = ids.indexOf(String(focusId));
+    const next = i === -1
+      ? (dir > 0 ? ids[0] : ids[ids.length - 1])
+      : ids[(i + dir + ids.length) % ids.length];
+    setFocusId(next);
+    cardRefs.current.get(next)?.focus();
+  };
+  useAlertShortcuts({
+    next: () => moveFocus(1),
+    prev: () => moveFocus(-1),
+    ack: () => { if (focusedAlert) { markRead(focusedAlert.alertId); ack.mutate(focusedAlert.alertId); } },
+    read: () => focusedAlert && markRead(focusedAlert.alertId),
+    copy: () => focusedAlert && copyAlert(focusedAlert),
+    snooze: () => focusedAlert && doSnooze(focusedAlert.alertId),
+    export: exportCsv,
+    unread: () => setParam('unread', unreadOnly ? '' : '1'),
+    sev: setSev,
+    search: () => searchRef.current?.focus(),
+  });
+
   const units = lookups.data?.units;
   const ackPendingId = ack.isPending ? ack.variables : null;
+  const ackErrorId = ack.isError ? ack.variables : null;
 
-  const renderCard = (a, isAckedCard) => (
-    <AlertCard
-      key={a.alertId}
-      alert={a}
-      stations={stationsForAlert(a, units)}
-      acked={isAckedCard}
-      onAck={(id) => ack.mutate(id)}
-      ackPending={String(ackPendingId) === String(a.alertId)}
-      unread={!readIds.has(String(a.alertId))}
-      onRead={(id) => markRead(id)}
-    />
-  );
+  const renderCard = (a, opts = {}) => {
+    const id = String(a.alertId);
+    const focused = focusId === id;
+    return (
+      <div
+        key={id}
+        ref={(el) => { if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id); }}
+        tabIndex={-1}
+        onFocus={() => setFocusId(id)}
+        className={`rounded-xl outline-none ${focused ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-base' : ''}`}
+        style={{ scrollMarginTop: 96, scrollMarginBottom: 24 }}
+      >
+        <AlertCard
+          alert={a}
+          stations={stationsForAlert(a, units)}
+          acked={!!opts.acked}
+          onAck={(aid) => ack.mutate(aid)}
+          ackPending={String(ackPendingId) === id}
+          ackError={String(ackErrorId) === id}
+          unread={!readIds.has(id)}
+          onRead={(aid) => markRead(aid)}
+          onCopy={copyAlert}
+          onSnooze={opts.acked || opts.snoozed ? undefined : doSnooze}
+          snoozedUntil={opts.snoozed ? (snoozes[id] || 0) : 0}
+          onUnsnooze={doUnsnooze}
+        />
+      </div>
+    );
+  };
+
+  const emptyTitle = snoozedList.length ? 'All matching alerts are snoozed'
+    : unreadOnly ? 'No unread alerts'
+      : q ? 'No alerts match your search'
+        : sev ? `No open ${sev} alerts`
+          : 'No active alerts';
+  const emptyMessage = snoozedList.length
+    ? 'Every open alert matching these filters is snoozed — expand the Snoozed section below or unsnooze them.'
+    : unreadOnly ? 'Everything matching the current filters has been read.'
+      : q ? `Nothing matches “${q}” — try a district, crime head or narrative keyword.`
+        : sev ? 'Nothing at this severity in the current window — clear the severity filter to see the rest.'
+          : 'No anomalies flagged for the current filters. All clear.';
+  const emptyAction = q
+    ? <button type="button" className="btn" onClick={() => setParam('q', '')}>Clear search</button>
+    : unreadOnly
+      ? <button type="button" className="btn" onClick={() => setParam('unread', '')}>Show all alerts</button>
+      : sev
+        ? <button type="button" className="btn" onClick={() => setSev('')}>Show all severities</button>
+        : null;
 
   return (
     <div className="space-y-4 max-w-[1200px] mx-auto">
@@ -234,7 +404,7 @@ export default function Alerts() {
             Anomaly feed — observed vs expected
             {!alerts.isLoading && !alerts.error && (
               <span className="num"> · {fmtInt(openAll.length)} open · {fmtInt(rows.length - openAll.length)} acknowledged
-                {unreadCount > 0 && <span className="text-primary"> · {fmtInt(unreadCount)} unread</span>}
+                {unreadOpenCount > 0 && <span className="text-primary"> · {fmtInt(unreadOpenCount)} unread</span>}
               </span>
             )}
           </p>
@@ -246,13 +416,17 @@ export default function Alerts() {
         )}
       </div>
 
+      {!alerts.isLoading && !alerts.error && rows.length > 0 && (
+        <OverviewStrip openAlerts={openAll} sev={sev} onSev={setSev} />
+      )}
+
       <FilterBar>
         <div className="flex items-center gap-1" role="group" aria-label="Severity filter">
           {SEV_FILTERS.map(([v, label]) => (
             <button
               key={v || 'all'}
               type="button"
-              className={`chip !py-0.5 transition-colors ${sev === v ? '!border-amber/60 !text-amber' : 'hover:border-amber/40'}`}
+              className={`chip !py-0.5 min-h-[44px] sm:min-h-[26px] transition-colors ${sev === v ? '!border-amber/60 !text-amber' : 'hover:border-amber/40'}`}
               aria-pressed={sev === v}
               onClick={() => setSev(v)}
             >
@@ -263,25 +437,78 @@ export default function Alerts() {
         </div>
       </FilterBar>
 
+      <SavedViews
+        views={views}
+        currentSearch={searchParams.toString()}
+        onApply={(search) => setSearchParams(new URLSearchParams(search))}
+        onSave={(name) => { saveView(name, searchParams.toString()); toast.success(`View “${name}” saved`); }}
+        onDelete={deleteView}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted">Group by</span>
-        <SegmentedControl
-          options={GROUP_OPTIONS}
-          value={groupBy}
-          onChange={setGroupBy}
-          ariaLabel="Group alerts by"
-        />
+        <div className="relative flex-1 min-w-[11rem]">
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+          >
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" />
+          </svg>
+          <input
+            ref={searchRef}
+            className="input-dark w-full !pl-8 !py-2.5 sm:!py-1.5 !text-sm"
+            value={searchParams.get('q') || ''}
+            onChange={(e) => setParam('q', e.target.value)}
+            placeholder="Search district, crime head, narrative…  ( / )"
+            aria-label="Search alerts"
+            type="search"
+            enterKeyHint="search"
+          />
+        </div>
+        <button
+          type="button"
+          aria-pressed={unreadOnly}
+          onClick={() => setParam('unread', unreadOnly ? '' : '1')}
+          className={`chip !py-1 min-h-[44px] sm:min-h-[30px] transition-colors ${unreadOnly ? '!border-primary/60 !text-primary' : 'hover:border-primary/40'}`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${unreadOnly ? 'bg-primary' : 'bg-muted/50'}`}
+            aria-hidden="true"
+          />
+          Unread only
+          {unreadOpenCount > 0 && <span className="num text-muted"> {fmtInt(unreadOpenCount)}</span>}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="hidden sm:flex items-center gap-2">
+          <span className="text-xs text-muted">Group</span>
+          <SegmentedControl options={GROUP_OPTIONS} value={group} onChange={changeGroup} ariaLabel="Group alerts by" />
+          <span className="text-xs text-muted">Sort</span>
+          <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={changeSort} ariaLabel="Sort alerts by" />
+        </div>
+        <button
+          type="button"
+          className={`${TOOL_BTN} sm:hidden`}
+          onClick={() => setOptionsOpen(true)}
+          aria-haspopup="dialog"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+            <path d="M4 7h10m4 0h2M4 12h2m4 0h10M4 17h10m4 0h2" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="12" r="2" /><circle cx="16" cy="17" r="2" />
+          </svg>
+          Options
+        </button>
         <div className="ml-auto flex items-center gap-1.5">
           <Tooltip label="Locally mark every listed alert as read">
             <button
               type="button"
-              className="btn !px-2.5 !text-xs"
-              disabled={unreadCount === 0}
+              className={TOOL_BTN}
+              disabled={totalUnread === 0}
               onClick={markAllRead}
+              aria-label="Mark all alerts read"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="m2 13 4 4L14 9" /><path d="m10 13 4 4 8-10" /></svg>
-              <span className="hidden sm:inline">Mark all read</span>
-              {unreadCount > 0 && <span className="num">{fmtInt(unreadCount)}</span>}
+              <span className="hidden md:inline">Mark all read</span>
+              {totalUnread > 0 && <span className="num">{fmtInt(totalUnread)}</span>}
             </button>
           </Tooltip>
           <ToggleChip
@@ -289,6 +516,7 @@ export default function Alerts() {
             onClick={toggleSound}
             label="Sound"
             tip={notify.sound ? 'Chime on new anomalies — click to turn off' : 'Play a chime when new anomalies arrive'}
+            className="hidden sm:inline-flex"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
               <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
@@ -303,6 +531,7 @@ export default function Alerts() {
               onClick={toggleDesktop}
               label="Desktop"
               tip={notify.desktop ? 'Desktop notifications on — click to turn off' : 'Pop a desktop notification for new anomalies'}
+              className="hidden sm:inline-flex"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                 <path d="M18 9a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6" />
@@ -310,14 +539,30 @@ export default function Alerts() {
               </svg>
             </ToggleChip>
           )}
+          <Tooltip label="Play the chime (and a sample desktop pop-up if enabled) to verify your opt-ins" className="hidden sm:inline-flex">
+            <button type="button" className={TOOL_BTN} onClick={testNotification} aria-label="Send a test notification">
+              <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+                <path d="M18 9a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6" />
+                <path d="M10.3 19a2 2 0 0 0 3.4 0" /><path d="m20 3 1.5 1.5M4 3 2.5 4.5" />
+              </svg>
+              <span className="hidden md:inline">Test</span>
+            </button>
+          </Tooltip>
           <Tooltip label="Download the filtered alerts as CSV">
-            <button type="button" className="btn !px-2.5 !text-xs" onClick={exportCsv}>
+            <button type="button" className={TOOL_BTN} onClick={exportCsv} aria-label="Export filtered alerts as CSV">
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5" /><path d="M4 19h16" /></svg>
-              <span className="hidden sm:inline">CSV</span>
+              <span className="hidden md:inline">CSV</span>
             </button>
           </Tooltip>
         </div>
       </div>
+
+      <p className="hidden md:block text-[11px] text-muted">
+        Shortcuts: <span className="num">j/k</span> navigate · <span className="num">a</span> acknowledge ·{' '}
+        <span className="num">m</span> read · <span className="num">s</span> snooze · <span className="num">c</span> copy ·{' '}
+        <span className="num">u</span> unread · <span className="num">e</span> CSV · <span className="num">/</span> search ·{' '}
+        <span className="num">1–4</span> severity · <span className="num">0</span> all
+      </p>
 
       {alerts.isLoading ? (
         <div className="space-y-3">
@@ -337,15 +582,7 @@ export default function Alerts() {
         <>
           {open.length === 0 ? (
             <Card>
-              <EmptyState
-                title={sev ? `No open ${sev} alerts` : 'No active alerts'}
-                message={sev
-                  ? 'Nothing at this severity in the current window — clear the severity filter to see the rest.'
-                  : 'No anomalies flagged for the current filters. All clear.'}
-                action={sev
-                  ? <button type="button" className="btn" onClick={() => setSev('')}>Show all severities</button>
-                  : null}
-              />
+              <EmptyState title={emptyTitle} message={emptyMessage} action={emptyAction} />
             </Card>
           ) : (
             <div className="space-y-4">
@@ -356,9 +593,30 @@ export default function Alerts() {
                     <Badge tone="slate" className="num">{fmtInt(g.items.length)}</Badge>
                     <div className="flex-1 border-t border-grid/60" aria-hidden="true" />
                   </div>
-                  {g.items.map((a) => renderCard(a, false))}
+                  {g.items.map((a) => renderCard(a))}
                 </section>
               ))}
+            </div>
+          )}
+
+          {snoozedList.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <button
+                type="button"
+                aria-expanded={showSnoozed}
+                onClick={() => setShowSnoozed((v) => !v)}
+                className="flex items-center gap-2 text-sm font-semibold text-ink min-h-[44px] sm:min-h-0 hover:text-primary transition-colors"
+              >
+                <svg
+                  width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true"
+                  className={`transition-transform ${showSnoozed ? 'rotate-90' : ''}`}
+                >
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+                Snoozed
+                <Badge tone="slate" className="num">{fmtInt(snoozedList.length)}</Badge>
+              </button>
+              {showSnoozed && snoozedList.map((a) => renderCard(a, { snoozed: true }))}
             </div>
           )}
 
@@ -368,11 +626,27 @@ export default function Alerts() {
                 <h2 className="text-sm font-semibold text-ink">Acknowledged</h2>
                 <Badge tone="slate" className="num">{fmtInt(acked.length)}</Badge>
               </div>
-              {acked.map((a) => renderCard(a, true))}
+              {acked.map((a) => renderCard(a, { acked: true }))}
             </div>
           )}
         </>
       )}
+
+      <OptionsSheet
+        open={optionsOpen}
+        onClose={() => setOptionsOpen(false)}
+        groupOptions={GROUP_OPTIONS}
+        group={group}
+        onGroup={changeGroup}
+        sortOptions={SORT_OPTIONS}
+        sort={sort}
+        onSort={changeSort}
+        notify={notify}
+        onToggleSound={toggleSound}
+        onToggleDesktop={toggleDesktop}
+        desktopAvailable={desktopSupported()}
+        onTestNotification={testNotification}
+      />
     </div>
   );
 }

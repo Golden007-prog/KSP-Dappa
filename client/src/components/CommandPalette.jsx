@@ -1,11 +1,34 @@
 // Command palette (Ctrl/Cmd-K) — fuzzy jump to routes and actions. Pure React,
 // no dependencies. Controlled:
-//   <CommandPalette open={open} onClose={fn} actions={[{id, label, section?, hint?, keywords?, perform}]} />
+//   <CommandPalette open={open} onClose={fn}
+//     actions={[{id, label, section?, hint?, keywords?, hidden?, perform}]} />
 // Layout owns the global hotkey and builds the action list (routes + theme +
-// density). Fuzzy match: substring beats subsequence, earlier/denser matches
-// score higher. Full keyboard support: ↑↓ Home End Enter Esc.
+// density + filters). Fuzzy match: substring beats subsequence, earlier/denser
+// matches score higher. `hidden: true` actions (e.g. the per-district filter
+// jumps) only surface once the user types — they never flood the initial list.
+// With an empty query the last 5 executed actions show first as a "Recent"
+// section (persisted in localStorage). Tab is trapped inside the dialog and
+// the page behind stops scrolling. Full keyboard support: ↑↓ Home End Enter Esc.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useFocusTrap, useScrollLock } from '../lib/modal.js';
+
+const RECENT_KEY = 'dappa-cmdk-recent';
+
+function readRecents() {
+  try {
+    const a = JSON.parse(localStorage.getItem(RECENT_KEY));
+    return Array.isArray(a) ? a.filter((x) => typeof x === 'string').slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(id) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecents().filter((x) => x !== id)].slice(0, 5)));
+  } catch { /* private mode */ }
+}
 
 /** Substring → strong score by position; else subsequence with streak bonus; -1 = no match. */
 export function fuzzyScore(query, text) {
@@ -24,24 +47,38 @@ export function fuzzyScore(query, text) {
 export default function CommandPalette({ open, onClose, actions = [] }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [recentIds, setRecentIds] = useState([]);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const panelRef = useRef(null);
   const restoreRef = useRef(null);
 
+  useScrollLock(open);
+  useFocusTrap(open, panelRef);
+
   const results = useMemo(() => {
-    if (!query.trim()) return actions;
+    if (!query.trim()) {
+      const byId = new Map(actions.map((a) => [a.id, a]));
+      const recent = recentIds
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .map((a) => ({ ...a, section: 'Recent' }));
+      const recentSet = new Set(recent.map((a) => a.id));
+      return [...recent, ...actions.filter((a) => !a.hidden && !recentSet.has(a.id))];
+    }
     return actions
       .map((a) => ({ a, s: fuzzyScore(query, `${a.label} ${a.section || ''} ${a.keywords || ''}`) }))
       .filter((r) => r.s >= 0)
       .sort((x, y) => y.s - x.s)
       .map((r) => r.a);
-  }, [query, actions]);
+  }, [query, actions, recentIds]);
 
   useEffect(() => {
     if (open) {
       restoreRef.current = document.activeElement;
       setQuery('');
       setActive(0);
+      setRecentIds(readRecents());
       // focus after the portal paints
       requestAnimationFrame(() => inputRef.current?.focus());
     } else if (restoreRef.current?.focus) {
@@ -61,6 +98,7 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
   if (!open) return null;
 
   const run = (action) => {
+    pushRecent(action.id);
     onClose();
     // navigate after the dialog unmounts so focus restoration doesn't fight it
     setTimeout(() => action.perform?.(), 0);
@@ -79,6 +117,7 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
     <div className="fixed inset-0 z-70 flex items-start justify-center px-3 pt-[12vh]" role="presentation">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm animate-fade-in" onClick={onClose} aria-hidden="true" />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
@@ -93,7 +132,7 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Jump to a view or run an action…"
+            placeholder="Jump to a view, filter a district, run an action…"
             aria-label="Search views and actions"
             role="combobox"
             aria-expanded="true"
@@ -106,7 +145,7 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
         <ul id="cmdk-list" role="listbox" ref={listRef} aria-label="Results" className="max-h-[46vh] overflow-y-auto p-1.5">
           {results.length === 0 && (
             <li className="px-3 py-8 text-center text-sm text-muted" role="presentation">
-              Nothing matches “{query}”. Try a view name like <span className="text-ink">alerts</span> or <span className="text-ink">map</span>.
+              Nothing matches “{query}”. Try a view name like <span className="text-ink">alerts</span>, a district, or <span className="text-ink">theme</span>.
             </li>
           )}
           {results.map((a, i) => (

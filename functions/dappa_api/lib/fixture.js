@@ -189,6 +189,13 @@ function buildFixtureTables() {
   tables.Court = [{ CourtID: 501, CourtName: 'City Civil & Sessions Court, Bengaluru', DistrictID: '0101' }];
   tables.CaseAnomaly = [{ CaseMasterID: 1, AnomalyFlag: 1, AnomalyScore: 0.91 }];
 
+  // Freshness marker consumed by GET /meta/refresh (mirrors what dappa_nightly
+  // writes after a real refresh).
+  tables.RefreshMeta = [{
+    RefreshedAt: `${NOW_YM}-01 02:00:00`,
+    DetailsJson: JSON.stringify({ mode: 'fixture', cases_read: 40, anomaly_alerts: 4, stations_scored: 15 })
+  }];
+
   return tables;
 }
 
@@ -225,8 +232,10 @@ function getFallbackState() {
   return Object.assign({}, state);
 }
 
-/** Test hook: forget activation history (fixture memo is kept — it is immutable). */
+/** Test hook: forget activation history AND rebuild the fixture memo (demo
+ * writes like alert ack now mutate it, so a reset must start clean). */
 function resetFixtureFallback() {
+  memoClient = null;
   state.active = false;
   state.datastore = false;
   state.nosql = false;
@@ -239,7 +248,8 @@ function resetFixtureFallback() {
 /**
  * Wrap a datastore client: try the real execute first; on failure evaluate the
  * same structured query against the fixture tables. Raw writes are recorded on
- * the stub's rawLog and return the empty success shape.
+ * the stub's rawLog AND applied to the memoized fixture tables (simple UPDATE
+ * grammar), so demo-mode actions like alert ack survive the client's refetch.
  */
 function wrapClientWithFixtureFallback(client) {
   return {

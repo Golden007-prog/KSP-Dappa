@@ -9,7 +9,7 @@
 export default function SegmentedControl({
   options = [], value, onChange, ariaLabel, size = 'sm', className = '',
 }) {
-  const pad = size === 'md' ? 'px-3.5 py-2 text-sm min-h-[40px]' : 'px-2.5 py-1.5 text-xs min-h-[32px]';
+  const pad = size === 'md' ? 'px-3.5 py-2 text-sm min-h-[44px]' : 'px-2.5 py-1.5 text-xs min-h-[44px] sm:min-h-[36px]';
 
   const onKeyDown = (e, i) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;

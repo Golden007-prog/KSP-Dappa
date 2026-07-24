@@ -1,7 +1,8 @@
 // Month time-scrubber for the incident heat layer. Slider value 0 = the whole
 // current filter window; 1..N = individual months (ascending). Play loops
 // month-by-month; each month's /geo/incidents fetch is cached by react-query,
-// so the second loop replays instantly. The speed button cycles 0.5× → 1× → 2×.
+// so the second loop replays instantly. The speed button cycles 0.5× → 1× → 2×;
+// the loop button (desktop) picks wrap-around vs stop-at-last-month.
 import { monthLabel } from '../../lib/format.js';
 
 export const SCRUB_SPEEDS = [0.5, 1, 2];
@@ -17,8 +18,19 @@ const PauseIcon = (
   </svg>
 );
 
+const LoopIcon = (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M17 2l4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+    <path d="M7 22l-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+  </svg>
+);
+
 export default function TimeScrubber({
-  months, index, playing, loading, onIndexChange, onPlayToggle, speed = 1, onSpeedChange, compact = false,
+  months, index, playing, loading, onIndexChange, onPlayToggle, speed = 1, onSpeedChange,
+  loop = true, onLoopToggle, compact = false,
 }) {
   const disabled = !months.length;
   const label = index > 0 && months[index - 1] ? monthLabel(months[index - 1]) : 'All months';
@@ -34,7 +46,7 @@ export default function TimeScrubber({
     >
       <button
         type="button"
-        className="btn !px-2.5 !py-1.5 shrink-0"
+        className="btn gi-tap !px-2.5 !py-1.5 shrink-0"
         onClick={onPlayToggle}
         disabled={disabled}
         aria-label={playing ? 'Pause month animation' : 'Animate heat layer month by month'}
@@ -45,13 +57,26 @@ export default function TimeScrubber({
       {onSpeedChange && (
         <button
           type="button"
-          className="btn !px-2 !py-1.5 shrink-0 num text-[11px]"
+          className="btn gi-tap !px-2 !py-1.5 shrink-0 num text-[11px]"
           onClick={cycleSpeed}
           disabled={disabled}
           aria-label={`Playback speed ${speed}x — click to change`}
           title="Playback speed"
         >
           {speed}×
+        </button>
+      )}
+      {onLoopToggle && !compact && (
+        <button
+          type="button"
+          className={`btn gi-tap !px-2 !py-1.5 shrink-0 ${loop ? '!text-primary !border-primary/60' : ''}`}
+          onClick={onLoopToggle}
+          disabled={disabled}
+          aria-pressed={loop}
+          aria-label={loop ? 'Looping on — animation wraps to the first month' : 'Looping off — animation stops at the last month'}
+          title={loop ? 'Loop: on' : 'Loop: off (stops at last month)'}
+        >
+          {LoopIcon}
         </button>
       )}
       <div className="flex-1 min-w-[7rem]">

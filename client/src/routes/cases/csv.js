@@ -3,6 +3,7 @@
 // whole synthetic corpus), applies the same client-side refinements the table
 // shows, and downloads a UTF-8 (BOM) Blob. No server round-trip for the file.
 import { apiGet } from '../../lib/api.js';
+import { caseAgeDays } from './explorerState.js';
 
 export const EXPORT_CAP = 1000;
 
@@ -19,6 +20,26 @@ export const EXPORT_COLUMNS = [
   { key: 'gravityName', label: 'Gravity' },
   { key: 'anomalyFlag', label: 'Anomaly', value: (r) => (r.anomalyFlag ? 'yes' : 'no') },
 ];
+
+// Client-computed column — raw export rows come straight from the API, so the
+// age is derived here rather than read off the row.
+const AGE_COLUMN = { key: 'ageDays', label: 'AgeDays', value: (r) => caseAgeDays(r.registeredDate) ?? '' };
+
+// Always exported regardless of the chooser — the file stays joinable/identifiable.
+const IDENTITY_KEYS = new Set(['caseMasterId', 'crimeNo']);
+
+/**
+ * Export columns mirroring the on-screen column chooser: identity columns are
+ * kept, the rest follow visibility. Falls back to the full canonical set when
+ * no key list is given (backwards compatible).
+ */
+export function buildExportColumns(visibleKeys) {
+  if (!Array.isArray(visibleKeys)) return EXPORT_COLUMNS;
+  const keys = new Set(visibleKeys);
+  const cols = EXPORT_COLUMNS.filter((c) => IDENTITY_KEYS.has(c.key) || keys.has(c.key));
+  if (keys.has('ageDays')) cols.push(AGE_COLUMN);
+  return cols;
+}
 
 function csvCell(v) {
   const s = v === undefined || v === null ? '' : String(v);

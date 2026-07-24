@@ -8,7 +8,7 @@ import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
 import { dateLabel } from '../../lib/format.js';
 
-const NAME_KEYS = [
+export const NAME_KEYS = [
   'name', 'personName', 'fullName', 'canonicalName', 'PersonName', 'FullName',
   'complainantName', 'victimName', 'accusedName',
 ];

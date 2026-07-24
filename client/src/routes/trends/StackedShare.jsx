@@ -47,6 +47,13 @@ export default function StackedShare({ baseParams, colors, otherColor, surface }
   });
 
   const loading = share.isLoading || (topHeads.length > 0 && queries.some((q) => q.isLoading));
+  // Surface whichever fetch actually failed — a per-head monthly error must
+  // not masquerade as "no category data" (the share query may be fine).
+  const fetchError = share.error || queries.find((q) => q.error)?.error || null;
+  const retryAll = () => {
+    if (share.error) share.refetch();
+    queries.forEach((q) => { if (q.error) q.refetch(); });
+  };
 
   const model = useMemo(() => {
     if (loading || !topHeads.length || queries.some((q) => !q.data)) return null;
@@ -121,22 +128,25 @@ export default function StackedShare({ baseParams, colors, otherColor, surface }
         title="Category mix over time"
         subtitle={`Monthly volume stacked by crime head — top ${TOP_N} heads, remainder folded into Other`}
         actions={(
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             <SegmentedControl
               ariaLabel="Mix view"
               value={view}
               onChange={setView}
               options={[{ value: 'count', label: 'Count' }, { value: 'pct', label: 'Share %' }]}
             />
+            {fetchError && (
+              <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={retryAll}>Retry</button>
+            )}
             <Tooltip label="Download the stacked series as CSV">
-              <button type="button" className="btn !py-1 !px-2 text-xs" onClick={exportCsv} disabled={!model}>CSV</button>
+              <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!model}>CSV</button>
             </Tooltip>
           </div>
         )}
         option={option}
         loading={loading}
         empty={!loading && !option}
-        emptyMessage={share.error?.message || 'No category data for the current filters.'}
+        emptyMessage={fetchError?.message || 'No category data for the current filters.'}
         height={320}
       />
       <InsightLine text={insight} loading={share.isLoading} />

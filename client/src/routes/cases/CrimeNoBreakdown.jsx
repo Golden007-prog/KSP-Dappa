@@ -2,13 +2,16 @@
 // [1 category][4 DistrictID][4 UnitID][4 year][5 serial]; CaseNo = last 9 digits.
 // Category: FIR=1 · UDR=3 · PAR=4 · Zero FIR=8.
 import Card from '../../components/Card.jsx';
+import './crimeno-colors.css';
 
+// `color` stays the raw dark-theme hex for backwards compatibility; rendering
+// uses `cssColor` (a CSS variable) so light theme and print swap in AA-safe hues.
 export const CRIME_NO_SEGMENTS = [
-  { key: 'category', label: 'Category', len: 1, color: '#F5A623' },
-  { key: 'district', label: 'District', len: 4, color: '#2DD4BF' },
-  { key: 'station', label: 'Station', len: 4, color: '#7C9BFF' },
-  { key: 'year', label: 'Year', len: 4, color: '#C084FC' },
-  { key: 'serial', label: 'Serial', len: 5, color: '#F97316' },
+  { key: 'category', label: 'Category', len: 1, color: '#F5A623', cssColor: 'var(--seg-category)' },
+  { key: 'district', label: 'District', len: 4, color: '#2DD4BF', cssColor: 'var(--seg-district)' },
+  { key: 'station', label: 'Station', len: 4, color: '#7C9BFF', cssColor: 'var(--seg-station)' },
+  { key: 'year', label: 'Year', len: 4, color: '#C084FC', cssColor: 'var(--seg-year)' },
+  { key: 'serial', label: 'Serial', len: 5, color: '#F97316', cssColor: 'var(--seg-serial)' },
 ];
 
 const CATEGORY_NAMES = { 1: 'FIR', 3: 'UDR', 4: 'PAR', 8: 'Zero FIR' };
@@ -33,7 +36,7 @@ export function CrimeNoInline({ crimeNo }) {
       {parts.map((p, i) => (
         <span key={p.key}>
           {i > 0 && <span className="text-muted opacity-60">·</span>}
-          <span style={{ color: p.color }}>{p.text}</span>
+          <span style={{ color: p.cssColor }}>{p.text}</span>
         </span>
       ))}
     </span>
@@ -73,9 +76,9 @@ export default function CrimeNoBreakdown({ crimeNo, caseNo, districtName, unitNa
               <div
                 key={p.key}
                 className="flex-1 min-w-[5.5rem] rounded-lg border border-grid bg-base/60 px-3 py-2 text-center"
-                style={{ borderTop: `2px solid ${p.color}` }}
+                style={{ borderTop: `2px solid ${p.cssColor}` }}
               >
-                <div className="num text-xl sm:text-2xl font-semibold tracking-[0.2em]" style={{ color: p.color }}>
+                <div className="num text-xl sm:text-2xl font-semibold tracking-[0.2em]" style={{ color: p.cssColor }}>
                   {p.text}
                 </div>
                 <div className="text-[11px] uppercase tracking-wide text-muted mt-1">{p.label}</div>

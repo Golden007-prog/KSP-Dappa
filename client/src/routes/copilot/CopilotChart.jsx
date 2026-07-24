@@ -1,23 +1,34 @@
 // /copilot — renders the optional chart payload from /copilot/query inside an
-// answer bubble, with a PNG download button (echarts getDataURL — pure client).
-// Payload contract: {type:'bar'|'line'|'pie', title, categories,
+// answer bubble. Theme-aware (dappa / dappa-light), with a bar⇄line toggle,
+// an accessible data-table view, CSV download and a PNG export — all pure
+// client. Payload contract: {type:'bar'|'line'|'pie', title, categories,
 // series:[{name, data}]}. Defensive: skips rendering on malformed payloads.
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
-// Importing ChartPanel registers the shared 'dappa' echarts theme as a side effect.
-import { DAPPA_CHART_COLORS } from '../../components/ChartPanel.jsx';
+// Importing ChartPanel registers the shared 'dappa'/'dappa-light' echarts
+// themes as a side effect.
+import { DAPPA_CHART_COLORS, DAPPA_CHART_COLORS_LIGHT } from '../../components/ChartPanel.jsx';
+import { useTheme } from '../../components/ThemeProvider.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
+import { chartToCsv, downloadTextFile } from './transcript.js';
 
-function buildOption(chart) {
+const MONTHISH = /^\d{4}-\d{2}$|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i;
+
+// ≥40px touch targets that stay visually compact inside the tight chart header
+const CTRL = 'inline-flex items-center justify-center min-h-[40px] min-w-[40px] px-1.5 rounded-lg text-[10px] transition-colors';
+
+function buildOption(chart, type, light) {
   const cats = Array.isArray(chart.categories) ? chart.categories.map(String) : [];
   const series = (Array.isArray(chart.series) ? chart.series : [])
     .filter((s) => s && Array.isArray(s.data));
   if (!cats.length || !series.length) return null;
+  const colors = light ? DAPPA_CHART_COLORS_LIGHT : DAPPA_CHART_COLORS;
 
-  if (chart.type === 'pie') {
+  if (type === 'pie') {
     return {
-      color: DAPPA_CHART_COLORS,
+      color: colors,
       tooltip: { trigger: 'item', valueFormatter: (v) => Number(v).toLocaleString('en-IN') },
       legend: { bottom: 0, type: 'scroll' },
       series: [{
@@ -25,16 +36,15 @@ function buildOption(chart) {
         radius: ['42%', '68%'],
         center: ['50%', '44%'],
         data: cats.map((c, i) => ({ name: c, value: Number(series[0].data[i]) || 0 })),
-        label: { color: '#8A94A8', fontSize: 10 },
-        itemStyle: { borderColor: '#0B1220', borderWidth: 2 },
+        label: { color: light ? '#5C6B84' : '#8A94A8', fontSize: 10 },
+        itemStyle: { borderColor: light ? '#FFFFFF' : '#0B1220', borderWidth: 2 },
       }],
     };
   }
 
-  const type = chart.type === 'line' ? 'line' : 'bar';
   const rotate = cats.some((c) => c.length > 7) && type === 'bar' ? 28 : 0;
   return {
-    color: DAPPA_CHART_COLORS,
+    color: colors,
     tooltip: { trigger: 'axis', axisPointer: { type: type === 'bar' ? 'shadow' : 'line' } },
     legend: series.length > 1 ? { bottom: 0, type: 'scroll' } : undefined,
     grid: { left: 44, right: 12, top: 14, bottom: (series.length > 1 ? 30 : 8) + (rotate ? 34 : 20) },
@@ -55,18 +65,34 @@ function buildOption(chart) {
 export default function CopilotChart({ chart }) {
   const chartRef = useRef(null);
   const toast = useToast();
-  const option = useMemo(() => (chart ? buildOption(chart) : null), [chart]);
+  const { theme } = useTheme();
+  const light = theme === 'light';
+  const [typeOverride, setTypeOverride] = useState(null);
+  const [showTable, setShowTable] = useState(false);
+
+  const baseType = chart?.type === 'pie' ? 'pie' : chart?.type === 'line' ? 'line' : 'bar';
+  const type = baseType === 'pie' ? 'pie' : (typeOverride || baseType);
+  const option = useMemo(
+    () => (chart ? buildOption(chart, type, light) : null),
+    [chart, type, light],
+  );
   if (!option) return null;
+
+  const cats = chart.categories.map(String);
+  const series = chart.series.filter((s) => s && Array.isArray(s.data));
+  const monthly = baseType !== 'pie' && cats.some((c) => MONTHISH.test(c));
+
+  const slug = String(chart.title || 'answer').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'answer';
 
   const exportPng = () => {
     try {
       const inst = chartRef.current?.getEchartsInstance();
       if (!inst) return;
-      const url = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#111A2C' });
+      // opaque, theme-matched background so the PNG reads outside the app
+      const url = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: light ? '#FFFFFF' : '#111A2C' });
       const a = document.createElement('a');
       a.href = url;
-      const slug = String(chart.title || 'answer').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-      a.download = `dappa-chart-${slug || 'answer'}.png`;
+      a.download = `dappa-chart-${slug}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -76,13 +102,59 @@ export default function CopilotChart({ chart }) {
     }
   };
 
+  const exportCsv = () => {
+    const csv = chartToCsv(chart);
+    if (!csv) {
+      toast.error('Nothing tabular to export for this chart.');
+      return;
+    }
+    downloadTextFile(`dappa-chart-${slug}.csv`, csv, 'text/csv;charset=utf-8');
+    toast.success('Chart data downloaded as CSV');
+  };
+
+  const fmtCell = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-IN'));
+
   return (
     <div className="mt-3 rounded-lg border border-grid bg-base/60 p-2">
-      <div className="flex items-center justify-between gap-2 mb-1 px-1">
-        <p className="text-[11px] text-muted truncate">{chart.title || ''}</p>
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-0 px-1">
+        <p className="flex-1 min-w-[8rem] text-[11px] text-muted truncate">{chart.title || ''}</p>
+        {baseType !== 'pie' && (
+          <div className="no-print inline-flex rounded-lg border border-grid overflow-hidden" role="group" aria-label="Chart type">
+            {['bar', 'line'].map((t) => (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={type === t}
+                onClick={() => setTypeOverride(t === baseType ? null : t)}
+                className={`inline-flex items-center min-h-[40px] px-2 text-[10px] uppercase tracking-wide transition-colors ${
+                  type === t ? 'bg-amber/15 text-amber' : 'text-muted hover:text-ink'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
-          className="shrink-0 text-[10px] text-muted hover:text-primary transition-colors"
+          className={`no-print ${CTRL} ${showTable ? 'text-amber' : 'text-muted hover:text-primary'}`}
+          onClick={() => setShowTable((v) => !v)}
+          aria-expanded={showTable}
+          aria-label={showTable ? 'Hide data table' : 'Show data table'}
+        >
+          Table
+        </button>
+        <button
+          type="button"
+          className={`no-print ${CTRL} text-muted hover:text-primary`}
+          onClick={exportCsv}
+          aria-label="Download chart data as CSV"
+        >
+          CSV ↓
+        </button>
+        <button
+          type="button"
+          className={`no-print ${CTRL} text-muted hover:text-primary`}
           onClick={exportPng}
           aria-label="Download chart as PNG"
         >
@@ -90,14 +162,49 @@ export default function CopilotChart({ chart }) {
         </button>
       </div>
       <ReactECharts
+        key={light ? 'dappa-light' : 'dappa'}
         ref={chartRef}
         echarts={echarts}
-        theme="dappa"
+        theme={light ? 'dappa-light' : 'dappa'}
         option={option}
         notMerge
         style={{ height: 240, width: '100%' }}
         opts={{ renderer: 'canvas' }}
       />
+      {showTable && (
+        <div className="mt-1 overflow-x-auto rounded-lg border border-grid/60">
+          <table className="w-full text-[11px]">
+            <caption className="sr-only">{chart.title || 'Answer chart data'}</caption>
+            <thead>
+              <tr className="bg-panel/60">
+                <th scope="col" className="text-left font-medium text-muted px-2.5 py-1.5 border-b border-grid">Category</th>
+                {series.map((s, i) => (
+                  <th key={i} scope="col" className="text-right font-medium text-muted px-2.5 py-1.5 border-b border-grid whitespace-nowrap">
+                    {s.name || `Series ${i + 1}`}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cats.map((c, i) => (
+                <tr key={`${c}-${i}`}>
+                  <th scope="row" className="text-left font-normal text-ink px-2.5 py-1 border-b border-grid/40 whitespace-nowrap">{c}</th>
+                  {series.map((s, j) => (
+                    <td key={j} className="num text-right text-ink px-2.5 py-1 border-b border-grid/40">{fmtCell(s.data[i])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {monthly && (
+        <div className="no-print mt-1 px-1">
+          <Link to="/trends" className="inline-flex items-center min-h-[40px] text-[11px] text-primary hover:underline">
+            Explore this series in Trends →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,7 +14,7 @@ function Chip({ active, onClick, children, title }) {
       aria-pressed={active}
       title={title}
       onClick={onClick}
-      className={`chip shrink-0 transition-colors ${
+      className={`chip min-h-[40px] px-3 shrink-0 transition-colors ${
         active ? '!border-amber/60 !text-amber bg-amber/5' : 'hover:border-amber/40'
       }`}
     >

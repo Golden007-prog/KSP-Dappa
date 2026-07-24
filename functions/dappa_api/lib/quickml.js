@@ -81,9 +81,16 @@ function mapRemote(json, body) {
   if (!Number.isFinite(prob) && Array.isArray(inner) && inner.length) prob = toNum(inner[0], NaN);
   if (!Number.isFinite(prob) && inner.prediction && inner.prediction.probability !== undefined) prob = toNum(inner.prediction.probability, NaN);
   const cls = inner.predictedClass || inner.class || inner.label || (Array.isArray(inner.result) ? inner.result[0] : undefined);
-  if (!Number.isFinite(prob)) prob = cls === 'A' ? 0.75 : 0.5;
+  // prob is P(class A). When the remote gives a class but no parseable
+  // probability, synthesize one CONSISTENT with that class (a 'C' verdict must
+  // not ship as {A:0.5, C:0.5}).
+  if (!Number.isFinite(prob)) prob = cls === 'A' ? 0.75 : cls === 'C' ? 0.25 : 0.5;
+  prob = Math.min(1, Math.max(0, prob));
+  // Deployments often report P(predicted class); if that contradicts the
+  // declared class under our P(A) convention, flip it so class + confidence agree.
+  if (cls === 'C' && prob > 0.5) prob = 1 - prob;
   return {
-    probability: round(Math.min(1, Math.max(0, prob)), 4),
+    probability: round(prob, 4),
     predictedClass: cls || (prob >= 0.5 ? 'A' : 'C'),
     probabilities: { A: round(prob, 4), C: round(1 - prob, 4) },
     classes: ['A', 'C'],

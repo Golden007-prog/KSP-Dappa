@@ -40,7 +40,7 @@ export function topOpenAlerts(alerts, n = 5) {
     .slice(0, n);
 }
 
-export default function AlertsFeed({ query }) {
+export default function AlertsFeed({ query, linkSearch = '' }) {
   if (query.isLoading) return <LoadingSkeleton lines={5} />;
   if (query.error) {
     return (
@@ -58,12 +58,12 @@ export default function AlertsFeed({ query }) {
   }
   return (
     <ul className="space-y-2">
-      {open.map((a) => {
+      {open.map((a, i) => {
         const sev = String(a.severity || 'medium').toLowerCase();
         return (
-          <li key={a.alertId}>
+          <li key={a.alertId || i}>
             <Link
-              to="/alerts"
+              to={`/alerts${linkSearch}`}
               className={`group block rounded-lg border border-grid border-l-2 ${SEV_BORDER[sev] || SEV_BORDER.low}
                 bg-base/40 px-3 py-2 transition-colors hover:border-amber/40`}
             >

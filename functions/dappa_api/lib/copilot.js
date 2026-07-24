@@ -37,6 +37,31 @@ DISTRICT_PHRASES.sort((a, b) => b.phrase.length - a.phrase.length);
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const MONTH_LOOKUP = {
+  january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4, may: 5,
+  june: 6, jun: 6, july: 7, jul: 7, august: 8, aug: 8, september: 9, sept: 9, sep: 9,
+  october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12
+};
+const MONTH_ALT = Object.keys(MONTH_LOOKUP).sort((a, b) => b.length - a.length).join('|');
+// 'in March [2025]' (preposition-gated so bare 'may' in prose doesn't trip) or 'March 2025'.
+const MONTH_PREP_RE = new RegExp(`\\b(?:in|for|during)\\s+(${MONTH_ALT})\\b\\s*(20\\d{2})?`);
+const MONTH_YEAR_RE = new RegExp(`\\b(${MONTH_ALT})\\s+(20\\d{2})\\b`);
+
+/** 'in March' / 'March 2025' -> single-month window. Yearless months resolve
+ * to the most recent occurrence not in the future. */
+function matchMonth(t, nowYm) {
+  const m = t.match(MONTH_PREP_RE) || t.match(MONTH_YEAR_RE);
+  if (!m) return null;
+  const mon = MONTH_LOOKUP[m[1]];
+  let year = m[2] ? Number(m[2]) : Number(nowYm.slice(0, 4));
+  let ym = `${year}-${String(mon).padStart(2, '0')}`;
+  if (!m[2] && ym > nowYm) {
+    year -= 1;
+    ym = `${year}-${String(mon).padStart(2, '0')}`;
+  }
+  return { ym, label: `${MONTH_NAMES[mon - 1]} ${year}` };
+}
+
 // --- parser -----------------------------------------------------------------
 
 function parse(text, now) {
@@ -47,10 +72,12 @@ function parse(text, now) {
     fromYm: ymAdd(nowYm, -11), toYm: nowYm, years: null, rangeText: 'last 12 months'
   };
 
+  let crimeHit = false;
   for (const c of CRIME_PHRASES) {
     if (t.includes(` ${c.phrase}`) || t.includes(`${c.phrase} `) || t.includes(c.phrase)) {
       if (c.subHeadId) { intent.subHeadId = c.subHeadId; intent.headId = subHeadById.get(c.subHeadId).headId; }
       else intent.headId = c.headId;
+      crimeHit = true;
       break;
     }
   }
@@ -58,8 +85,10 @@ function parse(text, now) {
     if (t.includes(d.phrase)) { intent.districtId = d.id; break; }
   }
 
+  let timeHit = true;
   const vs = t.match(/\b(20\d{2})\s*(?:vs\.?|versus|v\/s|and)\s*(20\d{2})\b/);
   const lastN = t.match(/last\s+(\d+)\s+months?/);
+  const monthHit = matchMonth(t, nowYm);
   if (vs) {
     intent.years = [Number(vs[1]), Number(vs[2])];
     intent.rangeText = `${vs[1]} vs ${vs[2]}`;
@@ -76,9 +105,12 @@ function parse(text, now) {
   } else if (t.includes('last year')) {
     const y = Number(nowYm.slice(0, 4)) - 1;
     intent.fromYm = `${y}-01`; intent.toYm = `${y}-12`; intent.rangeText = String(y);
+  } else if (monthHit) {
+    intent.fromYm = monthHit.ym; intent.toYm = monthHit.ym; intent.rangeText = monthHit.label;
   } else {
     const yr = t.match(/\bin\s+(20\d{2})\b/) || t.match(/\b(20\d{2})\b/);
     if (yr) { intent.fromYm = `${yr[1]}-01`; intent.toYm = `${yr[1]}-12`; intent.rangeText = yr[1]; }
+    else timeHit = false;
   }
 
   const top = t.match(/top\s+(\d+)?\s*(districts?|stations?|crime heads?|heads?|sub ?heads?|repeat offenders?|offenders?)/);
@@ -90,6 +122,8 @@ function parse(text, now) {
     else if (target.includes('head')) intent.kind = 'topHeads';
     else intent.kind = 'offenders';
   } else if (intent.years || t.includes('compare')) intent.kind = 'compareYears';
+  else if (t.includes('heinous')) intent.kind = 'heinousShare';
+  else if (t.includes('per lakh') || t.includes('crime rate')) intent.kind = 'ratePerLakh';
   else if (t.includes('risk')) intent.kind = 'risk';
   else if (t.includes('forecast') || t.includes('predict')) intent.kind = 'forecast';
   else if (t.includes('alert')) intent.kind = 'alerts';
@@ -98,7 +132,10 @@ function parse(text, now) {
   else if (t.includes('detection rate')) intent.kind = 'detectionRate';
   else if (t.includes('seasonalit') || t.includes('seasonal')) intent.kind = 'seasonality';
   else if (t.includes('total fir') || t.includes('how many fir')) intent.kind = 'totalFirs';
-  else intent.kind = 'trend';
+  else if (crimeHit || intent.districtId || timeHit || /(trend|case|fir|crime|month|how many|count)/.test(t)) intent.kind = 'trend';
+  // Nothing crime-analytics-shaped matched: answer honestly with suggestions
+  // instead of silently defaulting to an all-crime trend.
+  else intent.kind = 'unknown';
   return intent;
 }
 
@@ -254,19 +291,110 @@ async function runRisk(intent, deps) {
 }
 
 async function runDetectionRate(intent, deps) {
-  const { ds } = deps;
-  const q = { table: 'ChargesheetDetails', columns: ['cstype', 'COUNT(CSID)'], groupBy: ['cstype'] };
+  const { ds, lk } = deps;
+  // Scope the rate to the asked time window (csdate) and, when a district is
+  // named, to that district's IOs (ChargesheetDetails has no district column;
+  // Employee.PolicePersonID -> DistrictID is the join the schema provides).
+  const where = [
+    { col: 'csdate', op: '>=', val: `${intent.fromYm}-01` },
+    { col: 'csdate', op: '<=', val: `${intent.toYm}-31` }
+  ];
+  let place = 'Karnataka';
+  if (intent.districtId) {
+    try {
+      const emp = await ds.query({
+        table: 'Employee', columns: ['EmployeeID'],
+        where: [{ col: 'DistrictID', op: '=', val: intent.districtId }], limit: { count: 300 }
+      });
+      if (emp.length) {
+        where.push({ col: 'PolicePersonID', op: 'in', val: emp.map((r) => r.EmployeeID) });
+        place = placeLabel(intent, lk);
+      }
+      // no known IOs for the district -> keep the statewide scope, honestly labelled
+    } catch (e) { /* statewide fallback */ }
+  }
+  const q = { table: 'ChargesheetDetails', columns: ['cstype', 'COUNT(CSID)'], where, groupBy: ['cstype'] };
   const rows = await ds.query(q);
   const byType = {};
   for (const r of rows) byType[String(r.cstype).toUpperCase()] = toNum(r['COUNT(CSID)']);
   const a = byType.A || 0;
   const c = byType.C || 0;
   const rate = a + c > 0 ? round((a / (a + c)) * 100, 1) : 0;
-  const answer = `Detection rate (A-final / (A+C-final) chargesheets) stands at ${rate}% — ${fmtInt(a)} detected vs ${fmtInt(c)} undetected chargesheets.`;
+  const answer = a + c > 0
+    ? `Detection rate in ${place} (${intent.rangeText}) stands at ${rate}% — ${fmtInt(a)} detected (A-final) vs ${fmtInt(c)} undetected (C-final) chargesheets.`
+    : `No chargesheets were filed in ${place} during ${intent.rangeText}, so a detection rate cannot be computed for that window.`;
   return {
     answer,
-    chart: { type: 'pie', title: 'Chargesheet outcomes', categories: ['Detected (A)', 'Undetected (C)'], series: [{ name: 'Chargesheets', data: [a, c] }] },
+    chart: { type: 'pie', title: `Chargesheet outcomes — ${place} (${intent.rangeText})`, categories: ['Detected (A)', 'Undetected (C)'], series: [{ name: 'Chargesheets', data: [a, c] }] },
     zcql: ds.buildZCQL(q)
+  };
+}
+
+async function runHeinousShare(intent, deps) {
+  const { ds, lk } = deps;
+  const q = { table: 'AggMonthly', columns: ['SUM(CaseCount)', 'SUM(HeinousCount)'], where: crimeWhere(intent) };
+  const rows = await ds.query(q);
+  const cases = toNum(rows.length ? rows[0]['SUM(CaseCount)'] : 0);
+  const heinous = toNum(rows.length ? rows[0]['SUM(HeinousCount)'] : 0);
+  const share = cases > 0 ? round((heinous / cases) * 100, 1) : 0;
+  const place = placeLabel(intent, lk);
+  const answer = cases > 0
+    ? `${fmtInt(heinous)} of ${fmtInt(cases)} cases (${share}%) registered in ${place} (${intent.rangeText}) are heinous offences.`
+    : `No cases found in ${place} for ${intent.rangeText}, so the heinous share cannot be computed.`;
+  return {
+    answer,
+    chart: { type: 'pie', title: `Heinous share — ${place} (${intent.rangeText})`, categories: ['Heinous', 'Non-heinous'], series: [{ name: 'Cases', data: [heinous, Math.max(0, cases - heinous)] }] },
+    zcql: ds.buildZCQL(q)
+  };
+}
+
+async function runRatePerLakh(intent, deps) {
+  const { ds, lk } = deps;
+  const label = crimeLabel(intent, lk);
+  if (intent.districtId) {
+    const q = { table: 'AggMonthly', columns: ['SUM(CaseCount)'], where: crimeWhere(intent) };
+    const rows = await ds.query(q);
+    const cases = toNum(rows.length ? rows[0]['SUM(CaseCount)'] : 0);
+    const pop = lk.population(intent.districtId);
+    const place = placeLabel(intent, lk);
+    if (!pop) {
+      return { answer: `Socio-economic population data is not loaded for ${place}, so a rate per lakh cannot be computed — raw count: ${fmtInt(cases)} cases (${intent.rangeText}).`, zcql: ds.buildZCQL(q) };
+    }
+    const rate = round((cases / pop) * 100000, 1);
+    return {
+      answer: `${label} rate in ${place} (${intent.rangeText}): ${rate} cases per lakh population — ${fmtInt(cases)} cases against a population of ${fmtInt(pop)}.`,
+      zcql: ds.buildZCQL(q)
+    };
+  }
+  const q = {
+    table: 'AggMonthly', columns: ['DistrictID', 'SUM(CaseCount)'],
+    where: crimeWhere(intent, { noDistrict: true }), groupBy: ['DistrictID']
+  };
+  const rows = await ds.query(q);
+  const items = rows
+    .map((r) => {
+      const id = String(r.DistrictID);
+      const pop = lk.population(id);
+      return pop ? { name: lk.districtName(id), rate: round((toNum(r['SUM(CaseCount)']) / pop) * 100000, 1) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.rate - a.rate)
+    .slice(0, Math.max(intent.n, 5));
+  const answer = items.length
+    ? `${label} rate per lakh population (${intent.rangeText}) — highest districts: ${items.slice(0, 5).map((i, ix) => `${ix + 1}. ${i.name} (${i.rate}/lakh)`).join(', ')}.`
+    : 'Socio-economic population data is not loaded, so rates per lakh cannot be computed yet.';
+  return {
+    answer,
+    chart: items.length ? { type: 'bar', title: `Rate per lakh — ${label}`, categories: items.map((i) => i.name), series: [{ name: 'Cases per lakh', data: items.map((i) => i.rate) }] } : undefined,
+    zcql: ds.buildZCQL(q)
+  };
+}
+
+async function runUnknown() {
+  const picks = [CANNED_UTTERANCES[1], CANNED_UTTERANCES[0], CANNED_UTTERANCES[6]];
+  return {
+    answer: `I could not map that question to a crime-analytics intent. Try one of: ${picks.map((p) => `"${p}"`).join(' · ')} — or ask about trends, hotspots, alerts, forecasts, offenders, seasonality, or the detection rate.`,
+    suggestions: picks
   };
 }
 
@@ -381,12 +509,15 @@ const RUNNERS = {
   compareYears: runCompareYears,
   risk: runRisk,
   detectionRate: runDetectionRate,
+  heinousShare: runHeinousShare,
+  ratePerLakh: runRatePerLakh,
   alerts: runAlerts,
   hotspots: runHotspots,
   offenders: runOffenders,
   forecast: runForecast,
   seasonality: runSeasonality,
-  totalFirs: runTotalFirs
+  totalFirs: runTotalFirs,
+  unknown: runUnknown
 };
 
 /**
@@ -417,7 +548,9 @@ const CANNED_UTTERANCES = [
   'murders in Karnataka this year',
   'robbery trend in Hubballi-Dharwad City last 6 months',
   'seasonality of house burglary',
-  'compare cheating 2025 vs 2026 in Bengaluru City'
+  'compare cheating 2025 vs 2026 in Bengaluru City',
+  'crime rate per lakh in Bengaluru City',
+  'heinous share this year'
 ];
 
 module.exports = { parse, answer, CANNED_UTTERANCES };

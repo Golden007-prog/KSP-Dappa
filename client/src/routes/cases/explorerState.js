@@ -9,11 +9,12 @@
 //   status (lookup id → matched on statusName), q (full-text), anomaly ('1')
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { differenceInCalendarDays, isValid, parse } from 'date-fns';
 
 /** Every explorer-managed key — shared trio + extended set (used by presets/clear). */
 export const EXPLORER_KEYS = [
   'districtId', 'unitId', 'crimeHeadId', 'crimeSubHeadId', 'gravityId',
-  'status', 'range', 'from', 'to', 'q', 'anomaly',
+  'status', 'range', 'from', 'to', 'q', 'anomaly', 'starred',
 ];
 
 /** Keys the server actually filters on (safe to send as query params). */
@@ -66,7 +67,7 @@ export function useExplorerParams() {
       const next = new URLSearchParams(prev);
       for (const [key, value] of Object.entries(patch)) {
         const empty = value === undefined || value === null || value === ''
-          || (key === 'range' && value === 'all') || (key === 'anomaly' && !value);
+          || (key === 'range' && value === 'all') || ((key === 'anomaly' || key === 'starred') && !value);
         if (empty) next.delete(key); else next.set(key, String(value));
         if (key === 'range') { next.delete('from'); next.delete('to'); }
         if ((key === 'from' || key === 'to') && !empty) next.delete('range');
@@ -99,6 +100,7 @@ export function useExplorerParams() {
     statusId: searchParams.get('status') || '',
     q: searchParams.get('q') || '',
     anomalyOnly: searchParams.get('anomaly') === '1',
+    starredOnly: searchParams.get('starred') === '1',
     setMany,
     applyParams,
     clearAll,
@@ -120,10 +122,11 @@ export function snapshotParams(searchParams) {
  * lookup name for the selected status id ('' = no status filter — including
  * while lookups are still loading, when it can't be resolved yet).
  */
-export function buildRefine({ q, statusName, anomalyOnly }) {
+export function buildRefine({ q, statusName, anomalyOnly, starredOnly, starredIds }) {
   const needle = String(q || '').trim().toLowerCase();
   return (r) => {
     if (anomalyOnly && !r.anomalyFlag) return false;
+    if (starredOnly && !starredIds?.[String(r.caseMasterId)]) return false;
     if (statusName && String(r.statusName || '') !== statusName) return false;
     if (needle) {
       const hay = [r.crimeNo, r.caseNo, r.districtName, r.unitName, r.headName, r.subHeadName, r.statusName, r.gravityName]
@@ -135,6 +138,11 @@ export function buildRefine({ q, statusName, anomalyOnly }) {
   };
 }
 
+// 16+ digit strings (18-digit CrimeNos) exceed Number.MAX_SAFE_INTEGER —
+// Number() coercion loses trailing-digit precision and misorders serials, so
+// long all-digit values compare by length then lexically instead.
+const LONG_DIGITS = /^\d{16,}$/;
+
 /** Stable numeric-aware comparator matching DataTable's local-sort semantics. */
 export function compareRows(a, b, sort) {
   if (!sort) return 0;
@@ -144,8 +152,35 @@ export function compareRows(a, b, sort) {
   if (av === bv) return 0;
   if (av === undefined || av === null || av === '') return 1;
   if (bv === undefined || bv === null || bv === '') return -1;
+  const as = String(av);
+  const bs = String(bv);
+  if (LONG_DIGITS.test(as) && LONG_DIGITS.test(bs)) {
+    if (as.length !== bs.length) return (as.length - bs.length) * mul;
+    return (as < bs ? -1 : 1) * mul;
+  }
   const an = Number(av);
   const bn = Number(bv);
   if (Number.isFinite(an) && Number.isFinite(bn)) return (an - bn) * mul;
-  return String(av).localeCompare(String(bv)) * mul;
+  return as.localeCompare(bs) * mul;
+}
+
+/** 'registeredDate.desc' ↔ {key, dir} — sort state rides the URL so a shared
+ * link reproduces the exact table view. */
+export function parseSortParam(v) {
+  const m = /^(\w+)\.(asc|desc)$/.exec(String(v || ''));
+  return m ? { key: m[1], dir: m[2] } : null;
+}
+
+export function serializeSort(sort) {
+  return sort && sort.key ? `${sort.key}.${sort.dir === 'asc' ? 'asc' : 'desc'}` : '';
+}
+
+/** Whole days since registration (client-computed 'case age'); null when the
+ * date is missing/unparseable or in the future. */
+export function caseAgeDays(registeredDate, now = new Date()) {
+  if (!registeredDate) return null;
+  const d = parse(String(registeredDate).slice(0, 10), 'yyyy-MM-dd', new Date());
+  if (!isValid(d)) return null;
+  const days = differenceInCalendarDays(now, d);
+  return Number.isFinite(days) && days >= 0 ? days : null;
 }

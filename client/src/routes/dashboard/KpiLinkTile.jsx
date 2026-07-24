@@ -2,7 +2,8 @@
 // Mirrors KpiTile's footprint/skeleton so loading and loaded layouts match.
 // Props: to, label, value (number → en-IN grouping), mom?, yoy? (signed percent
 // numbers; omit to hide), positiveIsGood?=false (crime counts: up = bad),
-// accent?='amber'|'red'|'teal', pulse?, hint?, loading?.
+// accent?='amber'|'red'|'teal', pulse?, hint?, loading?,
+// spark? — number[] (≥2 points) renders a mini trend polyline under the value.
 import { Link } from 'react-router-dom';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import PulseDot from '../../components/PulseDot.jsx';
@@ -11,9 +12,29 @@ import { fmtInt } from '../../lib/format.js';
 
 const ACCENTS = { amber: 'border-l-amber', red: 'border-l-signal', teal: 'border-l-teal' };
 
+function Spark({ data }) {
+  const w = 96;
+  const h = 24;
+  const nums = data.map((v) => Number(v) || 0);
+  const max = Math.max(...nums);
+  const min = Math.min(...nums);
+  const span = max - min || 1;
+  const pts = nums
+    .map((v, i) => `${((i / (nums.length - 1)) * w).toFixed(1)},${(h - 2 - ((v - min) / span) * (h - 4)).toFixed(1)}`)
+    .join(' ');
+  return (
+    <svg
+      width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"
+      className="mt-2 text-amber/70" aria-hidden="true"
+    >
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function KpiLinkTile({
   to, label, value, mom, yoy, positiveIsGood = false,
-  accent = 'amber', pulse = false, hint, loading = false,
+  accent = 'amber', pulse = false, hint, loading = false, spark,
 }) {
   const display = typeof value === 'number' ? fmtInt(value) : (value ?? '—');
   return (
@@ -43,6 +64,7 @@ export default function KpiLinkTile({
         </div>
       )}
       {hint && !loading && <p className="text-[11px] text-muted mt-1">{hint}</p>}
+      {!loading && Array.isArray(spark) && spark.length > 1 && <Spark data={spark} />}
     </Link>
   );
 }

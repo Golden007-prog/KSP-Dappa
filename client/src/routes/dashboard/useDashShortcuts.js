@@ -1,13 +1,14 @@
-// Dashboard keyboard shortcuts (documented in ShortcutsSheet):
-//   ?  shortcuts sheet · r  refresh all panels · a  toggle auto-refresh ·
-//   /  focus the Ask-DAPPA omnibox · g then <letter>  jump to a route.
-// Keystrokes inside inputs/selects/textareas are ignored; navigation carries
-// the active URL filters along (same behaviour as the Layout nav links).
+// Dashboard-specific keyboard shortcuts (documented in ShortcutsSheet):
+//   r  refresh all panels · a  toggle auto-refresh · /  focus the Ask-DAPPA omnibox.
+// '?' (global shortcuts sheet) and g-then-<letter> route jumps are owned by
+// Layout.jsx's global shortcut layer — never re-bind them here or they
+// double-fire. This hook still tracks a pending 'g' so a g-sequence key
+// (e.g. g then r) isn't misread as a dashboard action.
+// Keystrokes inside inputs/selects/textareas or open modals are ignored.
 import { useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { filterSearchString } from '../../lib/filters.js';
 
-/** g-then-key jump table — also rendered verbatim by ShortcutsSheet. */
+/** g-then-key jump table — rendered verbatim by ShortcutsSheet; the actual
+ * key handling lives in Layout.jsx's global shortcut layer. */
 export const GO_ROUTES = [
   ['d', '/', 'Dashboard'],
   ['m', '/map', 'GeoIntel map'],
@@ -27,37 +28,24 @@ function isTyping(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable;
 }
 
-export default function useDashShortcuts({ onHelp, onRefresh, onToggleAuto, onFocusSearch }) {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+export default function useDashShortcuts({ onRefresh, onToggleAuto, onFocusSearch }) {
   const stateRef = useRef({});
-  stateRef.current = {
-    onHelp, onRefresh, onToggleAuto, onFocusSearch,
-    search: filterSearchString(searchParams),
-  };
+  stateRef.current = { onRefresh, onToggleAuto, onFocusSearch };
 
   useEffect(() => {
-    let armedAt = 0; // timestamp of a pending 'g'
+    let armedAt = 0; // pending 'g' (Layout will navigate; we must stay silent)
     const onKey = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       const k = String(e.key);
       const s = stateRef.current;
-      if (armedAt && Date.now() - armedAt < SEQUENCE_WINDOW_MS) {
-        armedAt = 0;
-        const hit = GO_ROUTES.find(([key]) => key === k.toLowerCase());
-        if (hit) {
-          e.preventDefault();
-          navigate(hit[1] + s.search);
-        }
-        return;
-      }
+      if (armedAt && Date.now() - armedAt < SEQUENCE_WINDOW_MS) { armedAt = 0; return; }
       if (k === 'g' || k === 'G') { armedAt = Date.now(); return; }
-      if (k === '?') { e.preventDefault(); s.onHelp?.(); }
-      else if (k === 'r' || k === 'R') { e.preventDefault(); s.onRefresh?.(); }
+      if (k === 'r' || k === 'R') { e.preventDefault(); s.onRefresh?.(); }
       else if (k === 'a' || k === 'A') { e.preventDefault(); s.onToggleAuto?.(); }
       else if (k === '/') { e.preventDefault(); s.onFocusSearch?.(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navigate]);
+  }, []);
 }

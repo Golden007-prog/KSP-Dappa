@@ -41,8 +41,14 @@ def fetch_table(app, table_name, columns, where=None):
     suffix = f" WHERE {where}" if where else ""
     rows, offset = [], 0
     while True:
-        query = (f"SELECT {cols} FROM {table_name}{suffix} "
-                 f"LIMIT {offset},{_PAGE}")
+        # ZCQL ``LIMIT offset,value`` uses MySQL skip semantics: ``LIMIT 1,3``
+        # returns three records starting at the SECOND record, i.e. offset =
+        # rows to skip (docs.catalyst.zoho.com/en/cloud-scale/help/zcql/limit).
+        # The offset is omitted for the first page. Keep in sync with
+        # dappa_api/lib/datastore.js buildZCQL so cloud reads never duplicate
+        # or drop a page-boundary row.
+        limit = f"LIMIT {offset},{_PAGE}" if offset else f"LIMIT {_PAGE}"
+        query = f"SELECT {cols} FROM {table_name}{suffix} {limit}"
         page = zcql.execute_query(query) or []
         rows.extend(_normalize_row(r, table_name) for r in page)
         if len(page) < _PAGE:

@@ -34,9 +34,12 @@ function buildZCQL(q) {
   if (q.groupBy && q.groupBy.length) sql += ` GROUP BY ${q.groupBy.join(', ')}`;
   if (q.orderBy && q.orderBy.col) sql += ` ORDER BY ${q.orderBy.col} ${q.orderBy.desc ? 'DESC' : 'ASC'}`;
   if (q.limit && q.limit.count) {
-    // ZCQL LIMIT syntax: LIMIT [offset],value where offset is the 1-based start index.
+    // ZCQL LIMIT [offset],value uses MySQL skip semantics: "LIMIT 1,3" returns
+    // three records starting at the SECOND record, i.e. offset = rows to skip
+    // (docs.catalyst.zoho.com/en/cloud-scale/help/zcql/limit). Omit the offset
+    // for the first page. Keep in sync with dappa_nightly/store_catalyst.py.
     const off = Math.max(0, q.limit.offset || 0);
-    sql += off > 0 ? ` LIMIT ${off + 1},${q.limit.count}` : ` LIMIT ${q.limit.count}`;
+    sql += off > 0 ? ` LIMIT ${off},${q.limit.count}` : ` LIMIT ${q.limit.count}`;
   }
   return sql;
 }
@@ -173,9 +176,65 @@ function evalQuery(q, tables) {
   return rows;
 }
 
+/** Split on commas that sit outside single-quoted literals. */
+function splitTopLevel(s) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (const ch of String(s)) {
+    if (ch === "'") { inQ = !inQ; cur += ch; } else if (ch === ',' && !inQ) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function unquote(v) {
+  const t = String(v).trim();
+  if (t.length >= 2 && t.startsWith("'") && t.endsWith("'")) return t.slice(1, -1).replace(/''/g, "'");
+  const n = Number(t);
+  return Number.isFinite(n) ? n : t;
+}
+
 /**
- * Injectable stub for tests. `tables` = { TableName: [flat rows...] }.
- * Raw UPDATE/INSERT statements are recorded and return [].
+ * Apply a simple raw `UPDATE <table> SET Col='v'[, ...] WHERE Col='v' [AND ...]`
+ * to the in-memory tables (only literal assignments + AND-ed equality — the
+ * grammar the API's own writes use, e.g. alert ack/status). Anything fancier is
+ * ignored. Returns the number of mutated rows. This is what makes PUBLIC_DEMO
+ * writes (fixture fallback) actually stick across refetches instead of
+ * silently no-oping.
+ */
+function applyRawWrite(sql, tables) {
+  const m = String(sql).match(/^\s*UPDATE\s+([A-Za-z0-9_]+)\s+SET\s+(.+?)\s+WHERE\s+(.+?)\s*$/i);
+  if (!m) return 0;
+  const rows = tables[m[1]];
+  if (!Array.isArray(rows)) return 0;
+  const sets = [];
+  for (const part of splitTopLevel(m[2])) {
+    const kv = part.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.+?)\s*$/);
+    if (!kv) return 0;
+    sets.push([kv[1], unquote(kv[2])]);
+  }
+  const conds = [];
+  for (const part of m[3].split(/\s+AND\s+/i)) {
+    const kv = part.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.+?)\s*$/);
+    if (!kv) return 0;
+    conds.push([kv[1], unquote(kv[2])]);
+  }
+  let touched = 0;
+  for (const r of rows) {
+    if (conds.every(([c, v]) => String(r[c]) === String(v))) {
+      for (const [c, v] of sets) r[c] = v;
+      touched += 1;
+    }
+  }
+  return touched;
+}
+
+/**
+ * Injectable stub for tests and the PUBLIC_DEMO fixture fallback.
+ * `tables` = { TableName: [flat rows...] }. Raw statements are recorded on
+ * rawLog; simple UPDATEs are also applied to the tables so a write followed by
+ * a re-read behaves like the real Data Store.
  */
 function createStubClient(tables) {
   const rawLog = [];
@@ -189,9 +248,10 @@ function createStubClient(tables) {
         const table = m ? m[1] : null;
         return table && tables[table] ? tables[table].slice(0, 200) : [];
       }
+      applyRawWrite(sql, tables);
       return [];
     }
   };
 }
 
-module.exports = { buildZCQL, createDatastore, createCatalystClient, createStubClient, flattenRow };
+module.exports = { buildZCQL, createDatastore, createCatalystClient, createStubClient, applyRawWrite, flattenRow };

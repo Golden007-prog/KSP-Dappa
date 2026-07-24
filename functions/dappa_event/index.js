@@ -67,6 +67,11 @@ async function handleInsert(app, row) {
   const heinousInc = Number(row.GravityOffenceID) === heinousId ? 1 : 0;
 
   // --- incremental AggMonthly upsert -------------------------------------
+  // Known limitation: this read-modify-write has no locking, so two truly
+  // concurrent inserts for the same key could lose an increment. Acceptable
+  // here because (a) demo FIR registration is single-writer and (b) the
+  // nightly job recomputes AggMonthly exactly from CaseMaster, reconciling
+  // any drift within 24h.
   const keyWhere = `Ym='${esc(ym)}' AND DistrictID='${esc(districtId)}' AND UnitID='${esc(unitId)}' AND CrimeHeadID=${headId} AND CrimeSubHeadID=${subHeadId}`;
   const existing = flat(await zcql.executeZCQLQuery(`SELECT ROWID, CaseCount, HeinousCount FROM AggMonthly WHERE ${keyWhere}`));
   const table = app.datastore().table('AggMonthly');

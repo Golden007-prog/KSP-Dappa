@@ -80,6 +80,10 @@ async function getGraph(params, deps) {
     try {
       const g = await load();
       if (g && Array.isArray(g.nodes) && g.nodes.length) {
+        // A district filter needs per-node `districts`; a snapshot without the
+        // field would filter to an empty graph, so fall through to the
+        // table-built graph (which always carries it) instead.
+        if (params && params.districtId && !g.nodes.some((n) => Array.isArray(n && n.districts))) continue;
         return { graph: filterGraph(g, params), source: name };
       }
     } catch (e) {

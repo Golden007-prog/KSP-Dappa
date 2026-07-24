@@ -11,19 +11,23 @@
     <meta property="og:description" content="Crime dashboards, geo-intelligence, forecasting and case analytics for Karnataka State Police. Synthetic demonstration data — KSP Datathon 2026 prototype." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="KSP DAPPA" />
-    <meta property="og:image" content="./favicon.svg" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <script>
-      // Pre-paint theme + density so there is no flash of the wrong scheme.
-      // Dark is the product default; 'light' only when explicitly persisted.
+      // Pre-paint theme + density + motion so there is no flash of the wrong
+      // scheme. Dark is the product default; 'light' only when explicitly
+      // persisted; 'system' follows prefers-color-scheme.
       (function () {
         var theme = 'dark';
         try {
           var t = localStorage.getItem('dappa-theme');
           if (t === 'light' || t === 'dark') theme = t;
+          else if (t === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) theme = 'light';
           if (localStorage.getItem('dappa-density') === 'compact') {
             document.documentElement.dataset.density = 'compact';
+          }
+          if (localStorage.getItem('dappa-motion') === 'reduce') {
+            document.documentElement.dataset.motion = 'reduce';
           }
         } catch (e) { /* storage unavailable — keep dark */ }
         var root = document.documentElement;

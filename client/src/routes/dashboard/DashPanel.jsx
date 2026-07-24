@@ -46,7 +46,7 @@ function IconBtn({ label, onClick, active = false, expanded, className = '', ico
         aria-pressed={expanded === undefined ? active : undefined}
         aria-expanded={expanded}
         onClick={onClick}
-        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+        className={`flex h-9 w-9 md:h-7 md:w-7 items-center justify-center rounded-lg transition-colors ${
           active ? 'text-amber bg-amber/10' : 'text-muted hover:text-ink hover:bg-grid/40'
         } ${className}`}
       >
@@ -63,7 +63,7 @@ export default function DashPanel({
 }) {
   const bodyId = `dash-panel-${id}`;
   const actions = (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-0.5 print:hidden">
       {headerExtra}
       {onExportCsv && <IconBtn label="Download CSV" onClick={onExportCsv} icon={ICONS.csv} />}
       {onExportPng && <IconBtn label="Download PNG" onClick={onExportPng} icon={ICONS.png} />}

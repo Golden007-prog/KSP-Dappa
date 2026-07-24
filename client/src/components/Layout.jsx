@@ -1,26 +1,34 @@
 // App shell — police intelligence command center.
 // Desktop (md+): collapsible grouped sidebar + translucent sticky topbar
-// (command-palette trigger, live API health pill, theme + density controls).
+// (command-palette trigger, IST clock, refresh-with-freshness, copy-link,
+// live API health pill, theme + density controls).
 // Mobile (<md): slim topbar + 5-tab bottom bar (Dashboard · GeoIntel · Cases ·
-// Predict · More) where More opens a bottom sheet with the remaining routes.
+// Predict · More) where More opens a bottom sheet with the remaining routes
+// plus Theme (dark/light/auto) / density / reduce-motion controls.
 // Nav links carry the shared filter search params (lib/filters.js FILTER_KEYS)
 // across routes; the Alerts item shows a live count from /summary/kpis.
-// The inner scroller is #main-scroll (ScrollTopButton targets it); #main-content
-// is the skip-link target.
-import { useEffect, useMemo, useState } from 'react';
+// Global keyboard layer: Ctrl/Cmd-K palette · g,<letter> go-to · t theme ·
+// f zen mode · ? shortcuts sheet ('f' is skipped on /map where GeoIntel owns it).
+// The inner scroller is #main-scroll (ScrollTopButton targets it; reset to top
+// on every pathname change); #main-content is the skip-link target — handled
+// in JS because HashRouter would treat '#main-content' as a route.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { useHealthz, useKpis } from '../lib/api.js';
-import { filterSearchString } from '../lib/filters.js';
+import { useQueryClient, useIsFetching } from '@tanstack/react-query';
+import { useHealthz, useKpis, useLookups } from '../lib/api.js';
+import { filterSearchString, FILTER_KEYS } from '../lib/filters.js';
 import { useUiStore } from '../lib/store.js';
 import { useTheme } from './ThemeProvider.jsx';
 import CommandPalette from './CommandPalette.jsx';
-import DensityToggle, { setDensity } from './DensityToggle.jsx';
+import DensityToggle from './DensityToggle.jsx';
 import OfflineBanner from './OfflineBanner.jsx';
+import PrintHeader from './PrintHeader.jsx';
 import PulseDot from './PulseDot.jsx';
 import ScrollTopButton from './ScrollTopButton.jsx';
 import SegmentedControl from './SegmentedControl.jsx';
 import Sheet from './Sheet.jsx';
 import Tooltip from './Tooltip.jsx';
+import { useToast } from './ToastProvider.jsx';
 
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' };
 const Svg = ({ size = 18, children }) => (
@@ -43,6 +51,13 @@ const ICONS = {
   more: <Svg><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></Svg>,
   sun: <Svg size={16}><circle cx="12" cy="12" r="4" /><path d="M12 2.5V5M12 19v2.5M2.5 12H5m14 0h2.5M4.9 4.9 6.7 6.7m10.6 10.6 1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" /></Svg>,
   moon: <Svg size={16}><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z" /></Svg>,
+  auto: <Svg size={16}><circle cx="12" cy="12" r="8.5" /><path d="M12 3.5v17M12 12a4.25 4.25 0 0 0 0-8.5M12 20.5a4.25 4.25 0 0 0 0-8.5" /></Svg>,
+  link: <Svg size={16}><path d="M10 14a4 4 0 0 0 6 .4l3-3a4 4 0 1 0-5.7-5.6L11.6 7.5" /><path d="M14 10a4 4 0 0 0-6-.4l-3 3a4 4 0 1 0 5.7 5.6l1.7-1.7" /></Svg>,
+  refresh: <Svg size={16}><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" /><path d="M20.5 3.5v4.6h-4.6" /></Svg>,
+  zen: <Svg size={16}><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5" /></Svg>,
+  zenExit: <Svg size={16}><path d="M10 4v6H4M14 20v-6h6M4 10l6.5-6.5M20 14l-6.5 6.5" /></Svg>,
+  keyboard: <Svg size={16}><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6" /></Svg>,
+  motion: <Svg size={16}><circle cx="15" cy="12" r="5.5" /><path d="M3 8.5h6M2 12h5M3 15.5h6" /></Svg>,
 };
 
 const NAV_GROUPS = [
@@ -89,6 +104,26 @@ const TAB_ROUTES = ['/', '/map', '/cases', '/predict'];
 const TABS = TAB_ROUTES.map((to) => ALL_NAV.find((n) => n.to === to));
 const MORE_ROUTES = ALL_NAV.filter((n) => !TAB_ROUTES.includes(n.to));
 
+// g-then-key go-to map for the global shortcut layer
+const GO_KEYS = [
+  ['d', '/', 'Dashboard'],
+  ['m', '/map', 'GeoIntel map'],
+  ['t', '/trends', 'Trends'],
+  ['a', '/alerts', 'Alerts'],
+  ['c', '/cases', 'Case explorer'],
+  ['n', '/network', 'Network'],
+  ['o', '/offenders', 'Offenders'],
+  ['p', '/predict', 'Predict'],
+  ['r', '/reports', 'Reports'],
+];
+
+function viewNameFor(pathname) {
+  if (pathname.startsWith('/offenders/') && pathname !== '/offenders') return 'Offender 360';
+  if (pathname.startsWith('/cases/') && pathname !== '/cases') return 'FIR detail';
+  const hit = ALL_NAV.find((n) => (n.end ? pathname === n.to : pathname === n.to || pathname.startsWith(`${n.to}/`)));
+  return hit ? hit.label : 'Not found';
+}
+
 function Shield({ size = 26 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">
@@ -105,7 +140,7 @@ function AlertCountBadge({ count }) {
   return (
     <span className="num inline-flex items-center gap-1.5 rounded-full bg-signal/15 border border-signal/40 text-signal text-[10px] font-semibold px-1.5 py-0.5">
       <PulseDot />
-      {count}
+      {count > 99 ? '99+' : count}
     </span>
   );
 }
@@ -118,32 +153,177 @@ function HealthPill() {
     checking: { dot: 'amber', cls: 'border-grid text-muted', text: 'Checking' },
     down: { dot: 'red', cls: 'border-signal/40 text-signal', text: 'API down' },
   }[state];
+  // dot-only below sm so mobile still gets a liveness signal
   return (
-    <Tooltip label="Catalyst API health" position="bottom">
-      <span className={`hidden sm:inline-flex items-center gap-1.5 rounded-full border bg-panel/60 px-2.5 py-1 text-[11px] font-medium ${styles.cls}`}>
+    <Tooltip label={`Catalyst API health: ${styles.text}`} position="bottom">
+      <span
+        role="status"
+        aria-label={`API health: ${styles.text}`}
+        className={`inline-flex items-center gap-1.5 rounded-full border bg-panel/60 px-2 sm:px-2.5 py-1 text-[11px] font-medium ${styles.cls}`}
+      >
         <PulseDot color={styles.dot} />
-        {styles.text}
+        <span className="hidden sm:inline">{styles.text}</span>
       </span>
     </Tooltip>
   );
 }
 
+/** IST wall clock — command-center chrome, desktop only. */
+function SessionClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const fmt = useMemo(
+    () => new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+    [],
+  );
+  return (
+    <span
+      className="num hidden xl:inline-flex items-center gap-1.5 rounded-full border border-grid bg-panel/60 px-2.5 py-1 text-[11px] text-muted"
+      title="Indian Standard Time"
+    >
+      {fmt.format(now)} <span className="text-muted/70">IST</span>
+    </span>
+  );
+}
+
+/** Data freshness + manual refresh — invalidates every react-query cache. */
+function RefreshControl() {
+  const qc = useQueryClient();
+  const fetching = useIsFetching();
+  const toast = useToast();
+  const [lastDone, setLastDone] = useState(() => Date.now());
+  const [, forceTick] = useState(0);
+  const wasFetching = useRef(false);
+
+  useEffect(() => {
+    if (wasFetching.current && fetching === 0) setLastDone(Date.now());
+    wasFetching.current = fetching > 0;
+  }, [fetching]);
+
+  useEffect(() => {
+    const id = setInterval(() => forceTick((n) => n + 1), 30 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const refresh = async () => {
+    try {
+      await qc.invalidateQueries();
+      toast.success('Data refreshed.');
+    } catch {
+      toast.error('Refresh failed — check the API connection.');
+    }
+  };
+
+  const mins = Math.floor((Date.now() - lastDone) / 60000);
+  const freshness = fetching > 0 ? 'refreshing…' : mins < 1 ? 'updated just now' : `updated ${mins}m ago`;
+
+  return (
+    <Tooltip label={`Refresh all data (${freshness})`} position="bottom">
+      <button
+        type="button"
+        onClick={refresh}
+        aria-label={`Refresh all data — ${freshness}`}
+        className="flex items-center gap-2 h-11 min-w-[44px] justify-center rounded-lg px-0 md:px-2.5 text-muted hover:text-primary hover:bg-grid/30 transition-colors"
+      >
+        <span className={fetching > 0 ? 'animate-spin' : ''}>{ICONS.refresh}</span>
+        <span className="num hidden md:inline text-[11px]">{freshness}</span>
+      </button>
+    </Tooltip>
+  );
+}
+
+function Key({ children }) {
+  return (
+    <kbd className="num inline-flex min-w-[1.6rem] items-center justify-center rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[11px] text-ink">
+      {children}
+    </kbd>
+  );
+}
+
+function ShortcutRow({ keys, label }) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-1.5">
+      <span className="text-xs text-muted">{label}</span>
+      <span className="flex items-center gap-1">{keys}</span>
+    </li>
+  );
+}
+
+function GlobalShortcutsSheet({ open, onClose, isMac }) {
+  return (
+    <Sheet open={open} onClose={onClose} title="Keyboard shortcuts">
+      <div className="space-y-4 px-1 pb-1">
+        <section>
+          <p className="eyebrow mb-1">Everywhere</p>
+          <ul className="divide-y divide-grid/40">
+            <ShortcutRow label="Command palette" keys={<><Key>{isMac ? '⌘' : 'Ctrl'}</Key><Key>K</Key></>} />
+            <ShortcutRow label="Toggle dark / light theme" keys={<Key>t</Key>} />
+            <ShortcutRow label="Zen mode (hide chrome for wall displays)" keys={<Key>f</Key>} />
+            <ShortcutRow label="This shortcuts sheet" keys={<Key>?</Key>} />
+            <ShortcutRow label="Close a dialog or sheet" keys={<Key>Esc</Key>} />
+          </ul>
+        </section>
+        <section>
+          <p className="eyebrow mb-1">Go to… (press g, then a letter)</p>
+          <ul className="divide-y divide-grid/40">
+            {GO_KEYS.map(([key, , label]) => (
+              <ShortcutRow key={key} label={label} keys={<><Key>g</Key><Key>{key}</Key></>} />
+            ))}
+          </ul>
+        </section>
+        <p className="text-[11px] text-muted">
+          Shortcuts pause while you type in any input. On GeoIntel, <Key>f</Key> drives the map’s own fullscreen instead.
+        </p>
+      </div>
+    </Sheet>
+  );
+}
+
+const isTyping = (el) => {
+  const tag = el?.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable;
+};
+
 export default function Layout() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const search = filterSearchString(searchParams);
   const location = useLocation();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
-  const { theme, setTheme, toggleTheme } = useTheme();
+  const zen = useUiStore((s) => s.zenMode);
+  const toggleZen = useUiStore((s) => s.toggleZen);
+  const density = useUiStore((s) => s.density);
+  const setStoreDensity = useUiStore((s) => s.setDensity);
+  const motionReduced = useUiStore((s) => s.motionReduced);
+  const setMotionReduced = useUiStore((s) => s.setMotionReduced);
+  const { theme, pref, setTheme, toggleTheme } = useTheme();
   const kpis = useKpis();
+  const lookups = useLookups();
   const activeAlerts = Number(kpis.data?.activeAlerts) || 0;
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  // close the More sheet whenever navigation happens from inside it
-  useEffect(() => { setMoreOpen(false); }, [location.pathname]);
+  // close the More sheet whenever navigation happens from inside it, and reset
+  // the inner scroller so every view starts at the top (search-param-only
+  // changes — filter edits — deliberately do NOT jump the page)
+  useEffect(() => {
+    setMoreOpen(false);
+    document.getElementById('main-scroll')?.scrollTo({ top: 0 });
+  }, [location.pathname]);
+
+  // document title tracks the view (+ pending alert count for the tab strip)
+  useEffect(() => {
+    const base = `${viewNameFor(location.pathname)} — KSP DAPPA`;
+    document.title = activeAlerts > 0 ? `(${activeAlerts > 99 ? '99+' : activeAlerts}) ${base}` : base;
+  }, [location.pathname, activeAlerts]);
 
   // global Ctrl/Cmd-K
   useEffect(() => {
@@ -157,8 +337,67 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const copyLink = async () => {
+    const url = window.location.href;
+    const done = () => toast.success('Link copied — filters travel with it.');
+    try {
+      await navigator.clipboard.writeText(url);
+      done();
+    } catch {
+      // http / older-browser fallback
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+      if (ok) done(); else toast.error('Could not copy the link on this browser.');
+    }
+  };
+
+  const zenToast = () => {
+    const turningOn = !useUiStore.getState().zenMode;
+    toggleZen();
+    if (turningOn) toast.info('Zen mode — chrome hidden. Press f (or use the topbar button) to exit.');
+  };
+
+  // global shortcut layer: g,<letter> go-to · t theme · f zen · ? help.
+  // Skipped while typing, while any dialog is open, and 'f' is left to
+  // GeoIntel's own fullscreen handler on /map.
+  const shortcutRefs = useRef({});
+  shortcutRefs.current = { search, zenToast, toggleTheme, pathname: location.pathname };
+  useEffect(() => {
+    let armedAt = 0; // pending 'g' timestamp
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const s = shortcutRefs.current;
+      const k = String(e.key);
+      if (armedAt && Date.now() - armedAt < 1600) {
+        armedAt = 0;
+        const hit = GO_KEYS.find(([key]) => key === k.toLowerCase());
+        if (hit) {
+          e.preventDefault();
+          navigate(hit[1] + s.search);
+        }
+        return;
+      }
+      if (k === 'g' || k === 'G') { armedAt = Date.now(); return; }
+      if (k === 't' || k === 'T') { e.preventDefault(); s.toggleTheme(); }
+      else if ((k === 'f' || k === 'F') && s.pathname !== '/map') { e.preventDefault(); s.zenToast(); }
+      else if (k === '?') { e.preventDefault(); setShortcutsOpen(true); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navigate]);
+
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || '');
   const kbdHint = isMac ? '⌘K' : 'Ctrl K';
+  const filtersActive = !!search;
 
   const paletteActions = useMemo(() => [
     ...ALL_NAV.map((item) => ({
@@ -177,12 +416,20 @@ export default function Layout() {
       keywords: 'theme dark light mode appearance',
       perform: toggleTheme,
     },
+    ...(pref !== 'system' ? [{
+      id: 'act-theme-system',
+      label: 'Theme: follow system (auto)',
+      section: 'Actions',
+      icon: ICONS.auto,
+      keywords: 'theme system auto os appearance',
+      perform: () => setTheme('system'),
+    }] : []),
     {
       id: 'act-density',
-      label: 'Toggle table density',
+      label: `Table density: switch to ${density === 'compact' ? 'cozy' : 'compact'}`,
       section: 'Actions',
-      keywords: 'compact comfortable rows density',
-      perform: () => setDensity(document.documentElement.dataset.density === 'compact' ? 'comfortable' : 'compact'),
+      keywords: 'compact comfortable cozy rows density',
+      perform: () => setStoreDensity(density === 'compact' ? 'comfortable' : 'compact'),
     },
     {
       id: 'act-sidebar',
@@ -191,19 +438,105 @@ export default function Layout() {
       keywords: 'navigation sidebar collapse expand',
       perform: toggleSidebar,
     },
-  ], [navigate, search, theme, toggleTheme, collapsed, toggleSidebar]);
+    {
+      id: 'act-zen',
+      label: zen ? 'Exit zen mode' : 'Zen mode (hide chrome for wall displays)',
+      section: 'Actions',
+      icon: zen ? ICONS.zenExit : ICONS.zen,
+      keywords: 'zen fullscreen wall display presentation kiosk chrome',
+      perform: zenToast,
+    },
+    {
+      id: 'act-copy-link',
+      label: 'Copy link to this view',
+      section: 'Actions',
+      icon: ICONS.link,
+      keywords: 'share copy url link clipboard',
+      perform: copyLink,
+    },
+    {
+      id: 'act-refresh',
+      label: 'Refresh all data',
+      section: 'Actions',
+      icon: ICONS.refresh,
+      keywords: 'refresh reload invalidate data fetch',
+      perform: () => {
+        qc.invalidateQueries()
+          .then(() => toast.success('Data refreshed.'))
+          .catch(() => toast.error('Refresh failed — check the API connection.'));
+      },
+    },
+    {
+      id: 'act-motion',
+      label: motionReduced ? 'Motion: re-enable animations' : 'Motion: reduce animations',
+      section: 'Actions',
+      icon: ICONS.motion,
+      keywords: 'motion animation reduce accessibility vestibular',
+      perform: () => setMotionReduced(!motionReduced),
+    },
+    {
+      id: 'act-shortcuts',
+      label: 'Keyboard shortcuts…',
+      section: 'Actions',
+      icon: ICONS.keyboard,
+      keywords: 'keyboard shortcuts hotkeys help keys',
+      perform: () => setShortcutsOpen(true),
+    },
+    ...(filtersActive ? [{
+      id: 'act-clear-filters',
+      label: 'Clear all filters',
+      section: 'Filters',
+      keywords: 'clear reset filters district crime head period',
+      perform: () => {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          for (const key of FILTER_KEYS) next.delete(key);
+          return next;
+        });
+      },
+    }] : []),
+    // hidden until the user types — jump-filter to any district on the current view
+    ...((lookups.data?.districts || []).map((d) => ({
+      id: `filter-district-${d.districtId}`,
+      label: `Filter: ${d.districtName}`,
+      section: 'Filters',
+      keywords: 'district filter jump focus',
+      hidden: true,
+      perform: () => {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('districtId', d.districtId);
+          return next;
+        });
+      },
+    }))),
+  ], [navigate, search, theme, pref, setTheme, toggleTheme, collapsed, toggleSidebar,
+    zen, density, setStoreDensity, motionReduced, setMotionReduced, filtersActive,
+    lookups.data, qc, toast, setSearchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const moreActive = MORE_ROUTES.some((r) => location.pathname === r.to || (r.to !== '/' && location.pathname.startsWith(`${r.to}/`)));
+  const viewName = viewNameFor(location.pathname);
 
   return (
     <div className="flex h-full min-h-screen bg-base">
-      <a href="#main-content" className="skip-link">Skip to content</a>
+      <a
+        href="#main-content"
+        className="skip-link"
+        onClick={(e) => {
+          // HashRouter would parse '#main-content' as a route — handle in place
+          e.preventDefault();
+          document.getElementById('main-scroll')?.scrollTo({ top: 0 });
+          document.getElementById('main-content')?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <OfflineBanner />
 
-      {/* ---- desktop sidebar ---- */}
+      {/* ---- desktop sidebar (hidden entirely in zen mode) ---- */}
       <aside
         aria-label="Primary"
-        className={`no-print hidden md:flex flex-col border-r border-grid bg-panel/60 transition-all duration-200 ${collapsed ? 'w-[68px]' : 'w-60 xl:w-64'}`}
+        className={`no-print ${zen ? 'hidden' : 'hidden md:flex'} flex-col border-r border-grid bg-panel/60 transition-all duration-200 ${collapsed ? 'w-[68px]' : 'w-60 xl:w-64'}`}
       >
         <div className={`flex items-center gap-2.5 h-14 border-b border-grid shrink-0 ${collapsed ? 'justify-center px-0' : 'px-4'}`}>
           <Shield />
@@ -263,20 +596,22 @@ export default function Layout() {
 
       {/* ---- content column ---- */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div
-          role="note"
-          className="no-print flex items-center justify-center gap-2 h-6 shrink-0 bg-amber/10 border-b border-amber/30 text-[10px] md:text-[11px] text-amber tracking-wide px-2 truncate"
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" {...stroke} aria-hidden="true" className="shrink-0">
-            <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
-          </svg>
-          <span className="truncate">Synthetic demonstration data — KSP Datathon 2026 prototype</span>
-        </div>
+        {!zen && (
+          <div
+            role="note"
+            className="no-print flex items-center justify-center gap-2 h-6 shrink-0 bg-amber/10 border-b border-amber/30 text-[10px] md:text-[11px] text-amber tracking-wide px-2 truncate"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" {...stroke} aria-hidden="true" className="shrink-0">
+              <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+            </svg>
+            <span className="truncate">Synthetic demonstration data — KSP Datathon 2026 prototype</span>
+          </div>
+        )}
 
         <div id="main-scroll" className="flex-1 overflow-y-auto">
           {/* translucent sticky topbar */}
           <header className="no-print sticky top-0 z-40 flex items-center gap-2 md:gap-3 h-14 px-3 md:px-5 border-b border-grid bg-base/75 backdrop-blur-md">
-            <div className="flex items-center gap-2 md:hidden min-w-0">
+            <div className={`flex items-center gap-2 ${zen ? '' : 'md:hidden'} min-w-0`}>
               <Shield size={22} />
               <span className="text-sm font-bold tracking-[0.08em] text-ink">DAPPA</span>
             </div>
@@ -303,8 +638,32 @@ export default function Layout() {
 
             <div className="flex-1 sm:hidden" />
 
+            <SessionClock />
+            <RefreshControl />
+            <Tooltip label="Copy link to this view" position="bottom">
+              <button
+                type="button"
+                onClick={copyLink}
+                aria-label="Copy link to this view"
+                className="hidden sm:flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/30 transition-colors"
+              >
+                {ICONS.link}
+              </button>
+            </Tooltip>
             <HealthPill />
-            <DensityToggle className="hidden lg:inline-flex" />
+            <DensityToggle className="hidden md:inline-flex" />
+            {zen && (
+              <Tooltip label="Exit zen mode" position="bottom">
+                <button
+                  type="button"
+                  onClick={zenToast}
+                  aria-label="Exit zen mode"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-primary hover:bg-grid/30 transition-colors"
+                >
+                  {ICONS.zenExit}
+                </button>
+              </Tooltip>
+            )}
             <Tooltip label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} position="bottom">
               <button
                 type="button"
@@ -318,6 +677,7 @@ export default function Layout() {
           </header>
 
           <main id="main-content" tabIndex={-1} className="p-4 md:p-6 pb-24 md:pb-8 focus:outline-none">
+            <PrintHeader viewName={viewName} />
             <Outlet />
           </main>
         </div>
@@ -391,25 +751,41 @@ export default function Layout() {
           ))}
         </nav>
         <div className="mt-3 border-t border-grid pt-3 space-y-3 px-1">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-xs text-muted">Theme</span>
             <SegmentedControl
               ariaLabel="Theme"
-              value={theme}
+              size="md"
+              value={pref}
               onChange={(v) => setTheme(v)}
               options={[
                 { value: 'dark', label: 'Dark', icon: ICONS.moon },
                 { value: 'light', label: 'Light', icon: ICONS.sun },
+                { value: 'system', label: 'Auto', icon: ICONS.auto },
               ]}
             />
           </div>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-xs text-muted">Table density</span>
-            <DensityToggle />
+            <DensityToggle size="md" />
+          </div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs text-muted">Reduce motion</span>
+            <SegmentedControl
+              ariaLabel="Reduce motion"
+              size="md"
+              value={motionReduced ? 'on' : 'off'}
+              onChange={(v) => setMotionReduced(v === 'on')}
+              options={[
+                { value: 'off', label: 'Off' },
+                { value: 'on', label: 'On', icon: ICONS.motion },
+              ]}
+            />
           </div>
         </div>
       </Sheet>
 
+      <GlobalShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} isMac={isMac} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={paletteActions} />
       <ScrollTopButton targetId="main-scroll" />
     </div>

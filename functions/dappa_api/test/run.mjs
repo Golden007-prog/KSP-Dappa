@@ -5,9 +5,9 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const { createApp } = require('../lib/app.js');
-const { createStubClient } = require('../lib/datastore.js');
+const { createStubClient, buildZCQL } = require('../lib/datastore.js');
 const { buildFixtureTables, getFallbackState, resetFixtureFallback } = require('../lib/fixture.js');
-const { CANNED_UTTERANCES } = require('../lib/copilot.js');
+const { CANNED_UTTERANCES, parse } = require('../lib/copilot.js');
 
 // ---------------------------------------------------------------------------
 // Canned tables come from the shared fixture module — the same deterministic
@@ -60,11 +60,47 @@ async function post(path, body, headers, base) {
   return { status: res.status, json };
 }
 
+async function getRaw(path, base) {
+  const res = await fetch((base || BASE) + path);
+  const text = await res.text();
+  return { status: res.status, contentType: res.headers.get('content-type') || '', disposition: res.headers.get('content-disposition') || '', text };
+}
+
+// --- pure-function pins ------------------------------------------------------
+
+// ZCQL LIMIT uses MySQL skip semantics ("LIMIT 1,3" starts at the SECOND
+// record) — the offset must be emitted verbatim, never off+1.
+check('buildZCQL LIMIT page 1 omits offset', buildZCQL({ table: 'T', limit: { offset: 0, count: 50 } }).endsWith(' LIMIT 50'));
+check('buildZCQL LIMIT page 2 is skip-count', buildZCQL({ table: 'T', limit: { offset: 50, count: 50 } }).endsWith(' LIMIT 50,50'));
+
+// Copilot parser upgrades.
+{
+  const m = parse('murders in march 2026');
+  check('copilot parses month names', m.fromYm === '2026-03' && m.toYm === '2026-03', JSON.stringify(m));
+  check('copilot detection-rate keeps time scope', parse('what is the detection rate this year?').kind === 'detectionRate');
+  check('copilot per-lakh intent', parse('crime rate per lakh in Bengaluru City').kind === 'ratePerLakh');
+  check('copilot heinous-share intent', parse('heinous share this year').kind === 'heinousShare');
+  check('copilot unknown intent for gibberish', parse('what is the meaning of life').kind === 'unknown');
+  check('copilot known phrasing still trend', parse('chain snatching in Mysuru City last 3 months').kind === 'trend');
+}
+
 // --- GET endpoints: 200 + {ok:true} + contract keys -------------------------
 
 const GET_CASES = [
   ['/meta/lookups', (d) => hasKeys(d, ['districts', 'units', 'crimeHeads', 'crimeSubHeads', 'categories', 'statuses', 'gravities']) && d.districts.length === 38 && d.units.length > 0],
   ['/summary/kpis', (d) => hasKeys(d, ['totalFirs', 'momPct', 'heinousCount', 'detectionRate', 'activeAlerts', 'topRisingSubhead']) && hasKeys(d.topRisingSubhead, ['id', 'name', 'deltaPct']) && d.totalFirs > 0 && d.activeAlerts === 3],
+  // KPI cards must honor the same crime/unit filters the charts beside them use.
+  ['/summary/kpis?crimeHeadId=1', (d) => d.totalFirs > 0 && d.heinousCount === d.totalFirs],
+  ['/summary/kpis?unitId=1011', (d) => d.totalFirs > 0],
+  ['/meta/refresh', (d) => hasKeys(d, ['nightly', 'liveAlerts', 'anchorYm', 'mode']) && d.nightly && d.nightly.refreshedAt && /^\d{4}-\d{2}$/.test(d.anchorYm) && d.liveAlerts === 0 && ['live', 'fixture-demo'].includes(d.mode)],
+  ['/meta/socio', (d) => Array.isArray(d) && d.length === 38 && hasKeys(d[0], ['districtId', 'districtName', 'population', 'urbanPct', 'literacyPct', 'densityPerKm2', 'perCapitaIncomeIdx']) && d.some((r) => r.population > 0)],
+  ['/trends/compare?aDistrictId=0101&bDistrictId=0103', (d) => hasKeys(d, ['categories', 'series', 'sameWindow']) && d.sameWindow === true && d.series.length === 2 && d.series[0].data.length === d.categories.length && d.series[0].label.includes('Bengaluru') && d.series[1].label.includes('Mysuru') && d.series[0].data.some((v) => v > 0)],
+  ['/alerts/AL-001', (d) => d.alertId === 'AL-001' && Array.isArray(d.series) && d.series.length === 12 && hasKeys(d.series[0], ['ym', 'caseCount']) && typeof d.baselineMedian === 'number' && d.series.some((p) => p.caseCount > 0)],
+  ['/cases/1/similar', (d) => Array.isArray(d) && d.length === 5 && d.every((r) => r.caseMasterId !== 1) && hasKeys(d[0], ['caseMasterId', 'similarity', 'whyMatched', 'subHeadName']) && d[0].similarity >= d[4].similarity && d.every((r) => Array.isArray(r.whyMatched) && r.whyMatched.length > 0)],
+  ['/offenders?q=ravi', (d, meta) => d.length === 1 && d[0].personKey === 'P001' && meta.total === 1],
+  ['/offenders?q=naik', (d) => d.length === 1 && d[0].personKey === 'P004'],
+  ['/copilot/suggestions', (d) => Array.isArray(d.suggestions) && d.suggestions.length >= 15],
+  ['/reports/brief-data?window=last7', (d) => hasKeys(d, ['window', 'asOfYm', 'kpis', 'topAlerts', 'topRisk', 'topDistricts']) && d.kpis.activeAlerts === 3 && d.topAlerts.length === 3 && d.topRisk.length === 5 && d.topDistricts.length === 5],
   ['/trends/monthly', (d) => Array.isArray(d) && d.length === 12 && hasKeys(d[0], ['ym', 'caseCount', 'heinousCount'])],
   ['/trends/monthly?districtId=0101&crimeHeadId=3', (d) => Array.isArray(d) && d.every((r) => r.caseCount >= 0)],
   ['/trends/seasonality', (d) => hasKeys(d, ['weekdays', 'hours', 'matrix', 'maxCount']) && d.matrix.length === 7 && d.matrix[0].length === 24 && d.sampleSize > 0],
@@ -82,7 +118,7 @@ const GET_CASES = [
   ['/offenders?district=0103', (d) => d.length === 2 && d.every((r) => r.districts.includes('0103'))],
   ['/offenders/P001', (d) => hasKeys(d, ['personKey', 'canonicalName', 'aliases', 'caseCount', 'districts', 'firstSeen', 'lastSeen', 'moTags', 'communityId', 'degree', 'riskScore', 'associates', 'timeline']) && d.timeline.length > 0 && d.associates.length === 2],
   ['/forecast?districtId=0101&crimeHeadId=3', (d) => hasKeys(d, ['history', 'forecast', 'model', 'mape']) && d.history.length === 12 && d.forecast.length === 3 && typeof d.mape === 'number' && hasKeys(d.forecast[0], ['ym', 'predicted', 'lo', 'hi'])],
-  ['/risk/stations?horizon=30', (d) => Array.isArray(d) && d.length === 15 && hasKeys(d[0], ['unitId', 'unitName', 'districtId', 'riskScore', 'drivers']) && d[0].riskScore >= d[1].riskScore],
+  ['/risk/stations?horizon=30', (d) => Array.isArray(d) && d.length === 15 && hasKeys(d[0], ['unitId', 'unitName', 'districtId', 'riskScore', 'drivers', 'spark']) && d[0].riskScore >= d[1].riskScore && d.every((r) => Array.isArray(r.spark) && r.spark.length === 6) && d.some((r) => r.spark.some((v) => v > 0))],
   ['/cases?page=1&perPage=10', (d, meta) => Array.isArray(d) && d.length === 10 && hasKeys(d[0], ['caseMasterId', 'crimeNo', 'caseNo', 'registeredDate', 'districtName', 'unitName', 'headName', 'subHeadName', 'statusName', 'gravityName', 'anomalyFlag']) && meta.total === 40 && meta.page === 1 && meta.perPage === 10],
   ['/cases?districtId=0103&perPage=200', (d) => d.length === 8],
   ['/cases?perPage=500', (d, meta) => meta.perPage === 200],
@@ -134,6 +170,21 @@ for (const utterance of CANNED_UTTERANCES) {
   check('copilot empty query -> 400', empty.status === 400 && empty.json.ok === false);
 }
 
+// --- copilot: new intents over HTTP ------------------------------------------
+
+{
+  const lakh = await post('/copilot/query', { q: 'crime rate per lakh in Bengaluru City' });
+  check('copilot rate-per-lakh answers', lakh.status === 200 && lakh.json.data.intent === 'ratePerLakh' && lakh.json.data.answer.includes('per lakh'), JSON.stringify(lakh.json.data).slice(0, 200));
+  const heinous = await post('/copilot/query', { q: 'heinous share this year' });
+  check('copilot heinous-share answers', heinous.status === 200 && heinous.json.data.intent === 'heinousShare' && heinous.json.data.answer.includes('%'));
+  const det = await post('/copilot/query', { q: 'what is the detection rate this year?' });
+  check('copilot detection rate is scoped to the asked window', det.status === 200 && det.json.data.answer.includes('year-to-date'), det.json.data.answer);
+  const unknown = await post('/copilot/query', { q: 'what is the meaning of life' });
+  check('copilot unknown -> graceful suggestions', unknown.status === 200 && unknown.json.data.intent === 'unknown'
+    && Array.isArray(unknown.json.data.suggestions) && unknown.json.data.suggestions.length === 3
+    && unknown.json.data.answer.includes('Try'), JSON.stringify(unknown.json.data).slice(0, 200));
+}
+
 // --- predict/outcome fallback ----------------------------------------------
 
 {
@@ -175,6 +226,56 @@ for (const utterance of CANNED_UTTERANCES) {
   check('digest preview built', digest.json.data.preview && digest.json.data.preview.lines.length > 0);
 }
 
+// --- auth hardening: only the REAL token unlocks admin actions ---------------
+
+{
+  const wrongBearer = await post('/alerts/AL-003/ack', {}, { Authorization: 'Bearer wrong-token' });
+  check('wrong bearer token -> 403', wrongBearer.status === 403 && wrongBearer.json.error.code === 'AUTH_REQUIRED');
+  // Regression: any junk Authorization header used to bypass the gate entirely.
+  const junkAuth = await post('/alerts/AL-003/ack', {}, { Authorization: 'x' });
+  check('junk Authorization header -> 403', junkAuth.status === 403);
+  const wrongHeader = await post('/alerts/AL-003/ack', {}, { 'x-admin-token': 'nope' });
+  check('wrong x-admin-token -> 403', wrongHeader.status === 403);
+  const viaHeader = await post('/alerts/AL-003/ack', {}, { 'x-admin-token': 'demo-admin' });
+  check('x-admin-token match -> 200', viaHeader.status === 200 && viaHeader.json.data.status === 'ACK');
+}
+
+// --- writes persist + alert lifecycle ----------------------------------------
+
+{
+  // AL-001 and AL-003 were acked above; the ack must survive a refetch.
+  const open = await get('/alerts?status=OPEN');
+  check('acked alerts leave the OPEN list', open.json.data.length === 1 && open.json.data[0].alertId === 'AL-002', JSON.stringify(open.json.data.map((a) => a.alertId)));
+  const dismiss = await post('/alerts/AL-002/status', { status: 'DISMISSED' }, { 'x-admin-token': 'demo-admin' });
+  check('status DISMISSED -> 200', dismiss.status === 200 && dismiss.json.data.status === 'DISMISSED');
+  const dismissed = await get('/alerts?status=DISMISSED');
+  check('DISMISSED filter finds it', dismissed.json.data.length === 1 && dismissed.json.data[0].alertId === 'AL-002');
+  const noneOpen = await get('/alerts?status=OPEN');
+  check('OPEN list now empty', noneOpen.json.data.length === 0);
+  const bad = await post('/alerts/AL-002/status', { status: 'nonsense' }, { 'x-admin-token': 'demo-admin' });
+  check('invalid status -> 400', bad.status === 400 && bad.json.error.code === 'BAD_STATUS');
+  const noAuth = await post('/alerts/AL-002/status', { status: 'OPEN' });
+  check('status without auth -> 403', noAuth.status === 403);
+  // Restore the fixture state for any later reads in this scenario.
+  for (const [id, st] of [['AL-001', 'OPEN'], ['AL-002', 'OPEN'], ['AL-003', 'OPEN']]) {
+    await post(`/alerts/${id}/status`, { status: st }, { 'x-admin-token': 'demo-admin' });
+  }
+}
+
+// --- CSV exports -------------------------------------------------------------
+
+{
+  const cases = await getRaw('/cases.csv?districtId=0103');
+  const caseLines = cases.text.trim().split(/\r?\n/);
+  check('cases.csv 200 + text/csv', cases.status === 200 && cases.contentType.startsWith('text/csv') && cases.disposition.includes('dappa-cases.csv'));
+  check('cases.csv header + filtered rows', caseLines[0].includes('crimeNo') && caseLines.length === 9, `${caseLines.length} lines`);
+  const alertsCsv = await getRaw('/alerts.csv');
+  check('alerts.csv rows', alertsCsv.status === 200 && alertsCsv.contentType.startsWith('text/csv') && alertsCsv.text.trim().split(/\r?\n/).length === 5);
+  const offCsv = await getRaw('/offenders.csv');
+  check('offenders.csv rows', offCsv.status === 200 && offCsv.contentType.startsWith('text/csv') && offCsv.text.trim().split(/\r?\n/).length === 7);
+  check('offenders.csv joins arrays', offCsv.text.includes('two-wheeler|gold-chain|night'));
+}
+
 // --- reports fallback + cache bypass ---------------------------------------
 
 {
@@ -185,6 +286,13 @@ for (const utterance of CANNED_UTTERANCES) {
   check('kpis cache hit on second call', second.json.meta.cached === true || first.json.meta.cached === false);
   const bypass = await get('/summary/kpis?nocache=1');
   check('nocache bypass works', bypass.status === 200 && bypass.json.meta.cached === false);
+  check('meta.asOf on cached reads', bypass.json.meta.asOf && /^\d{4}-\d{2}$/.test(bypass.json.meta.asOf.ym) && typeof bypass.json.meta.asOf.generatedAt === 'string');
+  const trends = await get('/trends/monthly');
+  check('meta.asOf on trends too', trends.json.meta.asOf && /^\d{4}-\d{2}$/.test(trends.json.meta.asOf.ym));
+  const stationsCached = await get('/geo/stations?districtId=0101');
+  check('geo/stations now cache-wrapped', typeof stationsCached.json.meta.cached === 'boolean');
+  const incidentsCached = await get('/geo/incidents?limit=10');
+  check('geo/incidents now cache-wrapped', typeof incidentsCached.json.meta.cached === 'boolean' && incidentsCached.json.meta.count === incidentsCached.json.data.length);
 }
 
 // --- envelope on unknown route ---------------------------------------------
@@ -234,9 +342,23 @@ server.close();
   check('FIXTURE copilot answers', cop.status === 200 && cop.json.ok === true
     && typeof cop.json.data.answer === 'string' && cop.json.data.answer.trim().length > 10);
 
-  // A raw write during fallback is recorded and returns the success shape.
+  // A raw write during fallback is APPLIED to the fixture tables — the acked
+  // alert must stay acked when the client invalidates and refetches (this is
+  // the headline judge-facing interaction in PUBLIC_DEMO mode).
   const ack = await post('/alerts/AL-001/ack', {}, { Authorization: 'Bearer demo-admin' }, DOWN);
   check('FIXTURE ack write succeeds', ack.status === 200 && ack.json.ok === true && ack.json.data.status === 'ACK');
+  const openAfter = await get('/alerts?status=OPEN', DOWN);
+  check('FIXTURE ack persists across refetch', openAfter.json.data.length === 2 && openAfter.json.data.every((a) => a.alertId !== 'AL-001'), JSON.stringify(openAfter.json.data.map((a) => a.alertId)));
+  const detailAfter = await get('/alerts/AL-001', DOWN);
+  check('FIXTURE alert detail shows ACK', detailAfter.status === 200 && detailAfter.json.data.status === 'ACK');
+  const kpiAfter = await get('/summary/kpis?nocache=1', DOWN);
+  check('FIXTURE KPI activeAlerts drops after ack', kpiAfter.json.data.activeAlerts === 2, String(kpiAfter.json.data.activeAlerts));
+  const dismiss = await post('/alerts/AL-002/status', { status: 'DISMISSED' }, { 'x-admin-token': 'demo-admin' }, DOWN);
+  check('FIXTURE status write succeeds', dismiss.status === 200 && dismiss.json.data.status === 'DISMISSED');
+  const dismissed = await get('/alerts?status=DISMISSED', DOWN);
+  check('FIXTURE dismissal persists', dismissed.json.data.length === 1 && dismissed.json.data[0].alertId === 'AL-002');
+  const refresh = await get('/meta/refresh?nocache=1', DOWN);
+  check('FIXTURE meta/refresh honest mode', refresh.status === 200 && refresh.json.data.mode === 'fixture-demo' && refresh.json.data.nightly && refresh.json.data.nightly.refreshedAt);
 
   // healthz: honest but healthy — fixture-demo mode, top-level status ok.
   const hz = await get('/healthz?nocache=1', DOWN);

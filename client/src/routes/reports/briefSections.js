@@ -13,6 +13,48 @@ export const BRIEF_SECTIONS = [
 
 const KEYS = BRIEF_SECTIONS.map((s) => s.key);
 const STORAGE_KEY = 'dappa-brief-sections';
+const ORDER_KEY = 'dappa-brief-order';
+
+/** Canonical section order (also the fallback for junk input). */
+export const DEFAULT_ORDER = [...KEYS];
+
+/** Sanitize any candidate order: known keys only, deduped, missing appended. */
+export function normalizeOrder(candidate) {
+  const seen = [];
+  for (const k of Array.isArray(candidate) ? candidate : []) {
+    if (KEYS.includes(k) && !seen.includes(k)) seen.push(k);
+  }
+  for (const k of KEYS) if (!seen.includes(k)) seen.push(k);
+  return seen;
+}
+
+/** 'alerts,kpis,…' → sanitized order array (default order for null/junk). */
+export function orderFromParam(str) {
+  if (!str) return DEFAULT_ORDER;
+  return normalizeOrder(String(str).split(',').map((s) => s.trim()));
+}
+
+/** Inverse: '' when the order is the default (keep URLs clean). */
+export function orderToParam(order) {
+  const o = normalizeOrder(order);
+  return o.every((k, i) => k === DEFAULT_ORDER[i]) ? '' : o.join(',');
+}
+
+export function loadOrder() {
+  try {
+    return normalizeOrder(JSON.parse(localStorage.getItem(ORDER_KEY)));
+  } catch {
+    return DEFAULT_ORDER;
+  }
+}
+
+export function saveOrder(order) {
+  try {
+    localStorage.setItem(ORDER_KEY, JSON.stringify(normalizeOrder(order)));
+  } catch {
+    /* private mode */
+  }
+}
 
 export const allSectionsOn = () => Object.fromEntries(KEYS.map((k) => [k, true]));
 

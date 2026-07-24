@@ -16,9 +16,12 @@ export function fmtCompact(v) {
   return Number.isFinite(n) ? compactFmt.format(n) : '—';
 }
 
-/** Percent with sign handling. Values ≤ 1 in magnitude are treated as fractions
- * when `fraction` is true; pass fraction=false for values already in percent. */
-export function fmtPct(v, { digits = 1, sign = false, fraction = 'auto' } = {}) {
+/** Percent formatter. `v` is a PERCENT value by default (fmtPct(50) → '50.0%');
+ * pass fraction=true for 0–1 fractions (fmtPct(0.5, {fraction:true}) → '50.0%').
+ * The legacy fraction='auto' heuristic (any |n| ≤ 1 treated as a fraction) is
+ * still accepted for callers that opt in, but is no longer the default — it
+ * mis-rendered genuine small percents like fmtPct(0.5). */
+export function fmtPct(v, { digits = 1, sign = false, fraction = false } = {}) {
   let n = Number(v);
   if (!Number.isFinite(n)) return '—';
   if (fraction === true || (fraction === 'auto' && Math.abs(n) <= 1 && n !== 0)) n *= 100;

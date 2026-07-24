@@ -1,10 +1,9 @@
 // /reports — plain-text "share summary" of the Weekly Brief, built from the
 // same useBriefData queries the preview renders, honoring the section toggles.
 // Meant for the clipboard → WhatsApp / e-mail; keep it terse and ASCII-safe.
+// Data selection lives in select.js so this never disagrees with BriefContent.
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
-
-const isOpenAlert = (a) => !/ack/i.test(String(a?.status || ''));
-const sevRank = (s) => ({ critical: 3, high: 2, medium: 1 }[String(s || '').toLowerCase()] ?? 0);
+import { selectOpenAlerts, selectTopHotspots, selectForecastRows, selectRiskRows } from './select.js';
 
 export function buildShareSummary(brief, sections = {}) {
   const on = (k) => sections[k] !== false;
@@ -17,7 +16,7 @@ export function buildShareSummary(brief, sections = {}) {
 
   if (on('kpis') && brief.kpis.data) {
     const k = brief.kpis.data;
-    const det = Number(k.detectionRate) <= 1 ? Number(k.detectionRate) * 100 : Number(k.detectionRate);
+    const det = Number(k.detectionRate); // server contract: PERCENT 0-100 (read.js rounds A/(A+C)*100)
     const mom = Number.isFinite(Number(k.momPct)) ? fmtPct(Number(k.momPct), { sign: true, fraction: false }) : '—';
     lines.push(
       `Headline: ${fmtInt(k.totalFirs)} FIRs (${mom} MoM) · ${fmtInt(k.heinousCount)} heinous · detection ${Number.isFinite(det) ? `${det.toFixed(1)}%` : '—'} · ${fmtInt(k.activeAlerts)} open alerts`,
@@ -26,9 +25,7 @@ export function buildShareSummary(brief, sections = {}) {
   }
 
   if (on('alerts')) {
-    const top = (brief.alerts.data || []).filter(isOpenAlert)
-      .sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || Math.abs(b.zScore || 0) - Math.abs(a.zScore || 0))
-      .slice(0, 5);
+    const top = selectOpenAlerts(brief, 5);
     if (top.length) {
       lines.push('Top anomaly alerts:');
       top.forEach((a, i) => {
@@ -39,9 +36,7 @@ export function buildShareSummary(brief, sections = {}) {
   }
 
   if (on('hotspots')) {
-    const top = [...(brief.hotspots.data || [])]
-      .sort((a, b) => (Number(b.intensity) || 0) - (Number(a.intensity) || 0))
-      .slice(0, 3);
+    const top = selectTopHotspots(brief, 3);
     if (top.length) {
       lines.push(`Hotspots: ${top.map((h) => `${h.label || `Cluster ${h.clusterId}`} (${fmtInt(h.caseCount)} cases)`).join(' · ')}`, '');
     }
@@ -56,13 +51,11 @@ export function buildShareSummary(brief, sections = {}) {
   }
 
   if (on('forecast')) {
-    const f = (brief.forecast.data?.forecast || [])[0];
+    const f = selectForecastRows(brief, 1)[0];
     if (f) {
       lines.push(`Forecast: ${monthLabel(f.ym)} ≈ ${fmtInt(f.predicted)} FIRs (${fmtInt(f.lo)}–${fmtInt(f.hi)})${brief.forecast.data?.model ? ` · model ${brief.forecast.data.model}` : ''}`);
     }
-    const risk = [...(brief.risk.data || [])]
-      .sort((a, b) => (Number(b.riskScore) || 0) - (Number(a.riskScore) || 0))
-      .slice(0, 3);
+    const risk = selectRiskRows(brief, 3);
     if (risk.length) {
       lines.push(`Highest-risk stations: ${risk.map((s) => `${s.unitName || s.unitId} (${fmtNum(s.riskScore, 2)})`).join(' · ')}`);
     }

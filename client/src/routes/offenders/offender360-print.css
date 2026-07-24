@@ -1,0 +1,69 @@
+/* Print styling for /offenders/:personKey — the "printable dossier".
+   Loaded with the Offender360 chunk; every rule is @media print only.
+   1. Structural: Layout scrolls in #main-scroll which clips printing to one
+      page — flatten the scroller (idempotent with other routes' print CSS).
+   2. Palette: inside .off-print-root remap the design-token triplets to an
+      ink-on-white palette, so cards/badges/text print legibly without touching
+      any shared file. Alpha utilities (bg-amber/10 …) keep working because
+      only the RGB triplets change. App chrome (sidebar, header, tab bar) is
+      already .no-print in Layout + index.css. */
+
+@media print {
+  html, body, #root {
+    height: auto !important;
+  }
+  #root > div {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  #main-scroll {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .off-print-root {
+    --t-base: 255 255 255;
+    --t-panel: 255 255 255;
+    --t-panel-raised: 245 247 250;
+    --t-grid: 203 209 220;
+    --t-ink: 17 24 39;
+    --t-muted: 75 85 99;
+    --t-primary: 29 78 216;
+    --t-primary-on: 255 255 255;
+    --t-amber: 146 91 6;
+    --t-signal: 153 27 27;
+    --t-teal: 15 118 110;
+    --c-base: #ffffff;
+    --c-panel: #ffffff;
+    --c-grid: #cbd1dc;
+    --c-ink: #111827;
+    --c-muted: #4b5563;
+    --c-amber: #925b06;
+    --c-red: #991b1b;
+    --c-teal: #0f766e;
+    --shadow-card: none;
+    --shadow-lift: none;
+  }
+
+  .off-print-root .no-print {
+    display: none !important;
+  }
+
+  /* Cards flow across pages; avoid splitting a timeline entry mid-page. */
+  .off-print-root section {
+    break-inside: auto;
+  }
+  .off-print-root li {
+    break-inside: avoid;
+  }
+
+  /* The dossier's main column grid prints as a single column (small tile
+     grids inside cards keep their layout). */
+  .off-print-root .print-stack {
+    display: block !important;
+  }
+  .off-print-root .print-stack > * {
+    margin-bottom: 10px;
+  }
+}

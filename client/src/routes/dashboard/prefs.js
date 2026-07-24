@@ -22,7 +22,8 @@ function writeIds(key, ids) {
 }
 
 /**
- * usePanelPrefs() → { pinned:[id…], collapsed:[id…], togglePin(id), toggleCollapse(id) }
+ * usePanelPrefs() → { pinned:[id…], collapsed:[id…], togglePin(id),
+ *   toggleCollapse(id), collapseAll(ids), expandAll(), resetLayout() }
  * `pinned` keeps pin ORDER (first pinned renders first); both lists persist.
  */
 export function usePanelPrefs() {
@@ -45,12 +46,31 @@ export function usePanelPrefs() {
     });
   }, []);
 
-  return { pinned, collapsed, togglePin, toggleCollapse };
+  const collapseAll = useCallback((ids) => {
+    const next = [...ids];
+    writeIds(COLLAPSE_KEY, next);
+    setCollapsed(next);
+  }, []);
+
+  const expandAll = useCallback(() => {
+    writeIds(COLLAPSE_KEY, []);
+    setCollapsed([]);
+  }, []);
+
+  const resetLayout = useCallback(() => {
+    writeIds(PIN_KEY, []);
+    writeIds(COLLAPSE_KEY, []);
+    setPinned([]);
+    setCollapsed([]);
+  }, []);
+
+  return { pinned, collapsed, togglePin, toggleCollapse, collapseAll, expandAll, resetLayout };
 }
 
 /** Every react-query key root the dashboard renders from (refresh scope). */
 export const DASH_QUERY_KEYS = [
-  'kpis', 'geo-districts', 'trends-monthly', 'trends-category-share', 'alerts',
+  'kpis', 'geo-districts', 'trends-monthly', 'trends-category-share',
+  'trends-seasonality', 'alerts',
 ];
 
 /**

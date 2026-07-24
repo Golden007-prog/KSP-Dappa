@@ -64,10 +64,18 @@ function buildSegments(text, entities) {
     if (!typeByLower.has(key)) typeByLower.set(key, e.type);
   }
   let re;
+  const alternation = terms.map(escapeRe).join('|');
   try {
-    re = new RegExp(terms.map(escapeRe).join('|'), 'gi');
+    // Letter/digit guards so a short entity ('Ram') never highlights inside a
+    // longer word ('Ramanagara'); Unicode classes keep Kannada names working.
+    re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${alternation})(?![\\p{L}\\p{N}])`, 'giu');
   } catch {
-    return [{ text: src }];
+    // Engines without lookbehind fall back to unanchored matching.
+    try {
+      re = new RegExp(alternation, 'gi');
+    } catch {
+      return [{ text: src }];
+    }
   }
   const out = [];
   let last = 0;

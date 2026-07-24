@@ -1,24 +1,15 @@
-// Table density switch — comfortable / compact. Writes html[data-density]
+// Table density switch — comfortable / compact. State lives in the shared
+// zustand UI store (single source of truth) so every mounted instance and the
+// command-palette action stay in sync; the store applies html[data-density]
 // (which drives the --density-y CSS var consumed by DataTable's .td-pad) and
 // persists to localStorage ('dappa-density'; index.html pre-paint restores it).
 // Props: className?, size? (forwarded to SegmentedControl).
-import { useState } from 'react';
 import SegmentedControl from './SegmentedControl.jsx';
+import { useUiStore } from '../lib/store.js';
 
-const STORAGE_KEY = 'dappa-density';
-
-function readDensity() {
-  if (typeof document !== 'undefined' && document.documentElement.dataset.density === 'compact') return 'compact';
-  return 'comfortable';
-}
-
-/** Also used by the command palette action — applies + persists + returns the new value. */
+/** Imperative setter (command palette etc.) — applies + persists + returns the new value. */
 export function setDensity(value) {
-  const v = value === 'compact' ? 'compact' : 'comfortable';
-  if (v === 'compact') document.documentElement.dataset.density = 'compact';
-  else delete document.documentElement.dataset.density;
-  try { localStorage.setItem(STORAGE_KEY, v); } catch { /* private mode */ }
-  return v;
+  return useUiStore.getState().setDensity(value);
 }
 
 const rows = (n) => (
@@ -30,14 +21,15 @@ const rows = (n) => (
 );
 
 export default function DensityToggle({ className = '', size = 'sm' }) {
-  const [density, setLocal] = useState(readDensity);
+  const density = useUiStore((s) => s.density);
+  const setStoreDensity = useUiStore((s) => s.setDensity);
   return (
     <SegmentedControl
       ariaLabel="Table density"
       className={className}
       size={size}
       value={density}
-      onChange={(v) => setLocal(setDensity(v))}
+      onChange={(v) => setStoreDensity(v)}
       options={[
         { value: 'comfortable', label: 'Cozy', icon: rows(3) },
         { value: 'compact', label: 'Compact', icon: rows(4) },

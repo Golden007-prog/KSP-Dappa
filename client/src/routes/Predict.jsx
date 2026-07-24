@@ -2,12 +2,16 @@
 // with driver chips, live QuickML outcome panel (probability gauge + model
 // source badge + ROC-AUC), and the district × head forecast explorer with CI
 // band + backtest MAPE badge. See client/CONTRACT.md.
+// The station-risk model has no crime-head dimension, so the FilterBar here
+// deliberately shows only the district select — a badge states the scope
+// instead of offering a select that silently does nothing.
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useStationRisk, useLookups } from '../lib/api.js';
-import { useUrlFilters } from '../lib/filters.js';
+import { useUrlFilters, filterSearchString } from '../lib/filters.js';
 import { normalizeUnitCode, unitsForPolygon } from '../lib/districtGeoMap.js';
 import FilterBar from '../components/FilterBar.jsx';
+import Badge from '../components/Badge.jsx';
 import RiskLeagueTable from './predict/RiskLeagueTable.jsx';
 import RiskMap from './predict/RiskMap.jsx';
 import OutcomePanel from './predict/OutcomePanel.jsx';
@@ -15,6 +19,7 @@ import ForecastExplorer from './predict/ForecastExplorer.jsx';
 
 export default function Predict() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { districtId, crimeHeadId, setFilter } = useUrlFilters();
   const lookups = useLookups();
   const risk = useStationRisk(); // horizon 30 by default (hook contract)
@@ -42,6 +47,15 @@ export default function Predict() {
       }));
   }, [risk.data, districtId, districtNames]);
 
+  // Carry the user's current shared filters onto /map instead of rebuilding
+  // the URL from scratch (the app-wide URL-filter convention).
+  const openOnMap = (r) => {
+    if (!r?.districtId) return;
+    const qs = new URLSearchParams(filterSearchString(searchParams));
+    qs.set('districtId', normalizeUnitCode(r.districtId));
+    navigate(`/map?${qs.toString()}`);
+  };
+
   return (
     <div className="space-y-4 max-w-[1500px] mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -51,7 +65,9 @@ export default function Predict() {
         </div>
       </div>
 
-      <FilterBar show={['district', 'crimeHead']} />
+      <FilterBar show={['district']}>
+        <Badge tone="slate">station risk spans all crime heads</Badge>
+      </FilterBar>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
@@ -60,7 +76,7 @@ export default function Predict() {
             loading={risk.isLoading}
             error={risk.error}
             onRetry={() => risk.refetch()}
-            onRowClick={(r) => r.districtId && navigate(`/map?districtId=${normalizeUnitCode(r.districtId)}`)}
+            onRowClick={openOnMap}
           />
         </div>
         <RiskMap

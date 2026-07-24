@@ -13,14 +13,14 @@ function pick(obj, keys) {
   return undefined;
 }
 
-export default function KeyValuePanel({ title, subtitle, data, rows = [], emptyTitle = 'No record', emptyMessage }) {
+export default function KeyValuePanel({ title, subtitle, data, rows = [], emptyTitle = 'No record', emptyMessage, actions }) {
   const obj = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
   const found = obj
     ? rows.map((r) => ({ ...r, value: pick(obj, r.keys) })).filter((r) => r.value !== undefined)
     : [];
 
   return (
-    <Card title={title} subtitle={subtitle}>
+    <Card title={title} subtitle={subtitle} actions={actions}>
       {found.length === 0 ? (
         <EmptyState compact title={emptyTitle} message={emptyMessage || 'Nothing on file for this case.'} />
       ) : (

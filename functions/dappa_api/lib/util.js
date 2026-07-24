@@ -5,10 +5,15 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
-/** Current 'YYYY-MM' for a Date (defaults to now). */
+/** Current 'YYYY-MM' for a Date (defaults to now), anchored to IST wall-clock.
+ * Catalyst containers run UTC while every dataset timestamp is IST-shaped, so
+ * around month boundaries a naive local read would flip the anchor month a few
+ * hours early/late. On an IST host the shift is a no-op. */
+const IST_OFFSET_MIN = 330;
 function ymOf(date) {
   const d = date || new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+  const ist = new Date(d.getTime() + (IST_OFFSET_MIN + d.getTimezoneOffset()) * 60000);
+  return `${ist.getFullYear()}-${pad2(ist.getMonth() + 1)}`;
 }
 
 /** Add n months to a 'YYYY-MM' string. */
@@ -81,4 +86,17 @@ function logJson(level, evt, extra) {
   console.log(JSON.stringify(rec));
 }
 
-module.exports = { pad2, ymOf, ymAdd, ymRange, toNum, round, pctDelta, fmtInt, hash32, parseJsonSafe, logJson };
+/** RFC-4180-ish CSV: rows = plain objects, columns = ordered key list.
+ * Arrays are joined with '|'; values with commas/quotes/newlines are quoted. */
+function toCsv(rows, columns) {
+  const cell = (v) => {
+    if (v === undefined || v === null) return '';
+    const s = Array.isArray(v) ? v.join('|') : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [columns.map(cell).join(',')];
+  for (const r of rows) lines.push(columns.map((c) => cell(r[c])).join(','));
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+module.exports = { pad2, ymOf, ymAdd, ymRange, toNum, round, pctDelta, fmtInt, hash32, parseJsonSafe, logJson, toCsv };

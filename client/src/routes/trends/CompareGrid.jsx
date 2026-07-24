@@ -143,16 +143,18 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
   };
 
   const chip = (label, color, onRemove) => (
-    <span key={label} className="chip !pr-1">
+    // 40px-tall chip; the remove button stretches to the full chip height so
+    // the touch target clears the 40px floor without ballooning the visuals.
+    <span key={label} className="chip !pr-0.5 min-h-[40px]">
       <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} aria-hidden="true" />
       {label}
       <button
         type="button"
-        className="ml-0.5 rounded-full p-0.5 text-muted hover:text-ink transition-colors"
+        className="ml-0.5 flex min-h-[40px] min-w-[32px] items-center justify-center rounded-full -my-2 text-muted hover:text-ink transition-colors"
         onClick={onRemove}
         aria-label={`Remove ${label} from comparison`}
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
       </button>
     </span>
   );
@@ -163,7 +165,7 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
       subtitle="Small multiples on one aligned monthly window — add up to 4 districts and 3 heads"
       actions={(
         <Tooltip label="Download every compared series as CSV">
-          <button type="button" className="btn !py-1 !px-2 text-xs" onClick={exportCsv} disabled={!view?.months.length}>
+          <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!view?.months.length}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>
             CSV
           </button>
@@ -174,7 +176,7 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
         {cmpD.map((d) => chip(districtName(d), districtColor(d), () => setList('cmpD', cmpD.filter((x) => x !== d))))}
         {cmpH.map((h) => chip(headName(h), headColor(h), () => setList('cmpH', cmpH.filter((x) => x !== h))))}
         <select
-          className="input-dark !py-1 !px-2 text-xs max-w-[11rem]"
+          className="input-dark !py-2 !px-2 text-xs max-w-[11rem] min-h-[40px]"
           value=""
           aria-label="Add district to comparison"
           disabled={lookups.isLoading}
@@ -186,7 +188,7 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
           ))}
         </select>
         <select
-          className="input-dark !py-1 !px-2 text-xs max-w-[11rem]"
+          className="input-dark !py-2 !px-2 text-xs max-w-[11rem] min-h-[40px]"
           value=""
           aria-label="Add crime head to comparison"
           disabled={lookups.isLoading}

@@ -46,6 +46,7 @@ export default function MiniEgoGraph({
       elements={elements}
       layout="concentric"
       height={height}
+      ariaLabel={`Ego network of ${name || personKey}: the person plus their ${Math.min(associates.length, MAX_ASSOCIATES)} strongest co-accused links. The Known-associates list below is the keyboard-accessible equivalent.`}
       onNodeTap={(d) => {
         if (String(d.id) !== String(personKey)) onTapPerson?.(String(d.id));
       }}

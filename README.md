@@ -14,12 +14,13 @@ plain-English questions — built end-to-end on **Zoho Catalyst**, on the
 Submission for **KSP Datathon 2026**, challenge *"AI-Driven Crime Analytics &
 Visualization Platform."*
 
-![KSP DAPPA Command Dashboard](docs/screenshots/dashboard.png)
-
 ---
 
 ## Highlights
 
+- **486 cataloged features.** Every user-visible capability is enumerated in
+  [`FEATURES.md`](FEATURES.md) — an audit-generated catalog covering all nine
+  areas of the app.
 - **Official ER schema, verbatim.** Every table, key, and the structured
   `CrimeNo` format (`1-digit category · 4-digit district · 4-digit station ·
   4-digit year · 5-digit serial`) from the organizer-supplied ER diagram is
@@ -112,7 +113,7 @@ the UI renders. Live AI calls are on-demand, flag-gated, with fallbacks.
 | 15 | API Gateway | Routing/throttling in front of `dappa_api` |
 | 16 | Pipelines (CI/CD) | Auto build-and-deploy from `main` |
 
-Stretch (roadmap): Circuits, ConvoKraft — see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Stretch (roadmap): Circuits, ConvoKraft.
 
 ## Quickstart
 
@@ -161,7 +162,7 @@ node scripts/smoke_test.mjs <deployed URL> # full smoke suite (must be green)
 ```
 
 Live Catalyst AI (QuickML, LLM/RAG, Zia, SmartBrowz, Mail) is enabled through
-console procedures in [`docs/CONSOLE_SETUP.md`](docs/CONSOLE_SETUP.md); until
+Catalyst-console procedures (documented in the team's local runbook); until
 then every feature runs on its documented local fallback.
 
 ## Environment variables
@@ -234,8 +235,7 @@ functions/
 pipeline/          generate.py (synthetic ER data) + analytics.py (derived intel)
 data/geo/          Karnataka districts GeoJSON (23 KB, 30 features)
 scripts/           bulk_load.js · verify_load.mjs · smoke_test.mjs · warmup.mjs
-docs/              ER diagram, CONTRACTS, CONSOLE_SETUP, DECISIONS, ROADMAP,
-                   screenshots/, benchmarks/
+FEATURES.md        Audit-generated catalog of all 486 user-visible features
 ```
 
 ## License

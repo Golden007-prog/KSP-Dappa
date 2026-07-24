@@ -3,21 +3,24 @@
 // (or record) exists; the last done step glows as the current stage. Day gaps
 // between consecutive dated steps quantify registration/arrest lag — a small
 // analytic judges asked for. Horizontally scrollable on phones.
-import { differenceInCalendarDays, isValid, parse } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns';
 import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
 import { dateLabel } from '../../lib/format.js';
-
-const toDate = (iso) => {
-  if (!iso) return null;
-  const d = parse(String(iso).slice(0, 10), 'yyyy-MM-dd', new Date());
-  return isValid(d) ? d : null;
-};
+import {
+  toDate, pickDate, pickValue, firstArrest,
+  CS_DATE_KEYS, CS_TYPE_KEYS,
+} from './caseDates.js';
 
 function buildSteps(d) {
   const arrests = Array.isArray(d.arrests) ? d.arrests : [];
-  const arrestDates = arrests.map((a) => toDate(a.date)).filter(Boolean).sort((a, b) => a - b);
-  const csDate = toDate(d.chargesheet?.date);
+  // Key names vary per payload shape (arrestDate/dateOfArrest/…,
+  // chargesheetDate/csDate/…) — resolved via the shared tolerant pickers.
+  const arrest = firstArrest(arrests);
+  const cs = pickDate(d.chargesheet, CS_DATE_KEYS);
+  const csType = pickValue(d.chargesheet, CS_TYPE_KEYS);
+  const hasChargesheet = !!cs
+    || (d.chargesheet && typeof d.chargesheet === 'object' && Object.keys(d.chargesheet).length > 0);
   const steps = [
     {
       key: 'incident',
@@ -46,18 +49,18 @@ function buildSteps(d) {
     {
       key: 'arrest',
       label: 'Arrest',
-      date: arrestDates[0] || null,
-      dateLabel: arrestDates[0] ? dateLabel(arrests.map((a) => a.date).filter(Boolean).sort()[0]) : '—',
+      date: arrest?.date || null,
+      dateLabel: arrest ? dateLabel(arrest.raw) : '—',
       detail: arrests.length ? `${arrests.length} record${arrests.length > 1 ? 's' : ''}` : null,
       done: arrests.length > 0,
     },
     {
       key: 'chargesheet',
       label: 'Chargesheet',
-      date: csDate,
-      dateLabel: d.chargesheet?.date ? dateLabel(d.chargesheet.date) : '—',
-      detail: d.chargesheet?.type ? String(d.chargesheet.type) : null,
-      done: !!d.chargesheet,
+      date: cs?.date || null,
+      dateLabel: cs ? dateLabel(cs.raw) : '—',
+      detail: csType !== undefined ? String(csType) : null,
+      done: hasChargesheet,
     },
     {
       key: 'court',

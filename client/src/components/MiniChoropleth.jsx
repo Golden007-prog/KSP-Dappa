@@ -19,7 +19,7 @@ import { useTheme } from './ThemeProvider.jsx';
 import { fmtInt } from '../lib/format.js';
 
 // density ramp + chrome per app theme (dark stays the original command-center look)
-const PALETTES = {
+export const PALETTES = {
   dark: {
     low: [0x23, 0x31, 0x50], high: [0xf5, 0xa6, 0x23], noData: '#141d31',
     border: '#1E2A44', hover: '#F5A623', alert: '#E5484D', markerRing: '#0B1220', markerFill: '#F5A623',
@@ -34,6 +34,12 @@ function rampColor(t, pal) {
   const c = pal.low.map((lo, i) => Math.round(lo + (pal.high[i] - lo) * Math.max(0, Math.min(1, t))));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
+
+// bindTooltip takes an HTML string — escape data-derived text (district names
+// from the GeoJSON, marker labels) so markup in a value can never execute.
+const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
 
 export default function MiniChoropleth({
   values = {}, alerts = [], markers = [], onPolygonClick, onMarkerClick,
@@ -108,7 +114,7 @@ export default function MiniChoropleth({
         const name = feature?.properties?.district;
         const v = Number(values[name]) || 0;
         layer.bindTooltip(
-          `<div class="text-xs"><strong>${name}</strong><br/>${fmtInt(v)} ${valueLabel}</div>`,
+          `<div class="text-xs"><strong>${escapeHtml(name)}</strong><br/>${fmtInt(v)} ${escapeHtml(valueLabel)}</div>`,
           { sticky: true, className: 'dappa-tooltip' },
         );
         layer.on('click', () => handlersRef.current.onPolygonClick?.(name, feature));
@@ -129,7 +135,7 @@ export default function MiniChoropleth({
       }).addTo(map);
       if (m.label) {
         marker.bindTooltip(
-          `<div class="text-xs"><strong>${m.label}</strong>${m.value !== undefined ? `<br/>${fmtInt(m.value)} ${valueLabel}` : ''}</div>`,
+          `<div class="text-xs"><strong>${escapeHtml(m.label)}</strong>${m.value !== undefined ? `<br/>${fmtInt(m.value)} ${escapeHtml(valueLabel)}` : ''}</div>`,
           { sticky: true, className: 'dappa-tooltip' },
         );
       }

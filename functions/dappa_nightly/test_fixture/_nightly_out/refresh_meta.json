@@ -6,7 +6,7 @@
   "data_end": "2026-07-20",
   "forecast_model": "seasonal-naive",
   "forecast_rows": 24,
-  "last_refresh": "2026-07-24 02:00:00",
+  "last_refresh": "2026-07-25 02:00:00",
   "mode": "local-dryrun",
   "stations_scored": 4
 }

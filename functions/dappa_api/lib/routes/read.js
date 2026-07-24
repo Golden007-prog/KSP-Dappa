@@ -3,7 +3,8 @@
 
 const { ok, asyncH, commonFilters, nocache, cacheKey } = require('../envelope');
 const { getLookups, TTL_SEC } = require('../lookups');
-const { ymOf, ymAdd, ymRange, toNum, round, pctDelta } = require('../util');
+const { getFallbackState } = require('../fixture');
+const { ymOf, ymAdd, ymRange, toNum, round, pctDelta, parseJsonSafe } = require('../util');
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -35,6 +36,38 @@ async function anchorYm(ds, now) {
   }
 }
 
+/** meta.asOf for cached reads: anchor month + when this answer was generated,
+ * so the client can caption charts ("as of Jul 2026") and hint at cache age.
+ * Cached for 10 min alongside the data it describes. */
+async function asOfMeta(ctx) {
+  const { value } = await ctx.cache.wrap('v1:asof', 600, false, async () => ({
+    ym: await anchorYm(ctx.ds, null),
+    generatedAt: new Date().toISOString()
+  }));
+  return value;
+}
+
+/** ChargesheetDetails scope: trailing-12-months csdate window ending at the
+ * anchor month; when a district filter is set, additionally scope to that
+ * district's IOs (Employee is the only district join the schema offers).
+ * Falls back to the time-only scope when no employees are known. */
+async function chargesheetWhere(ctx, filters, curYm) {
+  const w = [
+    { col: 'csdate', op: '>=', val: `${ymAdd(curYm, -11)}-01` },
+    { col: 'csdate', op: '<=', val: `${curYm}-31` }
+  ];
+  if (filters.districtId) {
+    try {
+      const emp = await ctx.ds.query({
+        table: 'Employee', columns: ['EmployeeID'],
+        where: [{ col: 'DistrictID', op: '=', val: filters.districtId }], limit: { count: 300 }
+      });
+      if (emp.length) w.push({ col: 'PolicePersonID', op: 'in', val: emp.map((r) => r.EmployeeID) });
+    } catch (e) { /* keep the time-only scope */ }
+  }
+  return w;
+}
+
 function register(router) {
   router.get('/meta/lookups', asyncH(async (req, res) => {
     const ctx = req.ctx;
@@ -57,14 +90,21 @@ function register(router) {
       const lk = await getLookups(ctx);
       const curYm = await anchorYm(ctx.ds, null);
       const prevYm = ymAdd(curYm, -1);
-      const baseWhere = filters.districtId ? [{ col: 'DistrictID', op: '=', val: filters.districtId }] : [];
+      // Honor every AggMonthly-resolvable filter so the KPI cards agree with
+      // the filtered charts rendered beside them.
+      const baseWhere = [];
+      if (filters.districtId) baseWhere.push({ col: 'DistrictID', op: '=', val: filters.districtId });
+      if (filters.unitId) baseWhere.push({ col: 'UnitID', op: '=', val: filters.unitId });
+      if (filters.crimeSubHeadId) baseWhere.push({ col: 'CrimeSubHeadID', op: '=', val: filters.crimeSubHeadId });
+      else if (filters.crimeHeadId) baseWhere.push({ col: 'CrimeHeadID', op: '=', val: filters.crimeHeadId });
+      const csWhere = await chargesheetWhere(ctx, filters, curYm);
       const [monthRows, csRows, alertRows, subRows] = await Promise.all([
         ctx.ds.query({
           table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)', 'SUM(HeinousCount)'],
           where: baseWhere.concat([{ col: 'Ym', op: '>=', val: prevYm }, { col: 'Ym', op: '<=', val: curYm }]),
           groupBy: ['Ym']
         }),
-        ctx.ds.query({ table: 'ChargesheetDetails', columns: ['cstype', 'COUNT(CSID)'], groupBy: ['cstype'] }),
+        ctx.ds.query({ table: 'ChargesheetDetails', columns: ['cstype', 'COUNT(CSID)'], where: csWhere, groupBy: ['cstype'] }),
         ctx.ds.query({ table: 'AnomalyAlert', columns: ['COUNT(AlertID)'], where: [{ col: 'Status', op: '=', val: 'OPEN' }] }),
         ctx.ds.query({
           table: 'AggMonthly', columns: ['CrimeSubHeadID', 'Ym', 'SUM(CaseCount)'],
@@ -103,7 +143,7 @@ function register(router) {
         asOfYm: curYm
       };
     });
-    ok(res, value, { cached });
+    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/trends/monthly', asyncH(async (req, res) => {
@@ -122,7 +162,56 @@ function register(router) {
         heinousCount: toNum((byYm.get(ym) || {})['SUM(HeinousCount)'])
       }));
     });
-    ok(res, value, { from: fromYm, to: toYm, cached });
+    ok(res, value, { from: fromYm, to: toYm, cached, asOf: await asOfMeta(ctx) });
+  }));
+
+  // Side-by-side comparison: two filter sets (A/B) over aligned month windows,
+  // e.g. district vs district or the same district across two windows.
+  // Query params: aDistrictId/bDistrictId, aUnitId/bUnitId, aCrimeHeadId/...,
+  // aFrom/aTo & bFrom/bTo (default: shared from/to, else last 12 months).
+  router.get('/trends/compare', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const q = req.query || {};
+    const side = (p) => ({
+      districtId: q[`${p}DistrictId`] || null,
+      unitId: q[`${p}UnitId`] || null,
+      crimeHeadId: q[`${p}CrimeHeadId`] ? toNum(q[`${p}CrimeHeadId`], null) : null,
+      crimeSubHeadId: q[`${p}CrimeSubHeadId`] ? toNum(q[`${p}CrimeSubHeadId`], null) : null,
+      from: q[`${p}From`] || q.from || null,
+      to: q[`${p}To`] || q.to || null
+    });
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+      const lk = await getLookups(ctx);
+      const sides = await Promise.all(['a', 'b'].map(async (p) => {
+        const f = side(p);
+        const { fromYm, toYm } = ymWindow(f, null);
+        const months = ymRange(fromYm, toYm);
+        const rows = await ctx.ds.query({
+          table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)'],
+          where: aggWhere(f, fromYm, toYm), groupBy: ['Ym'], orderBy: { col: 'Ym' }
+        });
+        const byYm = new Map(rows.map((r) => [r.Ym, toNum(r['SUM(CaseCount)'])]));
+        const crime = f.crimeSubHeadId ? lk.subHeadName(f.crimeSubHeadId)
+          : f.crimeHeadId ? lk.headName(f.crimeHeadId) : 'All crimes';
+        const place = f.unitId ? ((lk.unitById.get(String(f.unitId)) || {}).unitName || `Unit ${f.unitId}`)
+          : f.districtId ? lk.districtName(f.districtId) : 'Karnataka';
+        return {
+          key: p.toUpperCase(),
+          label: `${place} · ${crime}`,
+          fromYm,
+          toYm,
+          months,
+          data: months.map((ym) => byYm.get(ym) || 0)
+        };
+      }));
+      const sameWindow = sides[0].fromYm === sides[1].fromYm && sides[0].toYm === sides[1].toYm;
+      const len = Math.max(sides[0].months.length, sides[1].months.length);
+      const categories = sameWindow
+        ? sides[0].months
+        : Array.from({ length: len }, (_, i) => `M${i + 1}`);
+      return { categories, sameWindow, series: sides };
+    });
+    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/trends/seasonality', asyncH(async (req, res) => {
@@ -154,7 +243,7 @@ function register(router) {
       }
       return { weekdays: WEEKDAYS, hours: [...Array(24).keys()], matrix, maxCount, sampleSize: rows.length };
     });
-    ok(res, value, { cached });
+    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/trends/category-share', asyncH(async (req, res) => {
@@ -176,7 +265,7 @@ function register(router) {
         sharePct: total > 0 ? round((toNum(r['SUM(CaseCount)']) / total) * 100, 1) : 0
       }));
     });
-    ok(res, value, { from: fromYm, to: toYm, cached });
+    ok(res, value, { from: fromYm, to: toYm, cached, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/districts', asyncH(async (req, res) => {
@@ -226,41 +315,44 @@ function register(router) {
         };
       }).sort((a, b) => b.caseCount - a.caseCount);
     });
-    ok(res, value, { from: fromYm, to: toYm, cached });
+    ok(res, value, { from: fromYm, to: toYm, cached, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/stations', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
-    const lk = await getLookups(ctx);
-    const unitFilter = filters.districtId ? lk.unitsOfDistrict(filters.districtId).map((u) => u.unitId) : null;
-    const where = [];
-    if (unitFilter && unitFilter.length) where.push({ col: 'PoliceStationID', op: 'in', val: unitFilter });
-    if (filters.from) where.push({ col: 'CrimeRegisteredDate', op: '>=', val: filters.from });
-    if (filters.to) where.push({ col: 'CrimeRegisteredDate', op: '<=', val: filters.to });
-    const [caseRows, riskRows] = await Promise.all([
-      ctx.ds.query({
-        table: 'CaseMaster',
-        columns: ['PoliceStationID', 'COUNT(CaseMasterID)', 'AVG(latitude)', 'AVG(longitude)'],
-        where, groupBy: ['PoliceStationID']
-      }),
-      ctx.ds.query({ table: 'StationRisk', columns: ['UnitID', 'RiskScore'] })
-    ]);
-    const risk = new Map(riskRows.map((r) => [String(r.UnitID), toNum(r.RiskScore)]));
-    const data = caseRows.map((r) => {
-      const id = String(r.PoliceStationID);
-      const unit = lk.unitById.get(id);
-      return {
-        unitId: id,
-        unitName: unit ? unit.unitName : `Unit ${id}`,
-        districtId: unit ? unit.districtId : (filters.districtId || null),
-        lat: round(toNum(r['AVG(latitude)']), 5),
-        lng: round(toNum(r['AVG(longitude)']), 5),
-        caseCount: toNum(r['COUNT(CaseMasterID)']),
-        riskScore: risk.has(id) ? round(risk.get(id), 1) : null
-      };
-    }).sort((a, b) => b.caseCount - a.caseCount);
-    ok(res, data, { districtId: filters.districtId || null });
+    // Map pans re-request this constantly — cache like the other geo reads.
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+      const lk = await getLookups(ctx);
+      const unitFilter = filters.districtId ? lk.unitsOfDistrict(filters.districtId).map((u) => u.unitId) : null;
+      const where = [];
+      if (unitFilter && unitFilter.length) where.push({ col: 'PoliceStationID', op: 'in', val: unitFilter });
+      if (filters.from) where.push({ col: 'CrimeRegisteredDate', op: '>=', val: filters.from });
+      if (filters.to) where.push({ col: 'CrimeRegisteredDate', op: '<=', val: filters.to });
+      const [caseRows, riskRows] = await Promise.all([
+        ctx.ds.query({
+          table: 'CaseMaster',
+          columns: ['PoliceStationID', 'COUNT(CaseMasterID)', 'AVG(latitude)', 'AVG(longitude)'],
+          where, groupBy: ['PoliceStationID']
+        }),
+        ctx.ds.query({ table: 'StationRisk', columns: ['UnitID', 'RiskScore'] })
+      ]);
+      const risk = new Map(riskRows.map((r) => [String(r.UnitID), toNum(r.RiskScore)]));
+      return caseRows.map((r) => {
+        const id = String(r.PoliceStationID);
+        const unit = lk.unitById.get(id);
+        return {
+          unitId: id,
+          unitName: unit ? unit.unitName : `Unit ${id}`,
+          districtId: unit ? unit.districtId : (filters.districtId || null),
+          lat: round(toNum(r['AVG(latitude)']), 5),
+          lng: round(toNum(r['AVG(longitude)']), 5),
+          caseCount: toNum(r['COUNT(CaseMasterID)']),
+          riskScore: risk.has(id) ? round(risk.get(id), 1) : null
+        };
+      }).sort((a, b) => b.caseCount - a.caseCount);
+    });
+    ok(res, value, { districtId: filters.districtId || null, cached, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/incidents', asyncH(async (req, res) => {
@@ -283,19 +375,23 @@ function register(router) {
     if (filters.crimeSubHeadId) where.push({ col: 'CrimeMinorHeadID', op: '=', val: filters.crimeSubHeadId });
     else if (filters.crimeHeadId) where.push({ col: 'CrimeMajorHeadID', op: '=', val: filters.crimeHeadId });
     if (filters.unitId) where.push({ col: 'PoliceStationID', op: '=', val: filters.unitId });
-    const rows = await ctx.ds.query({
-      table: 'CaseMaster',
-      columns: ['CaseMasterID', 'latitude', 'longitude', 'CrimeMajorHeadID', 'CrimeMinorHeadID', 'CrimeRegisteredDate'],
-      where, limit: { count: limit }
+    // Cached (5 min) — the point layer refetches on every bbox change.
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 300, nocache(req), async () => {
+      const rows = await ctx.ds.query({
+        table: 'CaseMaster',
+        columns: ['CaseMasterID', 'latitude', 'longitude', 'CrimeMajorHeadID', 'CrimeMinorHeadID', 'CrimeRegisteredDate'],
+        where, limit: { count: limit }
+      });
+      return rows.map((r) => ({
+        caseMasterId: r.CaseMasterID,
+        lat: toNum(r.latitude),
+        lng: toNum(r.longitude),
+        crimeHeadId: toNum(r.CrimeMajorHeadID),
+        crimeSubHeadId: toNum(r.CrimeMinorHeadID),
+        registeredDate: r.CrimeRegisteredDate
+      }));
     });
-    ok(res, rows.map((r) => ({
-      caseMasterId: r.CaseMasterID,
-      lat: toNum(r.latitude),
-      lng: toNum(r.longitude),
-      crimeHeadId: toNum(r.CrimeMajorHeadID),
-      crimeSubHeadId: toNum(r.CrimeMinorHeadID),
-      registeredDate: r.CrimeRegisteredDate
-    })), { limit, count: rows.length });
+    ok(res, value, { limit, count: value.length, cached, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/hotspots', asyncH(async (req, res) => {
@@ -330,8 +426,57 @@ function register(router) {
         };
       });
     });
-    ok(res, value, { cached });
+    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
+  }));
+
+  // Data freshness: last nightly refresh (RefreshMeta), the anchor month the
+  // reads are pinned to, live event-inserted alerts, and an honest mode flag
+  // when the container is answering from the bundled fixture.
+  router.get('/meta/refresh', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 120, nocache(req), async () => {
+      let nightly = null;
+      try {
+        const rows = await ctx.ds.query({
+          table: 'RefreshMeta', columns: ['RefreshedAt', 'DetailsJson'],
+          orderBy: { col: 'RefreshedAt', desc: true }, limit: { count: 1 }
+        });
+        if (rows.length) nightly = { refreshedAt: rows[0].RefreshedAt, details: parseJsonSafe(rows[0].DetailsJson, null) };
+      } catch (e) { nightly = null; }
+      let liveAlerts = 0;
+      try {
+        const rows = await ctx.ds.query({
+          table: 'AnomalyAlert', columns: ['COUNT(AlertID)'],
+          where: [{ col: 'AlertID', op: 'like', val: 'EVT-' }]
+        });
+        liveAlerts = toNum(rows.length ? rows[0]['COUNT(AlertID)'] : 0);
+      } catch (e) { liveAlerts = 0; }
+      return { nightly, liveAlerts, anchorYm: await anchorYm(ctx.ds, null), serverTime: new Date().toISOString() };
+    });
+    const fb = getFallbackState();
+    ok(res, Object.assign({}, value, { mode: fb.datastore ? 'fixture-demo' : 'live' }), { cached });
+  }));
+
+  // District socio-economic context (population, urbanisation, literacy,
+  // density, income index) for context panels and choropleth overlay toggles.
+  router.get('/meta/socio', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const lk = await getLookups(ctx, nocache(req));
+    const bySocio = new Map(lk.socio.map((s) => [s.districtId, s]));
+    const data = lk.districts.map((d) => {
+      const s = bySocio.get(d.districtId) || {};
+      return {
+        districtId: d.districtId,
+        districtName: d.districtName,
+        population: s.population === undefined ? null : s.population,
+        urbanPct: s.urbanPct === undefined ? null : s.urbanPct,
+        literacyPct: s.literacyPct === undefined ? null : s.literacyPct,
+        densityPerKm2: s.densityPerKm2 === undefined ? null : s.densityPerKm2,
+        perCapitaIncomeIdx: s.perCapitaIncomeIdx === undefined ? null : s.perCapitaIncomeIdx
+      };
+    });
+    ok(res, data, { source: lk.source, count: data.length });
   }));
 }
 
-module.exports = { register };
+module.exports = { register, anchorYm, asOfMeta };

@@ -6,8 +6,30 @@
 // Options come from useLookups(); while lookups load the selects render disabled
 // with a 'Loading…' option — never a crash. On small screens the bar becomes a
 // horizontally scrollable chip row instead of wrapping.
+// Extras: removable active-filter chips (labels resolved via useLookups) and a
+// "Views" sheet that saves/recalls named filter combos (localStorage
+// 'dappa-saved-views').
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLookups } from '../lib/api.js';
-import { useUrlFilters, DATE_RANGES } from '../lib/filters.js';
+import { useUrlFilters, DATE_RANGES, describeFilters } from '../lib/filters.js';
+import Sheet from './Sheet.jsx';
+import { useToast } from './ToastProvider.jsx';
+
+const VIEWS_KEY = 'dappa-saved-views';
+
+function readViews() {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEWS_KEY));
+    return Array.isArray(v) ? v.filter((x) => x && typeof x === 'object' && x.name) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeViews(views) {
+  try { localStorage.setItem(VIEWS_KEY, JSON.stringify(views)); } catch { /* private mode */ }
+}
 
 function Select({ label, value, onChange, options, placeholder, disabled }) {
   return (
@@ -29,64 +51,207 @@ function Select({ label, value, onChange, options, placeholder, disabled }) {
   );
 }
 
+function FilterChip({ label, onClear }) {
+  return (
+    <span className="chip shrink-0 !pr-1 bg-primary/10 border-primary/30 text-ink">
+      <span className="truncate max-w-[11rem]">{label}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`Remove filter: ${label}`}
+        className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:text-signal transition-colors"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+    </span>
+  );
+}
+
 export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'], children, className = '' }) {
   const lookups = useLookups();
-  const { districtId, crimeHeadId, range, setFilter, reset } = useUrlFilters();
+  const toast = useToast();
+  const { districtId, crimeHeadId, range, setFilter, setFilters, reset } = useUrlFilters();
+  const [searchParams] = useSearchParams();
+  const rawFrom = searchParams.get('from') || '';
+  const rawTo = searchParams.get('to') || '';
+
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [views, setViews] = useState(readViews);
+  const [viewName, setViewName] = useState('');
 
   const districts = (lookups.data?.districts || []).map((d) => ({ value: d.districtId, label: d.districtName }));
   const heads = (lookups.data?.crimeHeads || []).map((h) => ({ value: h.crimeHeadId, label: h.headName }));
-  const anyActive = districtId || crimeHeadId || (range && range !== 'all');
+  const anyActive = districtId || crimeHeadId || (range && range !== 'all') || rawFrom || rawTo;
+
+  const districtName = districts.find((d) => d.value === districtId)?.label || `District ${districtId}`;
+  const headName = heads.find((h) => h.value === crimeHeadId)?.label || `Head ${crimeHeadId}`;
+  const rangeLabel = DATE_RANGES.find((r) => r.value === range)?.label || range;
+
+  const currentParams = { districtId, crimeHeadId, range: range === 'all' ? '' : range, from: rawFrom, to: rawTo };
+  const currentSummary = describeFilters(currentParams, lookups.data);
+
+  const applyView = (v) => {
+    // key order matters: setFilters clears from/to whenever it processes
+    // 'range', so range must come first for explicit dates to survive
+    setFilters({
+      range: v.range && v.range !== 'all' ? v.range : '',
+      from: v.from || '',
+      to: v.to || '',
+      districtId: v.districtId || '',
+      crimeHeadId: v.crimeHeadId || '',
+    });
+    setViewsOpen(false);
+  };
+
+  const saveView = () => {
+    const name = viewName.trim() || currentSummary;
+    const next = [
+      { id: `${Date.now()}`, name, ...currentParams },
+      ...views.filter((v) => v.name !== name),
+    ].slice(0, 12);
+    setViews(next);
+    writeViews(next);
+    setViewName('');
+    toast.success(`View “${name}” saved.`);
+  };
+
+  const deleteView = (id) => {
+    const next = views.filter((v) => v.id !== id);
+    setViews(next);
+    writeViews(next);
+  };
 
   return (
-    <div
-      role="group"
-      aria-label="Filters"
-      className={`flex items-center gap-3 bg-panel border border-grid rounded-xl px-3 py-2 shadow-card
-        flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap sm:overflow-visible ${className}`}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted shrink-0" aria-hidden="true">
-        <path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" strokeLinejoin="round" />
-      </svg>
-      {show.includes('district') && (
-        <Select
-          label="District"
-          value={districtId}
-          onChange={(v) => setFilter('districtId', v)}
-          options={districts}
-          placeholder="All districts"
-          disabled={lookups.isLoading}
-        />
-      )}
-      {show.includes('crimeHead') && (
-        <Select
-          label="Crime head"
-          value={crimeHeadId}
-          onChange={(v) => setFilter('crimeHeadId', v)}
-          options={heads}
-          placeholder="All crime heads"
-          disabled={lookups.isLoading}
-        />
-      )}
-      {show.includes('dateRange') && (
-        <Select
-          label="Period"
-          value={range === 'all' ? '' : range}
-          onChange={(v) => setFilter('range', v)}
-          options={DATE_RANGES.filter((r) => r.value !== 'all').map((r) => ({ value: r.value, label: r.label }))}
-          placeholder="All time"
-          disabled={false}
-        />
-      )}
-      {anyActive && (
+    <>
+      <div
+        role="group"
+        aria-label="Filters"
+        className={`flex items-center gap-3 bg-panel border border-grid rounded-xl px-3 py-2 shadow-card
+          flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap sm:overflow-visible ${className}`}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted shrink-0" aria-hidden="true">
+          <path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" strokeLinejoin="round" />
+        </svg>
+        {show.includes('district') && (
+          <Select
+            label="District"
+            value={districtId}
+            onChange={(v) => setFilter('districtId', v)}
+            options={districts}
+            placeholder="All districts"
+            disabled={lookups.isLoading}
+          />
+        )}
+        {show.includes('crimeHead') && (
+          <Select
+            label="Crime head"
+            value={crimeHeadId}
+            onChange={(v) => setFilter('crimeHeadId', v)}
+            options={heads}
+            placeholder="All crime heads"
+            disabled={lookups.isLoading}
+          />
+        )}
+        {show.includes('dateRange') && (
+          <Select
+            label="Period"
+            value={range === 'all' ? '' : range}
+            onChange={(v) => setFilter('range', v)}
+            options={DATE_RANGES.filter((r) => r.value !== 'all').map((r) => ({ value: r.value, label: r.label }))}
+            placeholder="All time"
+            disabled={false}
+          />
+        )}
+        {anyActive && (
+          <button
+            type="button"
+            className="shrink-0 rounded-lg px-2.5 py-1.5 min-h-[40px] text-xs text-muted hover:text-primary transition-colors"
+            onClick={reset}
+          >
+            Clear
+          </button>
+        )}
         <button
           type="button"
-          className="shrink-0 rounded-lg px-2 py-1.5 min-h-[36px] text-xs text-muted hover:text-primary transition-colors"
-          onClick={reset}
+          onClick={() => { setViews(readViews()); setViewsOpen(true); }}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 min-h-[40px] text-xs text-muted hover:text-primary transition-colors"
+          aria-haspopup="dialog"
+          aria-label="Saved filter views"
         >
-          Clear
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4-6.5 4v-16a1 1 0 0 1 1-1Z" />
+          </svg>
+          Views
         </button>
-      )}
-      {children && <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>}
-    </div>
+        {districtId && show.includes('district') && (
+          <FilterChip label={`District: ${districtName}`} onClear={() => setFilter('districtId', '')} />
+        )}
+        {crimeHeadId && show.includes('crimeHead') && (
+          <FilterChip label={`Head: ${headName}`} onClear={() => setFilter('crimeHeadId', '')} />
+        )}
+        {(rawFrom || rawTo) && (
+          <FilterChip label={`Period: ${rawFrom || '…'} → ${rawTo || '…'}`} onClear={() => setFilters({ from: '', to: '' })} />
+        )}
+        {!rawFrom && !rawTo && range !== 'all' && show.includes('dateRange') && (
+          <FilterChip label={`Period: ${rangeLabel}`} onClear={() => setFilter('range', '')} />
+        )}
+        {children && <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>}
+      </div>
+
+      <Sheet open={viewsOpen} onClose={() => setViewsOpen(false)} title="Saved filter views">
+        <div className="space-y-3 px-1 pb-1">
+          {anyActive ? (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => { e.preventDefault(); saveView(); }}
+            >
+              <input
+                className="input-dark flex-1 min-w-0 !py-2 min-h-[44px]"
+                value={viewName}
+                onChange={(e) => setViewName(e.target.value)}
+                placeholder={currentSummary}
+                aria-label="Name for the current filter view"
+                maxLength={60}
+              />
+              <button type="submit" className="btn-primary shrink-0 min-h-[44px]">Save</button>
+            </form>
+          ) : (
+            <p className="text-xs text-muted">
+              Set a district, crime head or period first, then save it here as a named view.
+            </p>
+          )}
+          {views.length === 0 ? (
+            <p className="text-xs text-muted border-t border-grid/60 pt-3">
+              No saved views yet — saved combos apply with one tap and survive reloads.
+            </p>
+          ) : (
+            <ul className="border-t border-grid/60 pt-2 space-y-0.5" aria-label="Saved views">
+              {views.map((v) => (
+                <li key={v.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => applyView(v)}
+                    className="flex-1 min-w-0 rounded-xl px-3 py-2 min-h-[48px] text-left hover:bg-grid/30 transition-colors"
+                  >
+                    <span className="block text-sm text-ink truncate">{v.name}</span>
+                    <span className="block text-[11px] text-muted truncate">{describeFilters(v, lookups.data)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteView(v.id)}
+                    aria-label={`Delete saved view ${v.name}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:text-signal hover:bg-grid/30 transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5m4-5v5" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Sheet>
+    </>
   );
 }

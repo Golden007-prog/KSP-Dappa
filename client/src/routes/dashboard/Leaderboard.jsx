@@ -14,7 +14,7 @@ import { fmtInt } from '../../lib/format.js';
 
 const SHOW = 6;
 
-export default function Leaderboard({ rows = [], loading = false, activeDistrictId = '', onPick }) {
+export default function Leaderboard({ rows = [], loading = false, activeDistrictId = '', onPick, linkSearch = '' }) {
   const [mode, setMode] = useState('risers');
 
   const ranked = useMemo(() => {
@@ -48,7 +48,7 @@ export default function Leaderboard({ rows = [], loading = false, activeDistrict
             { value: 'fallers', label: 'Top fallers' },
           ]}
         />
-        <Link to="/map" className="text-xs text-amber hover:underline shrink-0">Map →</Link>
+        <Link to={`/map${linkSearch}`} className="inline-flex min-h-[40px] items-center px-1 text-xs text-amber hover:underline shrink-0">Map →</Link>
       </div>
       <ol className="divide-y divide-grid/50">
         {ranked.map((r, i) => {
@@ -60,7 +60,7 @@ export default function Leaderboard({ rows = [], loading = false, activeDistrict
                 onClick={() => onPick?.(active ? '' : r.districtId, r.districtName)}
                 aria-pressed={active}
                 title={active ? 'Clear district filter' : `Filter dashboard to ${r.districtName}`}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-1.5 py-2 text-left transition-colors ${
+                className={`flex w-full min-h-[44px] items-center gap-2.5 rounded-lg px-1.5 py-2 text-left transition-colors ${
                   active ? 'bg-amber/10' : 'hover:bg-grid/30'
                 }`}
               >

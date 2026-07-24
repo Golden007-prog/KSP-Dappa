@@ -1,0 +1,30 @@
+/* CrimeNo segment colors — theme-aware. The dark-theme hues (also used by the
+   chart palette) drop below readable contrast on white cards, so html.light
+   swaps in darker AA-safe siblings; @media print re-applies the light set
+   inside .case-print-root because printing forces a white page regardless of
+   the on-screen theme. Loaded with the CrimeNoBreakdown chunk. */
+:root {
+  --seg-category: #F5A623;
+  --seg-district: #2DD4BF;
+  --seg-station: #7C9BFF;
+  --seg-year: #C084FC;
+  --seg-serial: #F97316;
+}
+
+html.light {
+  --seg-category: #B45309;
+  --seg-district: #0F766E;
+  --seg-station: #2563EB;
+  --seg-year: #7E22CE;
+  --seg-serial: #C2410C;
+}
+
+@media print {
+  .case-print-root {
+    --seg-category: #B45309;
+    --seg-district: #0F766E;
+    --seg-station: #2563EB;
+    --seg-year: #7E22CE;
+    --seg-serial: #C2410C;
+  }
+}

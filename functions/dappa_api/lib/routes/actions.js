@@ -1,13 +1,14 @@
 'use strict';
 // Action endpoints: predict, ai narrative, copilot, reports, notify, healthz.
 
-const { ok, fail, asyncH, requireAdmin } = require('../envelope');
+const { ok, fail, asyncH, requireAdmin, nocache, cacheKey } = require('../envelope');
 const { getLookups } = require('../lookups');
+const { anchorYm } = require('./read');
 const copilot = require('../copilot');
 const quickml = require('../quickml');
 const zia = require('../zia');
 const { getFallbackState, fixtureNetworkGraph } = require('../fixture');
-const { toNum } = require('../util');
+const { toNum, round, ymAdd, pctDelta, parseJsonSafe } = require('../util');
 
 function register(router) {
   router.post('/predict/outcome', asyncH(async (req, res) => {
@@ -74,6 +75,87 @@ function register(router) {
     const lk = await getLookups(ctx);
     const result = await copilot.answer(q, { ds: ctx.ds, lk });
     ok(res, result, { source: 'deterministic' });
+  }));
+
+  // Tappable question chips for the copilot UI — every one is guaranteed to
+  // answer (they are the smoke-tested canned utterances).
+  router.get('/copilot/suggestions', asyncH(async (req, res) => {
+    ok(res, { suggestions: copilot.CANNED_UTTERANCES }, { count: copilot.CANNED_UTTERANCES.length });
+  }));
+
+  // Single-call data payload for the weekly brief: the /print/brief page and
+  // the SmartBrowz PDF path both render from this one response.
+  router.get('/reports/brief-data', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const window = String(req.query.window || 'last30');
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+      const lk = await getLookups(ctx);
+      const curYm = await anchorYm(ctx.ds, null);
+      const prevYm = ymAdd(curYm, -1);
+      const [monthRows, alertCountRows, alerts, risk, distRows] = await Promise.all([
+        ctx.ds.query({
+          table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)', 'SUM(HeinousCount)'],
+          where: [{ col: 'Ym', op: '>=', val: prevYm }, { col: 'Ym', op: '<=', val: curYm }],
+          groupBy: ['Ym']
+        }),
+        ctx.ds.query({ table: 'AnomalyAlert', columns: ['COUNT(AlertID)'], where: [{ col: 'Status', op: '=', val: 'OPEN' }] }),
+        ctx.ds.query({
+          table: 'AnomalyAlert',
+          columns: ['AlertID', 'DistrictID', 'CrimeHeadID', 'Observed', 'Expected', 'ZScore', 'Severity', 'Narrative'],
+          where: [{ col: 'Status', op: '=', val: 'OPEN' }],
+          orderBy: { col: 'ZScore', desc: true }, limit: { count: 5 }
+        }),
+        ctx.ds.query({
+          table: 'StationRisk', columns: ['UnitID', 'RiskScore', 'DriversJson'],
+          orderBy: { col: 'RiskScore', desc: true }, limit: { count: 5 }
+        }),
+        ctx.ds.query({
+          table: 'AggMonthly', columns: ['DistrictID', 'SUM(CaseCount)'],
+          where: [{ col: 'Ym', op: '=', val: curYm }],
+          groupBy: ['DistrictID'], orderBy: { col: 'SUM(CaseCount)', desc: true }, limit: { count: 5 }
+        })
+      ]);
+      const byYm = {};
+      for (const r of monthRows) byYm[r.Ym] = { cases: toNum(r['SUM(CaseCount)']), heinous: toNum(r['SUM(HeinousCount)']) };
+      const cur = byYm[curYm] || { cases: 0, heinous: 0 };
+      const prev = byYm[prevYm] || { cases: 0, heinous: 0 };
+      return {
+        window,
+        asOfYm: curYm,
+        generatedAt: new Date().toISOString(),
+        kpis: {
+          totalFirs: cur.cases,
+          momPct: pctDelta(cur.cases, prev.cases),
+          heinousCount: cur.heinous,
+          activeAlerts: toNum(alertCountRows.length ? alertCountRows[0]['COUNT(AlertID)'] : 0)
+        },
+        topAlerts: alerts.map((a) => ({
+          alertId: a.AlertID,
+          districtName: lk.districtName(a.DistrictID),
+          headName: lk.headName(a.CrimeHeadID),
+          observed: toNum(a.Observed),
+          expected: round(toNum(a.Expected), 1),
+          zScore: round(toNum(a.ZScore), 2),
+          severity: toNum(a.Severity),
+          narrative: a.Narrative
+        })),
+        topRisk: risk.map((r) => {
+          const unit = lk.unitById.get(String(r.UnitID));
+          return {
+            unitId: String(r.UnitID),
+            unitName: unit ? unit.unitName : `Unit ${r.UnitID}`,
+            riskScore: round(toNum(r.RiskScore), 1),
+            drivers: parseJsonSafe(r.DriversJson, [])
+          };
+        }),
+        topDistricts: distRows.map((r) => ({
+          districtId: String(r.DistrictID),
+          districtName: lk.districtName(r.DistrictID),
+          caseCount: toNum(r['SUM(CaseCount)'])
+        }))
+      };
+    });
+    ok(res, value, { cached });
   }));
 
   router.post('/reports/weekly-brief', asyncH(async (req, res) => {

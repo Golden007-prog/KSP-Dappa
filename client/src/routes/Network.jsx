@@ -1,9 +1,12 @@
 // Network Explorer — co-accused communities from shared FIRs.
 // Cytoscape graph (color = community, size = degree) with a layout switcher
 // (fcose/concentric/grid), min-degree slider, edge-tier checkboxes, ego-network
-// focus mode with depth control (URL-synced), node search with fly-to, PNG
-// export, legend panel, community picker/isolate, shortest-path tool and
-// node/edge drawers (bottom sheet on mobile). Spec: master prompt §7 route 4.
+// focus mode with depth control (URL-synced), node search with fly-to + full
+// combobox keyboard support, PNG/CSV export, copy-view-link, saved views,
+// keyboard shortcuts (/ f + − Esc), label + neighbor-focus toggles, legend
+// panel, community picker/isolate with a detail summary, top-connectors list,
+// shortest-path tool and node/edge drawers (bottom sheet on mobile).
+// Spec: master prompt §7 route 4.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLookups, useNetworkGraph, useOffenders } from '../lib/api.js';
@@ -21,22 +24,42 @@ import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt } from '../lib/format.js';
 import CytoGraph from './network/CytoGraph.jsx';
 import { NodeDrawer, EdgeDrawer } from './network/Drawers.jsx';
+import SavedViews from './network/SavedViews.jsx';
+import TopConnectors from './network/TopConnectors.jsx';
+import CommunitySummary from './network/CommunitySummary.jsx';
 import {
   communityColor, computeCommunityStats, shortestPath, edgeKey,
   edgeTier, egoSubgraph, countComponents,
 } from './network/graphUtils.js';
-import { downloadDataUrl } from './network/download.js';
+import { downloadDataUrl, downloadCsv } from './network/download.js';
+import { copyText } from './network/clipboard.js';
 import { useMediaQuery, readPref, writePref } from './network/hooks.js';
 
 const NODE_CAP = 400;
 const LAYOUTS = ['fcose', 'concentric', 'grid'];
 const LAYOUT_PREF = 'dappa-net-layout';
 const LEGEND_PREF = 'dappa-net-legend';
+const LABELS_PREF = 'dappa-net-labels';
+const NEIGHBOR_PREF = 'dappa-net-neighbor';
 
 const EDGE_TIERS = [
   { id: 'single', label: '1 case', hint: 'links from a single shared FIR' },
   { id: 'repeat', label: '2 cases', hint: 'links from two shared FIRs' },
   { id: 'strong', label: '3+ cases', hint: 'strong ties — three or more shared FIRs' },
+];
+
+const NODE_CSV = [
+  { key: 'id', label: 'Person key' },
+  { key: 'label', label: 'Name' },
+  { key: 'communityId', label: 'Community' },
+  { key: 'degree', label: 'Degree' },
+  { key: 'caseCount', label: 'Cases' },
+];
+const EDGE_CSV = [
+  { key: 'source', label: 'Person A' },
+  { key: 'target', label: 'Person B' },
+  { key: 'weight', label: 'Shared cases' },
+  { label: 'Case IDs', map: (e) => (e.caseIds || []).join('; ') },
 ];
 
 function PersonSelect({ label, value, onChange, options }) {
@@ -76,9 +99,13 @@ export default function Network() {
   const [selected, setSelected] = useState(null); // {type:'node'|'edge', data}
   const [pathEnds, setPathEnds] = useState({ a: '', b: '' });
   const [searchQ, setSearchQ] = useState('');
+  const [searchIdx, setSearchIdx] = useState(0);
   const [legendOpen, setLegendOpen] = useState(() => readPref(LEGEND_PREF, '1') !== '0');
+  const [showLabels, setShowLabels] = useState(() => readPref(LABELS_PREF, '1') !== '0');
+  const [neighborFocus, setNeighborFocus] = useState(() => readPref(NEIGHBOR_PREF, '0') === '1');
   const cyApi = useRef(null);
   const pendingFly = useRef(null);
+  const searchRef = useRef(null);
 
   const setParams = (patch) => {
     setSearchParams((prev) => {
@@ -242,6 +269,15 @@ export default function Network() {
   // Reset the path tool when the visible universe changes shape.
   useEffect(() => { setPathEnds({ a: '', b: '' }); }, [districtName, communityId, ego]);
 
+  // A drawer must never show an element the filters just removed — close it
+  // (Isolate / ego / path actions would otherwise target an off-screen target).
+  useEffect(() => {
+    if (!selected || graph.isLoading) return;
+    if (selected.type === 'node' && !nodesById.has(String(selected.data.id))) setSelected(null);
+    else if (selected.type === 'edge'
+      && !filtered.edges.some((e) => String(e.id) === String(selected.data.id))) setSelected(null);
+  }, [selected, nodesById, filtered.edges, graph.isLoading]);
+
   const setCommunity = (cid) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -260,6 +296,12 @@ export default function Network() {
   const changeLayout = (v) => { setLayout(v); writePref(LAYOUT_PREF, v); };
   const toggleLegend = () => {
     setLegendOpen((v) => { writePref(LEGEND_PREF, v ? '0' : '1'); return !v; });
+  };
+  const toggleLabels = () => {
+    setShowLabels((v) => { writePref(LABELS_PREF, v ? '0' : '1'); return !v; });
+  };
+  const toggleNeighbor = () => {
+    setNeighborFocus((v) => { writePref(NEIGHBOR_PREF, v ? '0' : '1'); return !v; });
   };
 
   const clearGraphFilters = () => {
@@ -283,6 +325,8 @@ export default function Network() {
       .slice(0, 8);
   }, [filtered.nodes, searchQ]);
 
+  useEffect(() => { setSearchIdx(0); }, [searchQ]);
+
   const selectNode = (n) => setSelected({ type: 'node', data: { ...n, id: String(n.id) } });
 
   const pickSearch = (n) => {
@@ -291,11 +335,64 @@ export default function Network() {
     setSearchQ('');
   };
 
+  const pickFromPanel = (n) => {
+    selectNode(n);
+    cyApi.current?.flyTo(String(n.id));
+  };
+
+  const onSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown' && searchMatches.length) {
+      e.preventDefault();
+      setSearchIdx((i) => Math.min(i + 1, searchMatches.length - 1));
+    } else if (e.key === 'ArrowUp' && searchMatches.length) {
+      e.preventDefault();
+      setSearchIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' && searchMatches.length) {
+      e.preventDefault();
+      pickSearch(searchMatches[Math.min(searchIdx, searchMatches.length - 1)]);
+    } else if (e.key === 'Escape') {
+      setSearchQ('');
+      e.target.blur?.();
+    }
+  };
+
+  // Route keyboard shortcuts: / find · 0 fit · + − zoom · Esc clear selection.
+  // ('f' belongs to the app-wide zen-mode shortcut in Layout — leave it alone.)
+  useEffect(() => {
+    const onKey = (e) => {
+      const t = e.target;
+      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.querySelector('[aria-modal="true"]')) return; // sheet/palette open
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); }
+      else if (e.key === '0') cyApi.current?.fit();
+      else if (e.key === '+' || e.key === '=') cyApi.current?.zoomIn?.();
+      else if (e.key === '-') cyApi.current?.zoomOut?.();
+      else if (e.key === 'Escape') { setSelected(null); setPathEnds({ a: '', b: '' }); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const exportPng = () => {
     const uri = cyApi.current?.png?.();
     if (!uri) { toast.error('The graph canvas is not ready yet.'); return; }
     downloadDataUrl(`dappa-network-${new Date().toISOString().slice(0, 10)}.png`, uri);
     toast.success('Network graph exported as PNG.');
+  };
+
+  const exportCsv = () => {
+    if (!filtered.nodes.length) { toast.info('Nothing to export in the current view.'); return; }
+    const day = new Date().toISOString().slice(0, 10);
+    downloadCsv(`dappa-network-nodes-${day}.csv`, NODE_CSV, filtered.nodes);
+    downloadCsv(`dappa-network-edges-${day}.csv`, EDGE_CSV, filtered.edges);
+    toast.success(`Exported ${fmtInt(filtered.nodes.length)} people + ${fmtInt(filtered.edges.length)} links as two CSV files.`);
+  };
+
+  const copyLink = async () => {
+    const ok = await copyText(window.location.href);
+    if (ok) toast.success('View link copied — filters, community and ego focus travel with it.');
+    else toast.error('Could not copy the link in this browser.');
   };
 
   const onLayoutStop = () => {
@@ -363,6 +460,9 @@ export default function Network() {
         layout={layout}
         selectedId={selected?.type === 'node' ? selected.data.id : selected?.type === 'edge' ? selected.data.id : ''}
         pathIds={pathIds}
+        showLabels={showLabels}
+        neighborFocus={neighborFocus}
+        ariaLabel={`Co-accused network graph: ${fmtInt(filtered.nodes.length)} people and ${fmtInt(filtered.edges.length)} links. Use the Find-person search or the Top connectors list for keyboard access.`}
         onNodeTap={(d) => setSelected({ type: 'node', data: d })}
         onEdgeTap={(d) => setSelected({ type: 'edge', data: d })}
         onBackgroundTap={() => setSelected(null)}
@@ -374,6 +474,9 @@ export default function Network() {
   };
 
   const egoLabel = ego ? (allNodesById.get(ego)?.label || ego) : '';
+  const isolatedCommunity = communityId ? communities.find((c) => c.id === String(communityId)) : null;
+
+  const toolBtn = 'btn !py-1.5 !px-2.5 text-xs min-h-[40px]';
 
   return (
     <div className="space-y-4">
@@ -383,7 +486,7 @@ export default function Network() {
       </div>
 
       <FilterBar show={['district']}>
-        <label className="flex items-center gap-2 text-xs text-muted whitespace-nowrap">
+        <label className="flex items-center gap-2 text-xs text-muted whitespace-nowrap min-h-[40px]">
           <span>Degree ≥ <span className="num text-ink">{minDegree}</span></span>
           <input
             type="range"
@@ -399,10 +502,10 @@ export default function Network() {
         <span className="text-xs text-muted whitespace-nowrap hidden sm:inline" aria-hidden="true">Links:</span>
         {EDGE_TIERS.map((t) => (
           <Tooltip key={t.id} label={t.hint}>
-            <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none whitespace-nowrap">
+            <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none whitespace-nowrap min-h-[40px] px-0.5">
               <input
                 type="checkbox"
-                className="accent-amber"
+                className="accent-amber h-4 w-4"
                 checked={edgeTypes[t.id]}
                 onChange={(e) => setEdgeTypes((p) => ({ ...p, [t.id]: e.target.checked }))}
               />
@@ -411,10 +514,10 @@ export default function Network() {
           </Tooltip>
         ))}
         <Tooltip label="links whose endpoints sit in different communities">
-          <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none whitespace-nowrap">
+          <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none whitespace-nowrap min-h-[40px] px-0.5">
             <input
               type="checkbox"
-              className="accent-amber"
+              className="accent-amber h-4 w-4"
               checked={edgeTypes.bridge}
               onChange={(e) => setEdgeTypes((p) => ({ ...p, bridge: e.target.checked }))}
             />
@@ -439,6 +542,11 @@ export default function Network() {
         </label>
       </FilterBar>
 
+      <SavedViews
+        currentQuery={searchParams.toString()}
+        onApply={(qs) => { setSelected(null); setSearchParams(new URLSearchParams(qs)); }}
+      />
+
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_330px] gap-4 items-start">
         <Card padded={false}>
           <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-grid/60 text-[11px] text-muted">
@@ -456,27 +564,46 @@ export default function Network() {
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2 min-w-0">
               <div className="relative">
                 <input
-                  className="input-dark !py-1.5 w-36 sm:w-48"
-                  placeholder="Find person…"
+                  ref={searchRef}
+                  className="input-dark !py-2 w-40 sm:w-48"
+                  placeholder="Find person… ( / )"
                   value={searchQ}
                   onChange={(e) => setSearchQ(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && searchMatches.length) { e.preventDefault(); pickSearch(searchMatches[0]); }
-                    if (e.key === 'Escape') setSearchQ('');
-                  }}
+                  onKeyDown={onSearchKeyDown}
+                  role="combobox"
+                  aria-expanded={!!searchQ.trim()}
+                  aria-controls="net-search-listbox"
+                  aria-autocomplete="list"
+                  aria-activedescendant={searchQ.trim() && searchMatches.length
+                    ? `net-search-opt-${Math.min(searchIdx, searchMatches.length - 1)}`
+                    : undefined}
                   aria-label="Search people in the visible graph"
                 />
                 {searchQ.trim() && (
-                  <ul className="absolute right-0 z-40 mt-1 w-60 max-h-56 overflow-y-auto rounded-lg border border-grid bg-panel shadow-lift" role="listbox" aria-label="Matching people">
+                  <ul
+                    id="net-search-listbox"
+                    className="absolute right-0 z-40 mt-1 w-60 max-h-56 overflow-y-auto rounded-lg border border-grid bg-panel shadow-lift"
+                    role="listbox"
+                    aria-label="Matching people"
+                  >
                     {searchMatches.length === 0 && (
-                      <li className="px-3 py-2 text-[11px] text-muted">No matching person in view</li>
+                      <li className="px-3 py-2 text-[11px] text-muted" role="presentation">No matching person in view</li>
                     )}
-                    {searchMatches.map((n) => (
-                      <li key={String(n.id)}>
+                    {searchMatches.map((n, i) => (
+                      <li
+                        key={String(n.id)}
+                        id={`net-search-opt-${i}`}
+                        role="option"
+                        aria-selected={i === searchIdx}
+                      >
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-2 text-xs text-ink hover:bg-grid/40 transition-colors flex items-center justify-between gap-2"
+                          tabIndex={-1}
+                          className={`w-full text-left px-3 py-2.5 min-h-[40px] text-xs text-ink transition-colors flex items-center justify-between gap-2 ${
+                            i === searchIdx ? 'bg-grid/40' : 'hover:bg-grid/40'
+                          }`}
                           onClick={() => pickSearch(n)}
+                          onMouseEnter={() => setSearchIdx(i)}
                         >
                           <span className="truncate">{n.label || String(n.id)}</span>
                           <span className="num text-muted shrink-0">{fmtInt(n.caseCount)} cases</span>
@@ -496,14 +623,50 @@ export default function Network() {
                   { value: 'grid', label: 'Grid' },
                 ]}
               />
-              <Tooltip label="Fit graph to view">
-                <button type="button" className="btn !py-1.5 !px-2.5 text-xs" onClick={() => cyApi.current?.fit()}>
+              <Tooltip label="Zoom out (−)">
+                <button type="button" className={toolBtn} onClick={() => cyApi.current?.zoomOut?.()} aria-label="Zoom out">−</button>
+              </Tooltip>
+              <Tooltip label="Zoom in (+)">
+                <button type="button" className={toolBtn} onClick={() => cyApi.current?.zoomIn?.()} aria-label="Zoom in">＋</button>
+              </Tooltip>
+              <Tooltip label="Fit graph to view (0)">
+                <button type="button" className={toolBtn} onClick={() => cyApi.current?.fit()}>
                   Fit
                 </button>
               </Tooltip>
+              <Tooltip label={showLabels ? 'Hide node labels (declutters dense graphs)' : 'Show node labels'}>
+                <button
+                  type="button"
+                  className={`${toolBtn} ${showLabels ? '!border-amber/60 text-amber' : ''}`}
+                  onClick={toggleLabels}
+                  aria-pressed={showLabels}
+                >
+                  Labels
+                </button>
+              </Tooltip>
+              <Tooltip label={neighborFocus ? 'Stop dimming non-neighbors of the selection' : 'Dim everything except the selection and its direct neighbors'}>
+                <button
+                  type="button"
+                  className={`${toolBtn} ${neighborFocus ? '!border-amber/60 text-amber' : ''}`}
+                  onClick={toggleNeighbor}
+                  aria-pressed={neighborFocus}
+                >
+                  Focus
+                </button>
+              </Tooltip>
               <Tooltip label="Download the graph as a PNG image">
-                <button type="button" className="btn !py-1.5 !px-2.5 text-xs" onClick={exportPng}>
+                <button type="button" className={toolBtn} onClick={exportPng}>
                   PNG
+                </button>
+              </Tooltip>
+              <Tooltip label="Download visible people + links as two CSV files">
+                <button type="button" className={toolBtn} onClick={exportCsv}>
+                  CSV
+                </button>
+              </Tooltip>
+              <Tooltip label="Copy a shareable link to this exact view">
+                <button type="button" className={toolBtn} onClick={copyLink}>
+                  Link
                 </button>
               </Tooltip>
             </div>
@@ -523,7 +686,7 @@ export default function Network() {
                   { value: '3', label: '3 hops' },
                 ]}
               />
-              <button type="button" className="btn !py-1 !px-2 text-[11px] ml-auto" onClick={() => setEgo(null)}>
+              <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px] ml-auto" onClick={() => setEgo(null)}>
                 Exit ego focus
               </button>
             </div>
@@ -537,7 +700,7 @@ export default function Network() {
                 <button
                   key={c.id}
                   type="button"
-                  className={`chip hover:border-amber/50 transition-colors ${String(communityId) === c.id ? '!border-amber text-amber' : ''}`}
+                  className={`chip !py-1 min-h-[36px] hover:border-amber/50 transition-colors ${String(communityId) === c.id ? '!border-amber text-amber' : ''}`}
                   onClick={() => setCommunity(String(communityId) === c.id ? '' : c.id)}
                   title={`${c.members} members — top: ${c.topLabel}`}
                 >
@@ -552,12 +715,23 @@ export default function Network() {
         </Card>
 
         <div className="space-y-4">
+          {isolatedCommunity && (
+            <CommunitySummary
+              communityId={communityId}
+              community={isolatedCommunity}
+              nodes={filtered.nodes}
+              edges={filtered.edges}
+              onPick={pickFromPanel}
+              onClear={() => setCommunity('')}
+            />
+          )}
+
           <Card title="Shortest path" subtitle="Fewest shared-case hops between two persons">
             <div className="space-y-2.5">
               <PersonSelect label="Person A" value={pathEnds.a} onChange={(v) => setPathEnds((p) => ({ ...p, a: v }))} options={personOptions} />
               <PersonSelect label="Person B" value={pathEnds.b} onChange={(v) => setPathEnds((p) => ({ ...p, b: v }))} options={personOptions} />
               {(pathEnds.a || pathEnds.b) && (
-                <button type="button" className="btn !py-1 !px-2 text-[11px]" onClick={() => setPathEnds({ a: '', b: '' })}>
+                <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px]" onClick={() => setPathEnds({ a: '', b: '' })}>
                   Clear path
                 </button>
               )}
@@ -583,10 +757,12 @@ export default function Network() {
             </div>
           </Card>
 
+          <TopConnectors nodes={filtered.nodes} onPick={pickFromPanel} />
+
           <Card
             title="Legend"
             actions={(
-              <button type="button" className="btn-ghost !py-1 !px-2 text-[11px]" onClick={toggleLegend} aria-expanded={legendOpen}>
+              <button type="button" className="btn-ghost !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={toggleLegend} aria-expanded={legendOpen}>
                 {legendOpen ? 'Hide' : 'Show'}
               </button>
             )}
@@ -615,6 +791,13 @@ export default function Network() {
                   <li><span className="text-teal">Teal ring</span> = ego-focus person</li>
                   <li>Pinch or scroll to zoom · drag to pan · tap for details</li>
                 </ul>
+                <div className="border-t border-grid/60 pt-2.5">
+                  <p className="text-[10px] uppercase tracking-wide mb-1.5">Keyboard</p>
+                  <ul className="space-y-1">
+                    <li><kbd className="chip !py-0 !px-1.5 text-[10px] num">/</kbd> find person · <kbd className="chip !py-0 !px-1.5 text-[10px] num">0</kbd> fit view</li>
+                    <li><kbd className="chip !py-0 !px-1.5 text-[10px] num">+</kbd> / <kbd className="chip !py-0 !px-1.5 text-[10px] num">−</kbd> zoom · <kbd className="chip !py-0 !px-1.5 text-[10px] num">Esc</kbd> clear selection</li>
+                  </ul>
+                </div>
               </div>
             )}
           </Card>

@@ -1,16 +1,29 @@
 // /predict — forecast explorer: district × crime-head monthly line with the
 // 80% CI band (stacked invisible floor + band area) and a backtest MAPE badge.
-// In-card selects override the shared FilterBar values; the server defaults to
-// Bengaluru City × Property when nothing is chosen.
-import { useMemo, useState } from 'react';
+// The in-card selection is deep-linked via `fd`/`fh` URL params (shareable +
+// reload-safe, matching the app-wide URL-filter convention); with neither set
+// it follows the shared FilterBar district / crime head, then the server
+// default of Bengaluru City × Property. Series colors resolve per app theme.
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useForecast, useLookups } from '../../lib/api.js';
 import ChartPanel from '../../components/ChartPanel.jsx';
 import Badge from '../../components/Badge.jsx';
+import Tooltip from '../../components/Tooltip.jsx';
+import { useTheme } from '../../components/ThemeProvider.jsx';
+import { useToast } from '../../components/ToastProvider.jsx';
 import { fmtInt, fmtNum, monthLabel } from '../../lib/format.js';
+import { downloadCsv, slug } from '../trends/csv.js';
 
 const HISTORY_MONTHS = 18; // keep the tail readable
 
-function buildOption(history, forecast) {
+// Actual/forecast/CI colors per app theme (AA-dark siblings on white).
+const SERIES_TOKENS = {
+  dark: { actual: '#2DD4BF', forecast: '#F5A623', ci: 'rgba(245,166,35,0.16)', mark: '#3a4663', muted: '#8A94A8' },
+  light: { actual: '#0F766E', forecast: '#D97706', ci: 'rgba(217,119,6,0.14)', mark: '#C9D4E8', muted: '#5C6B84' },
+};
+
+function buildOption(history, forecast, t) {
   const h = history.slice(-HISTORY_MONTHS);
   const months = [...h.map((r) => r.ym), ...forecast.map((r) => r.ym)];
   if (!months.length) return null;
@@ -55,21 +68,21 @@ function buildOption(history, forecast) {
       {
         name: '80% CI', type: 'line', stack: 'ci', data: ciBand,
         lineStyle: { opacity: 0 }, symbol: 'none', emphasis: { disabled: true },
-        areaStyle: { color: 'rgba(245,166,35,0.16)' },
+        areaStyle: { color: t.ci },
       },
       {
         name: 'Actual', type: 'line', data: actual, z: 3,
         symbol: 'circle', symbolSize: 4,
-        lineStyle: { width: 2, color: '#2DD4BF' }, itemStyle: { color: '#2DD4BF' },
+        lineStyle: { width: 2, color: t.actual }, itemStyle: { color: t.actual },
       },
       {
         name: 'Forecast', type: 'line', data: predicted, z: 3,
         symbol: 'circle', symbolSize: 4,
-        lineStyle: { width: 2, type: 'dashed', color: '#F5A623' }, itemStyle: { color: '#F5A623' },
+        lineStyle: { width: 2, type: 'dashed', color: t.forecast }, itemStyle: { color: t.forecast },
         markLine: forecast.length ? {
           symbol: 'none', silent: true,
-          label: { formatter: 'forecast →', color: '#8A94A8', fontSize: 10, position: 'insideEndTop' },
-          lineStyle: { color: '#3a4663', type: 'dashed' },
+          label: { formatter: 'forecast →', color: t.muted, fontSize: 10, position: 'insideEndTop' },
+          lineStyle: { color: t.mark, type: 'dashed' },
           data: [{ xAxis: monthLabel(forecast[0].ym) }],
         } : undefined,
       },
@@ -79,20 +92,50 @@ function buildOption(history, forecast) {
 
 export default function ForecastExplorer({ defaultDistrictId, defaultCrimeHeadId }) {
   const lookups = useLookups();
-  const [localDistrict, setLocalDistrict] = useState('');
-  const [localHead, setLocalHead] = useState('');
+  const toast = useToast();
+  const { theme } = useTheme();
+  const tokens = SERIES_TOKENS[theme] || SERIES_TOKENS.dark;
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const districtId = localDistrict || defaultDistrictId || '0101';
-  const crimeHeadId = localHead || defaultCrimeHeadId || '3';
+  const fd = searchParams.get('fd') || '';
+  const fh = searchParams.get('fh') || '';
+  const districtId = fd || defaultDistrictId || '0101';
+  const crimeHeadId = fh || defaultCrimeHeadId || '3';
   const q = useForecast({ districtId, crimeHeadId });
 
+  const setParam = (key) => (e) => {
+    const v = e.target.value;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set(key, v);
+      else next.delete(key);
+      return next;
+    }, { replace: true });
+  };
+
   const data = q.data || { history: [], forecast: [], model: '', mape: null };
-  const option = useMemo(() => buildOption(data.history, data.forecast), [data.history, data.forecast]);
+  const option = useMemo(
+    () => buildOption(data.history, data.forecast, tokens),
+    [data.history, data.forecast, tokens],
+  );
 
   const districts = lookups.data?.districts || [];
   const heads = lookups.data?.crimeHeads || [];
   const districtName = districts.find((d) => d.districtId === districtId)?.districtName || districtId;
   const headName = heads.find((h) => h.crimeHeadId === String(crimeHeadId))?.headName || `head ${crimeHeadId}`;
+
+  const exportCsv = () => {
+    if (!data.history.length && !data.forecast.length) return;
+    downloadCsv(
+      `dappa-forecast_${slug(`${districtName}-${headName}`)}`,
+      ['month', 'actual', 'predicted', 'lo80', 'hi80'],
+      [
+        ...data.history.map((r) => [r.ym, r.actual, '', '', '']),
+        ...data.forecast.map((r) => [r.ym, '', r.predicted, r.lo, r.hi]),
+      ],
+    );
+    toast.success(`Forecast exported — ${districtName} × ${headName}`);
+  };
 
   return (
     <ChartPanel
@@ -108,9 +151,9 @@ export default function ForecastExplorer({ defaultDistrictId, defaultCrimeHeadId
           {data.model && <Badge tone="neutral">{data.model}</Badge>}
           {data.mape != null && <Badge tone="teal">backtest MAPE {fmtNum(data.mape, 1)}%</Badge>}
           <select
-            className="input-dark !py-1 text-xs max-w-[11rem]"
+            className="input-dark !py-2 text-xs max-w-[10.5rem] min-h-[40px]"
             value={districtId}
-            onChange={(e) => setLocalDistrict(e.target.value)}
+            onChange={setParam('fd')}
             disabled={lookups.isLoading}
             aria-label="Forecast district"
           >
@@ -118,9 +161,9 @@ export default function ForecastExplorer({ defaultDistrictId, defaultCrimeHeadId
             {districts.map((d) => <option key={d.districtId} value={d.districtId}>{d.districtName}</option>)}
           </select>
           <select
-            className="input-dark !py-1 text-xs max-w-[11rem]"
+            className="input-dark !py-2 text-xs max-w-[10.5rem] min-h-[40px]"
             value={String(crimeHeadId)}
-            onChange={(e) => setLocalHead(e.target.value)}
+            onChange={setParam('fh')}
             disabled={lookups.isLoading}
             aria-label="Forecast crime head"
           >
@@ -128,8 +171,18 @@ export default function ForecastExplorer({ defaultDistrictId, defaultCrimeHeadId
             {heads.map((h) => <option key={h.crimeHeadId} value={h.crimeHeadId}>{h.headName}</option>)}
           </select>
           {q.error && (
-            <button type="button" className="btn !py-1 text-xs" onClick={() => q.refetch()}>Retry</button>
+            <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={() => q.refetch()}>Retry</button>
           )}
+          <Tooltip label="Download history + forecast as CSV">
+            <button
+              type="button"
+              className="btn !px-2.5 text-xs min-h-[40px]"
+              onClick={exportCsv}
+              disabled={q.isLoading || (!data.history.length && !data.forecast.length)}
+            >
+              CSV
+            </button>
+          </Tooltip>
         </div>
       )}
     />

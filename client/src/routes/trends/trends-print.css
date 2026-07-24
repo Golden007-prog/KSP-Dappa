@@ -1,0 +1,12 @@
+/* /trends print polish — the route prints as a clean chart briefing:
+   interactive chrome (filter bar, palette/pin controls, toggle rows) is
+   hidden and chart cards refuse to split across page breaks. */
+@media print {
+  .trends-no-print {
+    display: none !important;
+  }
+  .trends-route section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

@@ -1,13 +1,18 @@
 // Bottom sheet — mobile-first modal surface (centered narrow card on md+).
 // Props: open, onClose, title?, children, className?.
 // Esc / overlay click close it; focus moves into the panel on open and returns
-// on close; safe-area padded. Dependency-free; portal to <body>.
+// on close; Tab is trapped inside (aria-modal enforced) and the page behind
+// stops scrolling; safe-area padded. Dependency-free; portal to <body>.
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useFocusTrap, useScrollLock } from '../lib/modal.js';
 
 export default function Sheet({ open, onClose, title, children, className = '' }) {
   const panelRef = useRef(null);
   const restoreRef = useRef(null);
+
+  useScrollLock(open);
+  useFocusTrap(open, panelRef);
 
   useEffect(() => {
     if (!open) return undefined;

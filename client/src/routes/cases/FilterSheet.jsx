@@ -150,6 +150,13 @@ export default function FilterSheet({ open, onClose, values, setMany, onClearAll
               />
             </Field>
           </div>
+          <p className="text-[10px] text-muted/80 mt-1.5">
+            {values.explicitDates
+              ? 'Custom dates active — picking a Period preset replaces them.'
+              : values.range && values.range !== 'all'
+                ? 'These dates come from the preset — editing either switches to custom dates.'
+                : 'Pick a preset above or type explicit dates.'}
+          </p>
         </div>
 
         <label className="flex items-center justify-between gap-3 border-t border-grid/60 pt-3 min-h-[44px] cursor-pointer">

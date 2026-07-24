@@ -2,6 +2,8 @@
 // Registry rows give the instant columns; GET /offenders/:key enriches each
 // column with degree + first/last seen once the sheet is open (queries stay
 // disabled while closed — keys pass through as '' so nothing fetches).
+// Numeric rows tint the highest value so differences read at a glance
+// (risk = red tint, cases/degree = amber).
 import { Link } from 'react-router-dom';
 import Sheet from '../../components/Sheet.jsx';
 import { useOffender } from '../../lib/api.js';
@@ -14,11 +16,25 @@ function DetCell({ loading, children }) {
 }
 
 const METRICS = [
-  { id: 'risk', label: 'Risk', render: (c) => <RiskBadge score={c.p.riskScore} /> },
-  { id: 'cases', label: 'Cases', render: (c) => fmtInt(c.p.caseCount) },
+  {
+    id: 'risk',
+    label: 'Risk',
+    num: (c) => Number(c.p.riskScore),
+    maxTint: 'bg-signal/10',
+    render: (c) => <RiskBadge score={c.p.riskScore} />,
+  },
+  {
+    id: 'cases',
+    label: 'Cases',
+    num: (c) => Number(c.p.caseCount),
+    maxTint: 'bg-amber/10',
+    render: (c) => fmtInt(c.p.caseCount),
+  },
   {
     id: 'degree',
     label: 'Network degree',
+    num: (c) => Number(c.p.degree),
+    maxTint: 'bg-amber/10',
     render: (c) => <DetCell loading={c.loading}>{fmtInt(c.p.degree)}</DetCell>,
   },
   {
@@ -76,6 +92,18 @@ const METRICS = [
   },
 ];
 
+/** Index of the strictly-highest numeric value, or -1 when tied/empty. */
+function maxIndex(metric, cols) {
+  if (!metric.num || cols.length < 2) return -1;
+  const vals = cols.map((c) => metric.num(c));
+  let best = -Infinity;
+  let idx = -1;
+  vals.forEach((v, i) => { if (Number.isFinite(v) && v > best) { best = v; idx = i; } });
+  const finite = vals.filter(Number.isFinite);
+  if (finite.length < 2 || Math.min(...finite) === Math.max(...finite)) return -1;
+  return idx;
+}
+
 export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), onClose, onRemove }) {
   // Fixed slots keep the hook count stable for up to 3 offenders.
   const d0 = useOffender(open ? keys[0] || '' : '');
@@ -122,7 +150,7 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
                       </div>
                       <button
                         type="button"
-                        className="text-muted hover:text-ink px-1 text-sm leading-none"
+                        className="flex h-9 w-9 -mt-1 -mr-1 shrink-0 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
                         onClick={() => onRemove?.(c.key)}
                         aria-label={`Remove ${c.p.canonicalName || c.key} from comparison`}
                       >
@@ -134,16 +162,25 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
               </tr>
             </thead>
             <tbody>
-              {METRICS.map((m) => (
-                <tr key={m.id} className="border-b border-grid/40 align-top">
-                  <th scope="row" className="text-left text-[10px] uppercase tracking-wide text-muted font-semibold px-2 py-2 whitespace-nowrap">
-                    {m.label}
-                  </th>
-                  {cols.map((c) => (
-                    <td key={c.key} className="px-2 py-2 num text-xs text-ink align-top">{m.render(c)}</td>
-                  ))}
-                </tr>
-              ))}
+              {METRICS.map((m) => {
+                const hi = maxIndex(m, cols);
+                return (
+                  <tr key={m.id} className="border-b border-grid/40 align-top">
+                    <th scope="row" className="text-left text-[10px] uppercase tracking-wide text-muted font-semibold px-2 py-2 whitespace-nowrap">
+                      {m.label}
+                    </th>
+                    {cols.map((c, i) => (
+                      <td
+                        key={c.key}
+                        className={`px-2 py-2 num text-xs text-ink align-top ${i === hi ? `${m.maxTint} rounded` : ''}`}
+                        title={i === hi ? `Highest ${m.label.toLowerCase()} of the compared set` : undefined}
+                      >
+                        {m.render(c)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

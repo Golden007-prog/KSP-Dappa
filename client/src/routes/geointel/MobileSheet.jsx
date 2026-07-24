@@ -25,7 +25,7 @@ export default function MobileSheet({ open, onOpenChange, peek, title = 'Map inf
 
   return (
     <div
-      className="md:hidden absolute inset-x-0 bottom-0 z-20 bg-panel/95 backdrop-blur-sm border-t border-grid rounded-t-2xl shadow-lift"
+      className="gi-noprint md:hidden absolute inset-x-0 bottom-0 z-20 bg-panel/95 backdrop-blur-sm border-t border-grid rounded-t-2xl shadow-lift"
       style={{ transform: dragDy ? `translateY(${Math.max(0, dragDy)}px)` : undefined, transition: dragDy ? 'none' : 'transform 0.2s ease' }}
       aria-label={title}
     >
@@ -37,7 +37,7 @@ export default function MobileSheet({ open, onOpenChange, peek, title = 'Map inf
       >
         <button
           type="button"
-          className="w-full flex flex-col items-center pt-1.5 pb-0.5 focus:outline-none"
+          className="w-full flex flex-col items-center justify-center pt-1.5 pb-0.5 min-h-[40px] focus:outline-none"
           aria-expanded={open}
           aria-label={open ? 'Collapse map info sheet' : 'Expand map info sheet'}
           onClick={() => onOpenChange(!open)}
@@ -50,7 +50,11 @@ export default function MobileSheet({ open, onOpenChange, peek, title = 'Map inf
         {peek && <div className="px-2.5 pb-2">{peek}</div>}
       </div>
       <div className={open ? 'block border-t border-grid/60' : 'hidden'}>
-        <div className="max-h-[46vh] overflow-y-auto p-2.5 pb-3 space-y-3">
+        {/* safe-area padding keeps content clear of the iOS home indicator */}
+        <div
+          className="max-h-[46vh] overflow-y-auto p-2.5 space-y-3"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           {children}
         </div>
       </div>

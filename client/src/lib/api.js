@@ -440,9 +440,12 @@ export function useCategoryShare(params = {}) {
 }
 
 export function useHealthz() {
+  // refetchInterval keeps the topbar Live/API-down pill honest: without it the
+  // health check ran once per mount and a backend that died mid-session showed
+  // "Live" forever.
   return query(['healthz'], ({ signal }) =>
     apiGet('/healthz', {}, { signal }).then((r) => r.data || {}),
-  { retry: 0, staleTime: 30 * 1000 });
+  { retry: 0, staleTime: 30 * 1000, refetchInterval: 60 * 1000, refetchIntervalInBackground: false });
 }
 
 // --- mutations (all resolve to {data, meta} so meta.source badges work) ----

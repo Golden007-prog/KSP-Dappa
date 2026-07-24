@@ -5,7 +5,7 @@
 
 const { ok, fail, asyncH, commonFilters, pagination } = require('../envelope');
 const { getLookups } = require('../lookups');
-const { toNum } = require('../util');
+const { toNum, round, toCsv } = require('../util');
 
 async function caseWhere(ctx, filters) {
   const where = [];
@@ -57,6 +57,19 @@ function listRow(r, lk, anomalous) {
 const LIST_COLUMNS = ['CaseMasterID', 'CrimeNo', 'CaseNo', 'CrimeRegisteredDate', 'PoliceStationID',
   'CaseCategoryID', 'GravityOffenceID', 'CrimeMajorHeadID', 'CrimeMinorHeadID', 'CaseStatusID'];
 
+function hourOf(dt) {
+  const d = new Date(String(dt || '').replace(' ', 'T'));
+  return Number.isNaN(d.getTime()) ? null : d.getHours();
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(a));
+}
+
 function register(router) {
   router.get('/cases', asyncH(async (req, res) => {
     const ctx = req.ctx;
@@ -76,6 +89,89 @@ function register(router) {
       total: toNum(countRows.length ? countRows[0]['COUNT(CaseMasterID)'] : rows.length),
       page, perPage
     });
+  }));
+
+  // CSV export with the same filters as GET /cases (list-row shape).
+  router.get('/cases.csv', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const filters = commonFilters(req);
+    const limit = Math.min(5000, Math.max(1, toNum(req.query.limit, 1000)));
+    const lk = await getLookups(ctx);
+    const where = await caseWhere(ctx, filters);
+    const rows = await ctx.ds.query({
+      table: 'CaseMaster', columns: LIST_COLUMNS, where,
+      orderBy: { col: 'CrimeRegisteredDate', desc: true }, limit: { count: limit }
+    });
+    const anomalous = await anomalyFlags(ctx, rows.map((r) => r.CaseMasterID));
+    const data = rows.map((r) => listRow(r, lk, anomalous));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="dappa-cases.csv"');
+    res.send(toCsv(data, ['caseMasterId', 'crimeNo', 'caseNo', 'registeredDate', 'districtName', 'unitName', 'headName', 'subHeadName', 'statusName', 'gravityName', 'anomalyFlag']));
+  }));
+
+  // "Linked patterns": top-5 similar cases — same crime subhead, ranked by
+  // hour-of-day proximity, same station/district, and geographic distance.
+  router.get('/cases/:id/similar', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const id = String(req.params.id);
+    const lk = await getLookups(ctx);
+    const baseRows = await ctx.ds.query({
+      table: 'CaseMaster',
+      columns: LIST_COLUMNS.concat(['IncidentFromDate', 'latitude', 'longitude']),
+      where: [{ col: 'CaseMasterID', op: '=', val: id }]
+    });
+    if (!baseRows.length) return fail(res, 404, 'NOT_FOUND', `No case with id ${id}.`);
+    const base = baseRows[0];
+    const baseUnit = lk.unitById.get(String(base.PoliceStationID));
+    const baseDistrict = baseUnit ? baseUnit.districtId : null;
+    const baseHour = hourOf(base.IncidentFromDate);
+    const baseLat = toNum(base.latitude, null);
+    const baseLng = toNum(base.longitude, null);
+    const candidates = await ctx.ds.query({
+      table: 'CaseMaster',
+      columns: LIST_COLUMNS.concat(['IncidentFromDate', 'latitude', 'longitude']),
+      where: [
+        { col: 'CrimeMinorHeadID', op: '=', val: base.CrimeMinorHeadID },
+        { col: 'CaseMasterID', op: '!=', val: id }
+      ],
+      limit: { count: 400 }
+    });
+    const scored = candidates.map((c) => {
+      const why = ['same crime pattern'];
+      let hourScore = 0;
+      const h = hourOf(c.IncidentFromDate);
+      if (baseHour !== null && h !== null) {
+        const diff = Math.min(Math.abs(h - baseHour), 24 - Math.abs(h - baseHour));
+        hourScore = Math.max(0, 1 - diff / 6);
+        if (diff <= 2) why.push('similar hour of day');
+      }
+      let placeScore = 0;
+      const unit = lk.unitById.get(String(c.PoliceStationID));
+      if (String(c.PoliceStationID) === String(base.PoliceStationID)) {
+        placeScore = 1;
+        why.push('same station');
+      } else if (baseDistrict && unit && unit.districtId === baseDistrict) {
+        placeScore = 0.7;
+        why.push('same district');
+      }
+      let geoScore = 0;
+      const lat = toNum(c.latitude, null);
+      const lng = toNum(c.longitude, null);
+      if (baseLat !== null && baseLng !== null && lat !== null && lng !== null) {
+        const km = haversineKm(baseLat, baseLng, lat, lng);
+        geoScore = Math.max(0, 1 - km / 5);
+        if (km <= 2) why.push(`within ${round(Math.max(km, 0.1), 1)} km`);
+      }
+      const similarity = Math.round(100 * (0.4 * hourScore + 0.35 * placeScore + 0.25 * geoScore));
+      return { c, similarity, why };
+    });
+    scored.sort((a, b) => b.similarity - a.similarity || toNum(a.c.CaseMasterID) - toNum(b.c.CaseMasterID));
+    const top = scored.slice(0, 5);
+    const anomalous = await anomalyFlags(ctx, top.map((s) => s.c.CaseMasterID));
+    ok(res, top.map((s) => Object.assign(listRow(s.c, lk, anomalous), {
+      similarity: s.similarity,
+      whyMatched: s.why
+    })), { baseCaseId: toNum(base.CaseMasterID, id), candidateCount: candidates.length });
   }));
 
   router.get('/cases/:id', asyncH(async (req, res) => {

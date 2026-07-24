@@ -2,8 +2,17 @@
 // markup serves the /reports preview AND the /print/brief SmartBrowz target.
 // Deliberately no ECharts here: tables print crisply and render identically in
 // headless PDF capture. Styles are inline (print-exact, independent of the dark
-// app theme).
+// app theme). Optional props (absent → old behavior, so callers are unchanged):
+//   order      — section key order from the builder (?order= on /print/brief)
+//   density    — 'compact' adds the .brief-compact class (see briefStyles.jsx)
+//   preparedBy — officer name/designation stamped into the header
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
+import { useLookups } from '../../lib/api.js';
+import {
+  sevRank, selectOpenAlerts, selectTopHotspots, selectCommunities,
+  selectForecastRows, selectRiskRows,
+} from './select.js';
+import { DEFAULT_ORDER, normalizeOrder } from './briefSections.js';
 
 const INK = '#111827';
 const MUTED = '#6b7280';
@@ -12,8 +21,6 @@ const RED = '#b91c1c';
 const TEAL = '#0f766e';
 const AMBER = '#b45309';
 
-const sevRank = (s) => ({ critical: 3, high: 2, medium: 1 }[String(s || '').toLowerCase()] ?? 0);
-const isOpenAlert = (a) => !/ack/i.test(String(a?.status || ''));
 const hourFmt = (h) => (Number.isFinite(Number(h)) ? `${String(Number(h)).padStart(2, '0')}:00` : '—');
 
 function Section({ title, children }) {
@@ -58,98 +65,89 @@ function StatBox({ label, value, sub, color = INK }) {
   );
 }
 
-export default function BriefContent({ data, sections, style }) {
-  const { win, kpis, alerts, hotspots, network, forecast, risk } = data;
+/** Inline ▲/▼ percent change vs the prior window (print-safe inline styles).
+ * goodDown=true means a fall is good (crime counts); detection rate passes
+ * false. Renders nothing when either side is missing. */
+function Delta({ cur, prev, goodDown = true }) {
+  const c = Number(cur);
+  const p = Number(prev);
+  if (!Number.isFinite(c) || !Number.isFinite(p) || p === 0) return null;
+  const pct = ((c - p) / Math.abs(p)) * 100;
+  const flat = Math.abs(pct) < 0.05;
+  const up = pct >= 0;
+  const good = goodDown ? !up : up;
+  const color = flat ? MUTED : good ? TEAL : RED;
+  return (
+    <span style={{ color, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      {flat ? '▪' : up ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+    </span>
+  );
+}
+
+export default function BriefContent({ data, sections, style, order, density, preparedBy }) {
+  const { win, kpis, prevKpis, alerts, hotspots, network, forecast, risk } = data;
+  const lookups = useLookups();
   // Section toggles from the /reports builder (and ?sections= on /print/brief).
   // Absent prop / absent key → section on, so existing callers are unchanged.
   const show = (k) => !sections || sections[k] !== false;
-  const noneOn = ['kpis', 'alerts', 'hotspots', 'network', 'forecast'].every((k) => !show(k));
+  const sectionOrder = order ? normalizeOrder(order) : DEFAULT_ORDER;
+  const noneOn = DEFAULT_ORDER.every((k) => !show(k));
   const k = kpis.data || {};
-  const detectionPct = Number(k.detectionRate) <= 1 ? Number(k.detectionRate) * 100 : Number(k.detectionRate);
+  const pk = prevKpis?.data || {};
+  const asPct = (v) => Number(v); // server contract: detectionRate is a PERCENT (0-100)
+  const detectionPct = asPct(k.detectionRate);
 
-  const openAlerts = (alerts.data || [])
-    .filter(isOpenAlert)
-    .sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || Math.abs(b.zScore || 0) - Math.abs(a.zScore || 0))
-    .slice(0, 8);
+  const districtName = (id) => {
+    if (!id) return '—';
+    const hit = (lookups.data?.districts || []).find((d) => String(d.districtId) === String(id));
+    return hit?.districtName || String(id);
+  };
 
-  const topHotspots = [...(hotspots.data || [])]
-    .sort((a, b) => (Number(b.intensity) || 0) - (Number(a.intensity) || 0) || (b.caseCount || 0) - (a.caseCount || 0))
-    .slice(0, 6);
+  const openAlerts = selectOpenAlerts(data, 8);
+  const topHotspots = selectTopHotspots(data, 6);
+  const communities = selectCommunities(data, 5);
+  const forecastRows = selectForecastRows(data, 3);
+  const riskRows = selectRiskRows(data, 5);
 
-  const communities = (() => {
-    const byId = new Map();
-    for (const n of network.data?.nodes || []) {
-      const id = n.communityId ?? '—';
-      if (!byId.has(id)) byId.set(id, { id, members: 0, cases: 0, top: null });
-      const g = byId.get(id);
-      g.members += 1;
-      g.cases += Number(n.caseCount) || 0;
-      if (!g.top || (Number(n.degree) || 0) > (Number(g.top.degree) || 0)) g.top = n;
-    }
-    return [...byId.values()].sort((a, b) => b.members - a.members).slice(0, 5);
-  })();
+  const priorLabel = `vs prior ${win.days}d`;
 
-  const forecastRows = (forecast.data?.forecast || []).slice(0, 3);
-  const riskRows = [...(risk.data || [])]
-    .sort((a, b) => (Number(b.riskScore) || 0) - (Number(a.riskScore) || 0))
-    .slice(0, 5);
-
-  return (
-    <div className="print-page" style={style}>
-      <header>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#0b1220' }}>
-              Weekly Intelligence Brief
-            </h1>
-            <p style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
-              Karnataka State Police · DAPPA decision-support prototype
-            </p>
-          </div>
-          <div style={{ textAlign: 'right', fontSize: 11, color: MUTED }}>
-            <div>Period: <span style={{ color: INK }}>{dateLabel(win.from)} – {dateLabel(win.to)}</span></div>
-            <div>Window: {win.label}</div>
-            <div>Generated: {dateLabel(new Date().toISOString().slice(0, 10))}</div>
-          </div>
-        </div>
-        <p style={{ fontSize: 10, color: RED, marginTop: 6 }}>
-          Synthetic demonstration data — KSP Datathon 2026 prototype. Not real crime records.
-        </p>
-        <hr style={{ margin: '12px 0 0', border: 0, borderTop: `2px solid #0b1220` }} />
-      </header>
-
-      {noneOn && (
-        <Note>Every section is toggled off — enable at least one section in the brief builder.</Note>
-      )}
-
-      {show('kpis') && (
-      <Section title="Headline indicators">
+  const SECTION_RENDERERS = {
+    kpis: () => (
+      <Section title="Headline indicators" key="kpis">
         <SectionBody query={kpis}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <StatBox label="Total FIRs" value={fmtInt(k.totalFirs)} sub="registered this month" />
+            <StatBox
+              label="Total FIRs"
+              value={fmtInt(k.totalFirs)}
+              sub={<>registered this window{' '}<Delta cur={k.totalFirs} prev={pk.totalFirs} /> {Number.isFinite(Number(pk.totalFirs)) ? priorLabel : ''}</>}
+            />
             <StatBox
               label="MoM change"
               value={Number.isFinite(Number(k.momPct)) ? fmtPct(Number(k.momPct), { sign: true, fraction: false }) : '—'}
               color={Number(k.momPct) > 0 ? RED : TEAL}
               sub="vs previous month"
             />
-            <StatBox label="Heinous cases" value={fmtInt(k.heinousCount)} color={RED} sub="gravity: heinous" />
+            <StatBox
+              label="Heinous cases"
+              value={fmtInt(k.heinousCount)}
+              color={RED}
+              sub={<>gravity: heinous{' '}<Delta cur={k.heinousCount} prev={pk.heinousCount} /> {Number.isFinite(Number(pk.heinousCount)) ? priorLabel : ''}</>}
+            />
             <StatBox
               label="Detection rate"
               value={Number.isFinite(detectionPct) ? `${detectionPct.toFixed(1)}%` : '—'}
               color={TEAL}
-              sub="chargesheet A / (A + C)"
+              sub={<>chargesheet A / (A + C){' '}<Delta cur={asPct(k.detectionRate)} prev={asPct(pk.detectionRate)} goodDown={false} /></>}
             />
             <StatBox label="Active alerts" value={fmtInt(k.activeAlerts)} color={Number(k.activeAlerts) > 0 ? RED : INK} sub="unacknowledged anomalies" />
           </div>
         </SectionBody>
       </Section>
-      )}
-
-      {show('alerts') && (
-      <Section title="New anomaly alerts">
+    ),
+    alerts: () => (
+      <Section title="New anomaly alerts" key="alerts">
         <SectionBody query={alerts} empty={openAlerts.length ? '' : 'No open anomaly alerts in this window.'}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 <th style={th}>District</th>
@@ -163,12 +161,12 @@ export default function BriefContent({ data, sections, style }) {
             <tbody>
               {openAlerts.map((a) => (
                 <tr key={a.alertId}>
-                  <td style={td}>{a.districtName || a.districtId || '—'}</td>
+                  <td style={td}>{a.districtName || districtName(a.districtId)}</td>
                   <td style={td}>{a.headName || '—'}</td>
                   <td style={{ ...td, maxWidth: 260 }}>{a.narrative || '—'}</td>
                   <td style={tdNum}>{fmtInt(a.observed)} / {fmtInt(a.expected)}</td>
                   <td style={tdNum}>{fmtNum(a.zScore, 1)}</td>
-                  <td style={{ ...td, color: sevRank(a.severity) >= 2 ? RED : INK, fontWeight: 600 }}>
+                  <td style={{ ...td, color: sevRank(a.severity) >= 3 ? RED : INK, fontWeight: 600 }}>
                     {String(a.severity || '—')}
                   </td>
                 </tr>
@@ -177,12 +175,11 @@ export default function BriefContent({ data, sections, style }) {
           </table>
         </SectionBody>
       </Section>
-      )}
-
-      {show('hotspots') && (
-      <Section title="Top hotspots">
+    ),
+    hotspots: () => (
+      <Section title="Top hotspots" key="hotspots">
         <SectionBody query={hotspots} empty={topHotspots.length ? '' : 'No hotspot clusters for this window.'}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 <th style={th}>Hotspot</th>
@@ -198,7 +195,7 @@ export default function BriefContent({ data, sections, style }) {
                 <tr key={h.clusterId}>
                   <td style={{ ...td, fontWeight: 600 }}>{h.label || `Cluster ${h.clusterId}`}</td>
                   <td style={td}>{h.subHeadName || '—'}</td>
-                  <td style={td}>{h.districtId || '—'}</td>
+                  <td style={td}>{h.districtName || districtName(h.districtId)}</td>
                   <td style={td}>{hourFmt(h.hourBandStart)}–{hourFmt(h.hourBandEnd)}</td>
                   <td style={tdNum}>{fmtInt(h.caseCount)}</td>
                   <td style={tdNum}>{fmtNum(h.intensity, 2)}</td>
@@ -208,10 +205,9 @@ export default function BriefContent({ data, sections, style }) {
           </table>
         </SectionBody>
       </Section>
-      )}
-
-      {show('network') && (
-      <Section title="Network changes — largest co-offending clusters">
+    ),
+    network: () => (
+      <Section title="Network changes — largest co-offending clusters" key="network">
         <SectionBody query={network} empty={communities.length ? '' : 'No network communities resolved.'}>
           <ul style={{ margin: 0, paddingLeft: 16 }}>
             {communities.map((g) => (
@@ -224,10 +220,9 @@ export default function BriefContent({ data, sections, style }) {
           <Note>Communities from the identity-resolved co-accused graph (shared-case edges).</Note>
         </SectionBody>
       </Section>
-      )}
-
-      {show('forecast') && (
-      <Section title="Forecast risks — next quarter">
+    ),
+    forecast: () => (
+      <Section title="Forecast risks — next quarter" key="forecast">
         <SectionBody query={forecast} empty={forecastRows.length ? '' : 'No forecast available.'}>
           <table style={{ width: '55%', minWidth: 280, borderCollapse: 'collapse' }}>
             <thead>
@@ -267,7 +262,39 @@ export default function BriefContent({ data, sections, style }) {
           </SectionBody>
         </div>
       </Section>
+    ),
+  };
+
+  return (
+    <div className={`print-page${density === 'compact' ? ' brief-compact' : ''}`} style={style}>
+      <header>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#0b1220' }}>
+              Weekly Intelligence Brief
+            </h1>
+            <p style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+              Karnataka State Police · DAPPA decision-support prototype
+            </p>
+          </div>
+          <div style={{ textAlign: 'right', fontSize: 11, color: MUTED }}>
+            <div>Period: <span style={{ color: INK }}>{dateLabel(win.from)} – {dateLabel(win.to)}</span></div>
+            <div>Window: {win.label}</div>
+            <div>Generated: {dateLabel(new Date().toISOString().slice(0, 10))}</div>
+            {preparedBy ? <div>Prepared by: <span style={{ color: INK }}>{preparedBy}</span></div> : null}
+          </div>
+        </div>
+        <p style={{ fontSize: 10, color: RED, marginTop: 6 }}>
+          Synthetic demonstration data — KSP Datathon 2026 prototype. Not real crime records.
+        </p>
+        <hr style={{ margin: '12px 0 0', border: 0, borderTop: `2px solid #0b1220` }} />
+      </header>
+
+      {noneOn && (
+        <Note>Every section is toggled off — enable at least one section in the brief builder.</Note>
       )}
+
+      {sectionOrder.filter(show).map((key) => SECTION_RENDERERS[key]?.())}
 
       <footer style={{ marginTop: 24, paddingTop: 8, borderTop: `1px solid ${BORDER}`, fontSize: 10, color: MUTED, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <span>Generated by DAPPA — Data Analytics &amp; Predictive Policing Assistant (Zoho Catalyst)</span>

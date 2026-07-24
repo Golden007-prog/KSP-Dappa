@@ -1,15 +1,51 @@
-// GeoIntel-local helpers: color ramps, risk normalisation, hour-band labels,
-// month windows for the heat-layer time scrubber.
+// GeoIntel-local helpers: color ramps (theme-aware), risk normalisation,
+// hour-band labels, month windows for the heat-layer time scrubber, distance
+// + clipboard helpers for the measure tool / share links.
 import { format, parse, endOfMonth } from 'date-fns';
 
 const LOW = [0x23, 0x31, 0x50]; // #233150 — same ramp as the dashboard mini-choropleth
 const HIGH = [0xf5, 0xa6, 0x23]; // #F5A623
+const LOW_LIGHT = [0xe4, 0xe9, 0xf4]; // #E4E9F4 pale slate on light OSM
+const HIGH_LIGHT = [0xd9, 0x77, 0x06]; // #D97706 deep amber — readable on light tiles
 
-/** 0..1 → dark-slate → amber density color. */
-export function rampColor(t) {
+const mix = (a, b, k) => a.map((lo, i) => Math.round(lo + (b[i] - lo) * k));
+const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+/** 0..1 → slate → amber density color (light=true flips to the light-theme ramp). */
+export function rampColor(t, light = false) {
   const k = Math.max(0, Math.min(1, t));
-  const c = LOW.map((lo, i) => Math.round(lo + (HIGH[i] - lo) * k));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
+  return rgb(light ? mix(LOW_LIGHT, HIGH_LIGHT, k) : mix(LOW, HIGH, k));
+}
+
+const DIV_NEUTRAL = [0x24, 0x30, 0x49]; // #243049
+const DIV_NEUTRAL_LIGHT = [0xe4, 0xe9, 0xf4];
+const DIV_RED = [0xe5, 0x48, 0x4d];
+const DIV_RED_LIGHT = [0xb4, 0x23, 0x18];
+const DIV_TEAL = [0x2d, 0xd4, 0xbf];
+const DIV_TEAL_LIGHT = [0x0f, 0x76, 0x6e];
+
+/** -1..1 → teal (down) → neutral → red (up) diverging color for MoM deltas. */
+export function divergeColor(t, light = false) {
+  const k = Math.max(-1, Math.min(1, t));
+  const neutral = light ? DIV_NEUTRAL_LIGHT : DIV_NEUTRAL;
+  if (k >= 0) return rgb(mix(neutral, light ? DIV_RED_LIGHT : DIV_RED, k));
+  return rgb(mix(neutral, light ? DIV_TEAL_LIGHT : DIV_TEAL, -k));
+}
+
+/** Choropleth zero-value fill / polygon stroke per theme. */
+export const choroZeroFill = (light) => (light ? '#E9EDF6' : '#141d31');
+export const choroStroke = (light) => (light ? '#C3CDE0' : '#1E2A44');
+
+/** Legend gradient CSS for the active metric + theme. */
+export function legendGradient(diverging, light) {
+  if (diverging) {
+    return light
+      ? 'linear-gradient(90deg,#0F766E,#E4E9F4,#B42318)'
+      : 'linear-gradient(90deg,#2DD4BF,#243049,#E5484D)';
+  }
+  return light
+    ? 'linear-gradient(90deg,#E4E9F4,#D97706)'
+    : 'linear-gradient(90deg,#233150,#F5A623)';
 }
 
 /** riskScore arrives either as 0..1 or 0..100 — normalise to 0..1 (null when absent). */
@@ -64,4 +100,62 @@ export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
+}
+
+/** Great-circle distance in km between two [lat,lng] pairs (measure tool). */
+export function haversineKm(lat1, lng1, lat2, lng2) {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Clipboard write with a hidden-textarea fallback. Resolves true on success. */
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Hotspot hour-band bucket from its start hour: night 22–06, day 06–17,
+ * evening 17–22 (null when the start hour is missing). */
+export function bandBucket(startHour) {
+  const h = Number(startHour);
+  if (!Number.isFinite(h)) return null;
+  const s = ((Math.round(h) % 24) + 24) % 24;
+  if (s >= 22 || s < 6) return 'night';
+  if (s < 17) return 'day';
+  return 'evening';
+}
+
+/** Loose match rank for the locate box: 0 = substring, 1 = in-order
+ * subsequence ('mysct' → 'Mysuru City'), -1 = no match. */
+export function fuzzyRank(needle, hay) {
+  const n = needle.toLowerCase();
+  const h = hay.toLowerCase();
+  if (!n) return -1;
+  if (h.includes(n)) return 0;
+  let i = 0;
+  for (const ch of h) {
+    if (ch === n[i]) i += 1;
+    if (i === n.length) return 1;
+  }
+  return -1;
 }

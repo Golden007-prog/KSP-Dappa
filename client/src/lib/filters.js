@@ -42,6 +42,30 @@ export function filterSearchString(searchParams) {
 }
 
 /**
+ * Human-readable one-liner for a filter combo ('Mysuru City · Vehicle theft ·
+ * Last 90 days'). `lookups` is the normalized useLookups() data (optional —
+ * falls back to raw ids). Used by FilterBar saved views and PrintHeader.
+ */
+export function describeFilters({ districtId, crimeHeadId, range, from, to } = {}, lookups) {
+  const parts = [];
+  if (districtId) {
+    const d = lookups?.districts?.find((x) => x.districtId === districtId);
+    parts.push(d?.districtName || `District ${districtId}`);
+  }
+  if (crimeHeadId) {
+    const h = lookups?.crimeHeads?.find((x) => x.crimeHeadId === crimeHeadId);
+    parts.push(h?.headName || `Head ${crimeHeadId}`);
+  }
+  if (from || to) {
+    parts.push(`${from || '…'} → ${to || '…'}`);
+  } else if (range && range !== 'all') {
+    const r = DATE_RANGES.find((x) => x.value === range);
+    parts.push(r?.label || range);
+  }
+  return parts.length ? parts.join(' · ') : 'All districts · All crime heads · All time';
+}
+
+/**
  * useUrlFilters() → {
  *   districtId, crimeHeadId, range, from, to,   // current values ('' when unset)
  *   apiParams,                                   // {districtId?,crimeHeadId?,from?,to?} pruned — spread into hooks

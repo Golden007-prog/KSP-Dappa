@@ -40,7 +40,16 @@ export function ToastProvider({ children }) {
   const push = useCallback((tone, message, { duration } = {}) => {
     const id = ++toastSeq;
     const stay = duration ?? (tone === 'error' ? 6500 : 4000);
-    setToasts((list) => [...list.slice(-3), { id, tone, message }]);
+    setToasts((list) => {
+      const next = [...list, { id, tone, message }];
+      // max 4 on screen — clear the timers of anything we evict so a busy
+      // screen doesn't leak orphaned timeouts
+      for (const evicted of next.slice(0, Math.max(0, next.length - 4))) {
+        const timer = timersRef.current.get(evicted.id);
+        if (timer) { clearTimeout(timer); timersRef.current.delete(evicted.id); }
+      }
+      return next.slice(-4);
+    });
     timersRef.current.set(id, setTimeout(() => dismiss(id), stay));
     return id;
   }, [dismiss]);

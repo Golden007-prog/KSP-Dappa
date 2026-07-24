@@ -11,7 +11,7 @@ export default function Card({ title, subtitle, actions, padded = true, classNam
             {title && <h2 className="text-sm font-semibold text-ink truncate">{title}</h2>}
             {subtitle && <p className="text-xs text-muted mt-0.5">{subtitle}</p>}
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">{actions}</div>}
         </header>
       )}
       <div className={padded ? 'p-4' : ''}>{children}</div>
