@@ -11,11 +11,17 @@ __pycache__/
 *.log
 .DS_Store
 .mcp.json
-docs/screenshots/*.png
-# strategy kit docs stay local — not for the public repo
-docs/00_START_HERE.md
-docs/01_PROJECT_BLUEPRINT.md
-docs/02_CLAUDE_CODE_MASTER_PROMPT.md
-docs/03_MCP_TOOLING_SETUP.md
-docs/04_SUBMISSION_KIT.md
+
+# Claude / AI-agent artifacts — never in the public repo
+.claude/
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+memory/
+
+# internal working docs, strategy kit & organizer material — local only
+docs/
+client/CONTRACT.md
+*.pptx
+
 pipeline/.fixture/
