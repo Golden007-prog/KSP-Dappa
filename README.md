@@ -14,6 +14,8 @@ plain-English questions — built end-to-end on **Zoho Catalyst**, on the
 Submission for **KSP Datathon 2026**, challenge *"AI-Driven Crime Analytics &
 Visualization Platform."*
 
+![KSP DAPPA Command Dashboard — live demo screenshot](.github/media/command-dashboard.jpg)
+
 ---
 
 ## Highlights
