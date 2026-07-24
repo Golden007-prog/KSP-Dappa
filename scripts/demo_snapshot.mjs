@@ -20,6 +20,9 @@ import path from 'path';
 import fs from 'fs';
 
 const require = createRequire(import.meta.url);
+// The snapshot fires thousands of in-process requests in seconds — lift the
+// public-API rate limit (600/min default) before the app module reads it.
+process.env.RATE_LIMIT_PER_MIN = '1000000';
 const { createApp } = require('../functions/dappa_api/lib/app.js');
 const { createStubClient } = require('../functions/dappa_api/lib/datastore.js');
 const { buildFixtureTables } = require('../functions/dappa_api/lib/fixture.js');
