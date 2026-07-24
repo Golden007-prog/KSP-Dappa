@@ -128,6 +128,119 @@ export function buildTrendOption(t, mode = 'stacked', narrow = false) {
   };
 }
 
+/**
+ * 'Total' trend mode — one line for total FIRs over the FULL history (not the
+ * 12-month clip), a 3-month rolling mean, red 2σ spike dots and, when the
+ * /forecast payload is supplied, a dashed projection with its confidence band.
+ * extras: { narrow?, forecast?: {history, forecast, model, mape}, spikes? }.
+ */
+export function buildTotalTrendOption(t, { narrow = false, forecast = null, spikes = [] } = {}) {
+  if (!t || !Array.isArray(t.months) || !t.months.length) return null;
+  const months = t.months.slice();
+  const totals = months.map((_, i) => (t.series || []).reduce((a, s) => a + (Number(s.data?.[i]) || 0), 0));
+  const fc = (forecast?.forecast || []).filter((f) => f && f.ym && !months.includes(f.ym));
+  const axis = [...months, ...fc.map((f) => f.ym)];
+  const n = months.length;
+
+  const roll = totals.map((_, i) => {
+    if (i < 2) return null;
+    return Math.round((totals[i] + totals[i - 1] + totals[i - 2]) / 3);
+  });
+
+  const pad = (arr) => [...arr, ...fc.map(() => null)];
+  const series = [
+    {
+      name: 'Total FIRs',
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      areaStyle: { opacity: 0.08 },
+      data: pad(totals),
+    },
+    {
+      name: '3-mo mean',
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      lineStyle: { type: 'dashed', width: 1.5 },
+      data: pad(roll),
+    },
+  ];
+  if (spikes.length) {
+    series.push({
+      name: 'Spike (|z|≥2)',
+      type: 'scatter',
+      symbolSize: 8,
+      itemStyle: { color: '#E5484D' },
+      data: spikes.map((s) => [s.index, totals[s.index]]),
+      tooltip: { valueFormatter: (v) => fmtInt(Array.isArray(v) ? v[1] : v) },
+    });
+  }
+  if (fc.length) {
+    const bridge = totals[n - 1];
+    series.push({
+      name: 'Forecast',
+      type: 'line',
+      smooth: true,
+      lineStyle: { type: 'dashed' },
+      symbolSize: 5,
+      data: [...totals.map((_, i) => (i === n - 1 ? bridge : null)), ...fc.map((f) => Math.round(Number(f.predicted) || 0))],
+    });
+    const hasBand = fc.some((f) => Number.isFinite(Number(f.lo)) && Number.isFinite(Number(f.hi)));
+    if (hasBand) {
+      series.push({
+        name: 'CI low',
+        type: 'line',
+        stack: 'ci',
+        showSymbol: false,
+        lineStyle: { opacity: 0 },
+        tooltip: { show: false },
+        data: [...months.map(() => null), ...fc.map((f) => Math.round(Number(f.lo) || 0))],
+      });
+      series.push({
+        name: 'Confidence band',
+        type: 'line',
+        stack: 'ci',
+        showSymbol: false,
+        lineStyle: { opacity: 0 },
+        areaStyle: { opacity: 0.14 },
+        data: [...months.map(() => null), ...fc.map((f) => Math.max(0, Math.round((Number(f.hi) || 0) - (Number(f.lo) || 0))))],
+        tooltip: { show: false },
+      });
+    }
+  }
+  return {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'line' }, valueFormatter: (v) => fmtInt(v) },
+    legend: { bottom: 0, type: 'scroll', data: series.map((s) => s.name).filter((x) => x !== 'CI low') },
+    grid: { left: 48, right: 12, top: 16, bottom: narrow ? 48 : 34 },
+    xAxis: {
+      type: 'category',
+      data: axis.map(monthLabel),
+      axisLabel: narrow ? { rotate: 45, fontSize: 10 } : {},
+    },
+    yAxis: { type: 'value' },
+    series,
+  };
+}
+
+/**
+ * Add a month-range brush (dataZoom slider) to a trend option. The legend
+ * moves to the top so the slider owns the bottom edge. Returns a new option.
+ */
+export function withBrush(option, narrow = false) {
+  if (!option) return option;
+  return {
+    ...option,
+    legend: { ...(option.legend || {}), top: 0, bottom: undefined },
+    grid: { ...(option.grid || {}), top: 40, bottom: narrow ? 66 : 56 },
+    dataZoom: [
+      { type: 'slider', xAxisIndex: 0, height: 18, bottom: 6, brushSelect: false },
+      // shift+wheel zooms; plain wheel keeps scrolling the page
+      { type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false },
+    ],
+  };
+}
+
 /** useState persisted in localStorage (JSON). Storage failures degrade to
  * in-memory state — never a crash in private mode. */
 export function useLocalPref(key, initial) {

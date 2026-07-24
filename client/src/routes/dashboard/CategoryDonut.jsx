@@ -1,23 +1,29 @@
-// Category share donut — top 8 crime heads + Other from useCategoryShare.
-// Clicking any slice opens Trends with the current filters carried along.
+// Category share — donut (top 8 crime heads + Other, live total in the hole)
+// or Pareto mode: volume-sorted bars with a cumulative-share line and an 80%
+// concentration marker. Clicking any slice/bar opens Trends with the current
+// filters carried. `chartRef` (optional) exposes the DashChart PNG API so the
+// dashboard poster can embed this chart.
 import { useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashChart from './DashChart.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
-import { fmtInt } from '../../lib/format.js';
+import SegmentedControl from '../../components/SegmentedControl.jsx';
+import { fmtInt, fmtCompact } from '../../lib/format.js';
+import { useLocalPref } from './lib.js';
 
 const TOP = 8;
 
-export default function CategoryDonut({ query, linkSearch = '', height = 264 }) {
+export default function CategoryDonut({ query, linkSearch = '', height = 264, chartRef }) {
   const navigate = useNavigate();
+  const [mode, setMode] = useLocalPref('dappa-dash-sharemode', 'donut');
   // echarts-for-react binds onEvents once at chart init — route the handler
   // through a ref so slice clicks always use the CURRENT filter search string.
   const searchRef = useRef(linkSearch);
   searchRef.current = linkSearch;
   const events = useMemo(() => ({ click: () => navigate(`/trends${searchRef.current}`) }), [navigate]);
 
-  const option = useMemo(() => {
+  const model = useMemo(() => {
     const items = query.data || [];
     if (!items.length) return null;
     const sorted = [...items].sort((a, b) => (b.count || 0) - (a.count || 0));
@@ -25,23 +31,82 @@ export default function CategoryDonut({ query, linkSearch = '', height = 264 }) 
     const otherSum = sorted.slice(TOP).reduce((a, s) => a + (s.count || 0), 0);
     if (otherSum > 0) data.push({ name: 'Other', value: otherSum });
     if (!data.some((d) => d.value > 0)) return null;
+    const total = data.reduce((a, d) => a + d.value, 0);
+    return { data, total };
+  }, [query.data]);
+
+  const option = useMemo(() => {
+    if (!model) return null;
+    if (mode === 'pareto') {
+      let run = 0;
+      const cum = model.data.map((d) => {
+        run += d.value;
+        return Number(((run / model.total) * 100).toFixed(1));
+      });
+      return {
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 44, right: 40, top: 18, bottom: 62 },
+        xAxis: {
+          type: 'category',
+          data: model.data.map((d) => d.name),
+          axisLabel: { rotate: 38, fontSize: 9, width: 74, overflow: 'truncate' },
+        },
+        yAxis: [
+          { type: 'value' },
+          { type: 'value', max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { show: false } },
+        ],
+        series: [
+          {
+            name: 'Cases',
+            type: 'bar',
+            barMaxWidth: 22,
+            data: model.data.map((d) => d.value),
+            tooltip: { valueFormatter: (v) => fmtInt(v) },
+          },
+          {
+            name: 'Cumulative share',
+            type: 'line',
+            yAxisIndex: 1,
+            symbolSize: 5,
+            data: cum,
+            tooltip: { valueFormatter: (v) => `${v}%` },
+            markLine: {
+              silent: true,
+              symbol: 'none',
+              lineStyle: { type: 'dashed' },
+              label: { formatter: '80%', fontSize: 10 },
+              data: [{ yAxis: 80 }],
+            },
+          },
+        ],
+      };
+    }
     return {
       tooltip: {
         trigger: 'item',
         formatter: (p) => `${p.name}: ${fmtInt(p.value)} (${p.percent}%)`,
       },
       legend: { bottom: 0, type: 'scroll' },
+      title: {
+        text: fmtCompact(model.total),
+        subtext: 'FIRs',
+        left: 'center',
+        top: '32%',
+        itemGap: 2,
+        textStyle: { fontSize: 20, fontWeight: 700 },
+        subtextStyle: { fontSize: 10 },
+      },
       series: [{
         type: 'pie',
         radius: ['46%', '72%'],
         center: ['50%', '42%'],
         avoidLabelOverlap: true,
         label: { show: false },
-        emphasis: { label: { show: true, fontSize: 12, fontWeight: 600, formatter: '{b}\n{d}%' } },
-        data,
+        emphasis: { label: { show: false } },
+        data: model.data,
       }],
     };
-  }, [query.data]);
+  }, [model, mode]);
 
   if (query.isLoading) return <LoadingSkeleton height={height} />;
   if (query.error) {
@@ -58,8 +123,23 @@ export default function CategoryDonut({ query, linkSearch = '', height = 264 }) 
 
   return (
     <>
-      <DashChart option={option} height={height} onEvents={events} />
-      <p className="mt-1 text-[10px] text-muted">Click a slice to open Trends</p>
+      <div className="mb-2">
+        <SegmentedControl
+          ariaLabel="Category share chart mode"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'donut', label: 'Donut' },
+            { value: 'pareto', label: 'Pareto' },
+          ]}
+        />
+      </div>
+      <DashChart ref={chartRef} option={option} height={height} onEvents={events} />
+      <p className="mt-1 text-[10px] text-muted">
+        {mode === 'pareto'
+          ? 'Bars sorted by volume · line = cumulative share vs the 80% concentration mark · click to open Trends'
+          : 'Click a slice to open Trends'}
+      </p>
     </>
   );
 }

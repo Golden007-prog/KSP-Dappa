@@ -18,6 +18,9 @@ export default function Leaderboard({ rows = [], loading = false, activeDistrict
   const [mode, setMode] = useState('risers');
 
   const ranked = useMemo(() => {
+    if (mode === 'busiest') {
+      return [...rows].sort((a, b) => (b.caseCount || 0) - (a.caseCount || 0)).slice(0, SHOW);
+    }
     const movers = rows.filter((r) => Number.isFinite(Number(r.momDeltaPct)));
     const sorted = [...movers].sort((a, b) => (mode === 'risers'
       ? Number(b.momDeltaPct) - Number(a.momDeltaPct)
@@ -44,8 +47,9 @@ export default function Leaderboard({ rows = [], loading = false, activeDistrict
           value={mode}
           onChange={setMode}
           options={[
-            { value: 'risers', label: 'Top risers' },
-            { value: 'fallers', label: 'Top fallers' },
+            { value: 'risers', label: 'Risers' },
+            { value: 'fallers', label: 'Fallers' },
+            { value: 'busiest', label: 'Busiest' },
           ]}
         />
         <Link to={`/map${linkSearch}`} className="inline-flex min-h-[40px] items-center px-1 text-xs text-amber hover:underline shrink-0">Map →</Link>

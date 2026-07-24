@@ -2,13 +2,39 @@
 // Response envelope + request helpers per CONTRACTS.md:
 //   success {ok:true, data, meta}; error {ok:false, error:{code,message}}.
 
+const crypto = require('crypto');
 const { logJson, toNum } = require('./util');
 
+/** X-Response-Time on every envelope response (start stamped by requestId()). */
+function timing(res) {
+  const req = res.req;
+  if (req && req._dappaStart && !res.headersSent) {
+    res.setHeader('X-Response-Time', `${Date.now() - req._dappaStart}ms`);
+  }
+}
+
 function ok(res, data, meta) {
+  timing(res);
+  const req = res.req;
+  if (req && req.method === 'GET') {
+    // Weak ETag over the data payload only — meta carries volatile fields
+    // (cached, generatedAt) that must not defeat 304 revalidation. Paired with
+    // Cache-Control: no-cache the browser always revalidates but unchanged
+    // answers cost a bodyless 304 instead of a full payload.
+    const etag = `W/"${crypto.createHash('sha1').update(JSON.stringify(data === undefined ? null : data)).digest('base64url')}"`;
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'no-cache');
+    const inm = String(req.headers['if-none-match'] || '');
+    if (inm && inm.split(',').map((s) => s.trim()).includes(etag)) {
+      res.status(304).end();
+      return;
+    }
+  }
   res.json({ ok: true, data, meta: meta || {} });
 }
 
 function fail(res, status, code, message) {
+  timing(res);
   res.status(status).json({ ok: false, error: { code, message } });
 }
 
@@ -44,6 +70,33 @@ function pagination(req) {
 
 function nocache(req) {
   return String((req.query || {}).nocache || '') === '1';
+}
+
+// Per-endpoint cache TTL policy (seconds). Volatile reads (refresh status,
+// alert triage) expire fast; heavy stable aggregations (seasonality, hotspot
+// clusters, correlations) live longer. Routes surface the applied TTL as
+// meta.ttlSec so clients can align their own staleTime.
+const ROUTE_TTL = {
+  '/summary/kpis': 300,
+  '/trends/monthly': 600,
+  '/trends/compare': 600,
+  '/trends/seasonality': 900,
+  '/trends/category-share': 600,
+  '/geo/districts': 600,
+  '/geo/stations': 600,
+  '/geo/incidents': 180,
+  '/geo/hotspots': 900,
+  '/meta/refresh': 120,
+  '/reports/brief-data': 600,
+  '/insight/socio-correlation': 900,
+  '/insight/emerging': 600,
+  '/alerts/summary': 120,
+  '/offenders/mo-patterns': 900,
+  '/network/communities': 900
+};
+
+function ttlFor(req, dflt) {
+  return ROUTE_TTL[req.path] || dflt || 600;
 }
 
 function cacheKey(req) {
@@ -83,19 +136,65 @@ function requireAdmin(req, res, flags) {
   return true;
 }
 
+// Correlation id: echo a sane client-provided X-Request-Id or mint one, so a
+// UI error toast and the matching Catalyst function log line share an id.
+const RID_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+function requestId() {
+  let seq = 0;
+  return (req, res, next) => {
+    req._dappaStart = Date.now();
+    seq = (seq + 1) % 1e6;
+    const given = String(req.headers['x-request-id'] || '');
+    req.requestId = RID_RE.test(given) ? given : `req-${Date.now().toString(36)}-${seq.toString(36)}`;
+    res.setHeader('X-Request-Id', req.requestId);
+    next();
+  };
+}
+
+/** Fixed-window per-IP limiter. Headers are always surfaced; 429 only past the
+ * (generous, env-tunable) budget so a runaway client cannot starve the demo. */
+function rateLimit() {
+  const limit = Math.max(1, toNum(process.env.RATE_LIMIT_PER_MIN, 600) || 600);
+  const windowMs = 60000;
+  const hits = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const ip = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+    let h = hits.get(ip);
+    if (!h || h.resetAt <= now) {
+      h = { count: 0, resetAt: now + windowMs };
+      hits.set(ip, h);
+    }
+    h.count += 1;
+    if (hits.size > 1000) {
+      for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
+    }
+    res.setHeader('X-RateLimit-Limit', String(limit));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, limit - h.count)));
+    res.setHeader('X-RateLimit-Reset', String(Math.ceil(h.resetAt / 1000)));
+    if (h.count > limit) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((h.resetAt - now) / 1000))));
+      return fail(res, 429, 'RATE_LIMITED', 'Too many requests — retry after the rate-limit window resets.');
+    }
+    next();
+  };
+}
+
 function requestLogger() {
   return (req, res, next) => {
-    const start = Date.now();
+    const start = req._dappaStart || Date.now();
     res.on('finish', () => {
       logJson('info', 'http', {
         method: req.method,
         path: req.originalUrl || req.url,
         status: res.statusCode,
-        ms: Date.now() - start
+        ms: Date.now() - start,
+        requestId: req.requestId || undefined
       });
     });
     next();
   };
 }
 
-module.exports = { ok, fail, asyncH, commonFilters, pagination, nocache, cacheKey, isAuthed, requireAdmin, requestLogger, DEMO_ADMIN_TOKEN };
+module.exports = { ok, fail, asyncH, commonFilters, pagination, nocache, cacheKey, ttlFor, ROUTE_TTL, isAuthed, requireAdmin, requestId, rateLimit, requestLogger, DEMO_ADMIN_TOKEN };

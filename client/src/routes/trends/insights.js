@@ -154,6 +154,74 @@ export function riserFallerInsight(cells) {
   return `${text}.`;
 }
 
+/** Decomposition panel → strength split, seasonal peak month, level shifts. */
+export function decompositionInsight(months, dec, changepoints, monthNames) {
+  if (!months?.length || !dec) return null;
+  const seasonalPct = Math.round(dec.strengthSeasonal * 100);
+  const trendPct = Math.round(dec.strengthTrend * 100);
+  const peakM = dec.seasonalIdx.indexOf(Math.max(...dec.seasonalIdx));
+  let text = `Seasonality explains ~${seasonalPct}% and the underlying trend ~${trendPct}% of month-to-month variation; `
+    + `the recurring seasonal peak lands in ${monthNames[peakM]}.`;
+  if (changepoints?.length) {
+    const last = changepoints[changepoints.length - 1];
+    const step = Number.isFinite(last.shiftPct)
+      ? ` (${last.dir === 'up' ? '+' : '−'}${pct(Math.abs(last.shiftPct), 0)} step in the 6-month means)`
+      : '';
+    text += ` ${changepoints.length === 1 ? 'One level shift' : `${changepoints.length} level shifts`} detected — most recent around ${monthLabel(months[last.index])}${step}.`;
+  } else {
+    text += ' No structural level shifts detected in this window.';
+  }
+  if (dec.outliers?.length) {
+    const o = dec.outliers[dec.outliers.length - 1];
+    text += ` After removing trend and season, ${monthLabel(months[o.index])} still stands out (residual z = ${fmtNum(o.z, 1)}).`;
+  }
+  return text;
+}
+
+/** Changepoint toggle on the monthly lines → sentence per detected shift. */
+export function changepointInsight(months, changepoints) {
+  if (!months?.length) return null;
+  if (!changepoints?.length) return 'No statistically supported level shifts in this window (binary segmentation on squared error).';
+  const parts = changepoints.map((c) => {
+    const step = Number.isFinite(c.shiftPct)
+      ? ` — the 6-month mean steps ${c.dir === 'up' ? 'up' : 'down'} ${pct(Math.abs(c.shiftPct), 0)}`
+      : '';
+    return `${monthLabel(months[c.index])}${step}`;
+  });
+  return `${changepoints.length === 1 ? 'Level shift' : 'Level shifts'} detected at ${parts.join('; ')}.`;
+}
+
+/** Socio-economic scatter → correlation strength + largest positive residual. */
+export function socioInsight(points, metricLabel, fit) {
+  if (!fit || !points?.length) return null;
+  const a = Math.abs(fit.r);
+  const strength = a >= 0.7 ? 'strongly' : a >= 0.4 ? 'moderately' : a >= 0.2 ? 'weakly' : 'barely';
+  let text = `Across ${points.length} districts, the case rate per lakh ${strength} `
+    + `${fit.r >= 0 ? 'rises' : 'falls'} with ${metricLabel} (r = ${fmtNum(fit.r, 2)}).`;
+  const withResid = points
+    .map((p) => ({ ...p, resid: p.y - (fit.slope * p.x + fit.intercept) }))
+    .sort((x, y) => y.resid - x.resid);
+  const top = withResid[0];
+  if (top && top.resid > 0) {
+    text += ` ${top.name} sits furthest above the fitted line (+${fmtNum(top.resid, 1)} per lakh vs expected) — worth a closer look beyond demographics.`;
+  }
+  return text;
+}
+
+/** Crime-mix radar → most over- and under-indexed heads vs the state mix. */
+export function mixInsight(name, rows) {
+  const rated = (rows || []).filter((r) => Number.isFinite(r.ratio) && r.base >= 1);
+  if (!rated.length) return null;
+  const sorted = [...rated].sort((a, b) => b.ratio - a.ratio);
+  const over = sorted[0];
+  const under = sorted[sorted.length - 1];
+  let text = `${name}'s crime mix over-indexes on ${over.head} at ${fmtNum(over.ratio, 1)}× the state share`;
+  if (under !== over && under.ratio < 1) {
+    text += `, while ${under.head} runs ${pct((1 - under.ratio) * 100, 0)} below the state share`;
+  }
+  return `${text}.`;
+}
+
 /** District comparison bars → leader vs state median + sharpest MoM rise. */
 export function districtInsight(rows, metric) {
   if (!rows?.length) return null;

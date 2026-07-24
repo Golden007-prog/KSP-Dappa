@@ -20,7 +20,7 @@ Visualization Platform."*
 
 ## Highlights
 
-- **486 cataloged features.** Every user-visible capability is enumerated in
+- **808 cataloged features.** Every user-visible capability is enumerated in
   [`FEATURES.md`](FEATURES.md) — an audit-generated catalog covering all nine
   areas of the app.
 - **Official ER schema, verbatim.** Every table, key, and the structured
@@ -237,7 +237,7 @@ functions/
 pipeline/          generate.py (synthetic ER data) + analytics.py (derived intel)
 data/geo/          Karnataka districts GeoJSON (23 KB, 30 features)
 scripts/           bulk_load.js · verify_load.mjs · smoke_test.mjs · warmup.mjs
-FEATURES.md        Audit-generated catalog of all 486 user-visible features
+FEATURES.md        Audit-generated catalog of all 808 user-visible features
 ```
 
 ## License

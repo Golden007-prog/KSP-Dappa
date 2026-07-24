@@ -14,8 +14,10 @@ import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
+import StatDelta from '../../components/StatDelta.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { fmtNum, fmtPct } from '../../lib/format.js';
+import SensitivityPanel from './SensitivityPanel.jsx';
 
 const HOUR_BANDS = [
   { value: 'night', label: 'Night (22:00–05:00)' },
@@ -128,6 +130,11 @@ export default function OutcomePanel() {
   });
   // Previous run's probability — powers the "vs last run" what-if delta.
   const [prevProb, setPrevProb] = useState(null);
+  // The exact payload that produced the current result (the form may have been
+  // edited since) — the sensitivity sweep perturbs THIS, not the live form.
+  const [scoredProfile, setScoredProfile] = useState(null);
+  // Session scoring log (newest first, capped) for the run-history strip.
+  const [runLog, setRunLog] = useState([]);
 
   const set = (key) => (e) => {
     const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
@@ -161,7 +168,7 @@ export default function OutcomePanel() {
 
   const run = () => {
     setPrevProb(result ? Number(result.probability) : null);
-    predict.mutate({
+    const payload = {
       districtId: profile.districtId,
       crimeSubHeadId: profile.crimeSubHeadId,
       gravity: profile.gravity,
@@ -170,6 +177,19 @@ export default function OutcomePanel() {
       accusedCount: Number(profile.accusedCount),
       sectionCount: Number(profile.sectionCount),
       arrestWithin7d: !!profile.arrestWithin7d,
+    };
+    predict.mutate(payload, {
+      onSuccess: (res) => {
+        setScoredProfile(payload);
+        const p = Number(res?.data?.probability);
+        if (!Number.isFinite(p)) return;
+        setRunLog((log) => [{
+          t: new Date(),
+          prob: p,
+          cls: res?.data?.predictedClass || '—',
+          source: res?.meta?.source || '',
+        }, ...log].slice(0, 5));
+      },
     });
   };
 
@@ -331,6 +351,39 @@ export default function OutcomePanel() {
           )}
         </div>
       </div>
+
+      {result && scoredProfile && !predict.isPending && (
+        <SensitivityPanel profile={scoredProfile} baseProb={Number(result.probability)} />
+      )}
+
+      {runLog.length >= 2 && (
+        <div className="mt-4 border-t border-grid/60 pt-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted">Run history — this session</p>
+            <button type="button" className="btn-ghost !px-2.5 !py-1.5 text-[11px]" onClick={() => setRunLog([])}>
+              Clear
+            </button>
+          </div>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {runLog.map((r, i) => {
+              const older = runLog[i + 1];
+              const delta = older ? (r.prob - older.prob) * 100 : null;
+              return (
+                <li
+                  key={r.t.getTime()}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted"
+                  title={`Scored by ${r.source === 'fallback-local' ? 'embedded logistic fallback' : 'QuickML endpoint'}`}
+                >
+                  <span className="num">{r.t.toLocaleTimeString('en-IN', { hour12: false })}</span>
+                  <span className="num font-semibold text-ink">{fmtNum(r.prob * 100, 1)}%</span>
+                  <span className={r.cls === 'A' ? 'text-teal' : 'text-signal'}>{r.cls}</span>
+                  {delta !== null && <StatDelta value={delta} label="" />}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </Card>
   );
 }

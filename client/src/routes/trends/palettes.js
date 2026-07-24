@@ -35,6 +35,13 @@ export const HEAT_RAMP = {
   light: ['#FDF4E1', '#F3DCA4', '#E4AE4C', '#C07C0C', '#7C4A03'],
 };
 
+/** Diverging ramp for signed-change heatmaps (teal = falling → neutral →
+ * red = rising; crime up is bad). Lightness-monotonic on each arm. */
+export const DIVERGING_RAMP = {
+  dark: ['#2DD4BF', '#17565C', '#1A2440', '#5C2530', '#E5484D'],
+  light: ['#0F766E', '#8FCFC6', '#F1F5FB', '#EBAFAF', '#B42318'],
+};
+
 /** Chart-surface + muted-ink tokens per app theme (for hand-built options). */
 export const SURFACE = {
   dark: { panel: '#111A2C', muted: '#8A94A8', ink: '#E6EAF2', grid: '#1E2A44' },

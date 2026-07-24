@@ -3,6 +3,10 @@
 //   option        — echarts option (theme colors/text are applied for you)
 //   height?       — px number, default 300
 //   loading?      — show skeleton
+//   error?        — Error | string | truthy → in-card error state (beats empty;
+//                  loading beats both). ApiError messages surface verbatim.
+//   onRetry?      — with error, renders a Retry button (in the body and as a
+//                  header action) that calls it
 //   empty?        — force empty state (also shown when option is falsy)
 //   emptyMessage? — text under 'No data'
 //   title?, subtitle?, actions? — forwarded to Card
@@ -99,8 +103,9 @@ echarts.registerTheme('dappa-light', {
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
 /** Fullscreen chart overlay — Esc / overlay click close, focus trapped. */
-function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose }) {
+function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose, onDownload }) {
   const panelRef = useRef(null);
+  const expandedRef = useRef(null);
   useScrollLock(true);
   useFocusTrap(true, panelRef);
 
@@ -131,17 +136,32 @@ function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose 
             {title && <h2 className="text-sm font-semibold text-ink truncate">{title}</h2>}
             {subtitle && <p className="text-xs text-muted mt-0.5 truncate">{subtitle}</p>}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close expanded chart"
-            className="flex h-11 w-11 -mr-2 -mt-1 shrink-0 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-          </button>
+          <div className="flex items-center gap-1 -mr-2 -mt-1 shrink-0">
+            <Tooltip label="Download PNG" position="bottom">
+              <button
+                type="button"
+                onClick={() => onDownload?.(expandedRef.current?.getEchartsInstance?.())}
+                aria-label={`Download ${title || 'chart'} as PNG`}
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/40 transition-colors"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+                  <path d="M12 4v11m-5-4 5 5 5-5" /><path d="M4.5 20h15" />
+                </svg>
+              </button>
+            </Tooltip>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close expanded chart"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
         </div>
         <div className="flex-1 min-h-0 p-2">
           <ReactECharts
+            ref={expandedRef}
             key={`${chartTheme}-expanded`}
             echarts={echarts}
             theme={chartTheme}
@@ -160,17 +180,17 @@ function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose 
 }
 
 export default function ChartPanel({
-  option, height = 300, loading = false, empty = false, emptyMessage,
+  option, height = 300, loading = false, error = null, onRetry, empty = false, emptyMessage,
   title, subtitle, actions, onEvents, notMerge = true, exportable = true, className = '',
 }) {
   const { theme } = useTheme();
   const chartRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
   const chartTheme = theme === 'light' ? 'dappa-light' : 'dappa';
-  const hasChart = !loading && !empty && !!option;
+  const hasChart = !loading && !error && !empty && !!option;
 
-  const downloadPng = () => {
-    const inst = chartRef.current?.getEchartsInstance?.();
+  const downloadPng = (instance) => {
+    const inst = instance || chartRef.current?.getEchartsInstance?.();
     if (!inst) return;
     const url = inst.getDataURL({
       type: 'png',
@@ -191,7 +211,7 @@ export default function ChartPanel({
       <Tooltip label="Download PNG" position="bottom">
         <button
           type="button"
-          onClick={downloadPng}
+          onClick={() => downloadPng()}
           aria-label={`Download ${title || 'chart'} as PNG`}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/30 transition-colors"
         >
@@ -215,9 +235,48 @@ export default function ChartPanel({
     </>
   ) : actions;
 
+  const retryHeaderAction = error && onRetry ? (
+    <>
+      {actions}
+      <Tooltip label="Retry" position="bottom">
+        <button
+          type="button"
+          onClick={onRetry}
+          aria-label={`Retry loading ${title || 'chart'}`}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-signal hover:bg-grid/30 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+            <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" /><path d="M20.5 3.5v4.6h-4.6" />
+          </svg>
+        </button>
+      </Tooltip>
+    </>
+  ) : null;
+
   let body;
   if (loading) {
     body = <LoadingSkeleton height={height} />;
+  } else if (error) {
+    const message = typeof error === 'string'
+      ? error
+      : String(error?.message || 'The data for this chart could not be loaded.');
+    body = (
+      <div style={{ height }} className="flex items-center justify-center">
+        <EmptyState
+          compact
+          title="Chart failed to load"
+          message={message}
+          icon={(
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+            </svg>
+          )}
+          action={onRetry ? (
+            <button type="button" className="btn" onClick={onRetry}>Retry</button>
+          ) : undefined}
+        />
+      </div>
+    );
   } else if (empty || !option) {
     body = (
       <div style={{ height }} className="flex items-center justify-center">
@@ -241,7 +300,7 @@ export default function ChartPanel({
     );
   }
   return (
-    <Card title={title} subtitle={subtitle} actions={chartActions} className={className}>
+    <Card title={title} subtitle={subtitle} actions={retryHeaderAction || chartActions} className={className}>
       {body}
       {expanded && hasChart && (
         <ExpandedChart
@@ -251,6 +310,7 @@ export default function ChartPanel({
           chartTheme={chartTheme}
           onEvents={onEvents}
           onClose={() => setExpanded(false)}
+          onDownload={(inst) => downloadPng(inst)}
         />
       )}
     </Card>

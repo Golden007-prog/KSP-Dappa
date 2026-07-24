@@ -7,6 +7,8 @@
 //   s            snooze the focused alert for 24 h
 //   e            export the filtered alerts as CSV
 //   u            toggle the unread-only filter
+//   v            toggle feed ⇄ triage-board view
+//   o            open the focused alert's detail sheet
 //   /            focus the search box
 //   1–4          set the severity filter (critical…low) · 0 clears it
 import { useEffect, useRef } from 'react';
@@ -29,7 +31,7 @@ export default function useAlertShortcuts(handlers) {
       const k = String(e.key).toLowerCase();
       const simple = {
         j: h.next, k: h.prev, a: h.ack, m: h.read, c: h.copy, s: h.snooze,
-        e: h.export, u: h.unread, '/': h.search,
+        e: h.export, u: h.unread, v: h.view, o: h.open, '/': h.search,
       }[k];
       if (simple) { e.preventDefault(); simple(); return; }
       if (k in SEV_BY_DIGIT && h.sev) { e.preventDefault(); h.sev(SEV_BY_DIGIT[k]); }

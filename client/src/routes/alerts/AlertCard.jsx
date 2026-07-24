@@ -1,11 +1,16 @@
 // One anomaly alert card — narrative, observed-vs-expected sparkline with band,
-// z-score, affected stations, relative "ended … ago" stamp, and actions:
-// [View on map] [Acknowledge] plus [Copy] and [Snooze 24h] / [Unsnooze].
+// expected-vs-observed mini bars, z-score, SLA countdown, affected stations,
+// relative "ended … ago" stamp, and actions: [View on map] [Acknowledge] plus
+// [Copy] [Cases →] [Snooze 24h] / [Unsnooze] and a Details opener.
+// New props are all optional — absent props reproduce the old card exactly.
 import { Link } from 'react-router-dom';
 import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import Sparkline from './Sparkline.jsx';
+import MiniCompareBar from './MiniCompareBar.jsx';
+import SlaBadge from './SlaBadge.jsx';
+import { caseDrillHref } from './links.js';
 import { fmtInt, fmtNum, dateLabel } from '../../lib/format.js';
 
 const SEV_TONE = { critical: 'red', high: 'red', medium: 'amber', low: 'neutral' };
@@ -47,10 +52,12 @@ const actionBtn = '!text-xs flex-1 justify-center min-h-[44px] sm:min-h-[30px]';
 export default function AlertCard({
   alert: a, stations, acked = false, onAck, ackPending = false, ackError = false,
   unread = false, onRead, onCopy, onSnooze, snoozedUntil = 0, onUnsnooze,
+  sla = null, onOpenDetail,
 }) {
   const sev = String(a.severity || 'medium').toLowerCase();
   const snoozed = Number(snoozedUntil) > Date.now();
   const rel = endedAgo(a.periodEnd);
+  const drill = caseDrillHref(a);
   return (
     <Card className={cardBorder(sev, acked, snoozed)}>
       <div className="flex flex-col md:flex-row gap-4">
@@ -70,6 +77,20 @@ export default function AlertCard({
                 new
               </span>
             )}
+            {onOpenDetail && (
+              <Tooltip label="Open the full alert detail (gauge, comparison, similar alerts)" className="ml-auto">
+                <button
+                  type="button"
+                  onClick={() => onOpenDetail(a)}
+                  aria-label={`Open details for ${a.headName || 'anomaly'}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-grid/40 hover:text-ink"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" />
+                  </svg>
+                </button>
+              </Tooltip>
+            )}
           </div>
 
           {a.narrative && <p className="text-xs text-muted leading-relaxed">{a.narrative}</p>}
@@ -85,6 +106,7 @@ export default function AlertCard({
               observed <span className="text-ink font-medium">{fmtInt(a.observed)}</span>
               {' '}vs expected <span className="text-ink font-medium">{fmtInt(a.expected)}</span>
             </span>
+            {!acked && !snoozed && sla && <SlaBadge sla={sla} severity={a.severity} />}
           </div>
 
           {stations?.names?.length > 0 && (
@@ -105,6 +127,7 @@ export default function AlertCard({
           <p className="text-[10px] text-muted leading-tight">
             amber = observed · teal band = expected ±2σ · red dot = latest period
           </p>
+          <MiniCompareBar observed={a.observed} expected={a.expected} zScore={a.zScore} />
           <div className="flex items-center gap-2">
             {a.districtId && (
               <Link
@@ -128,7 +151,7 @@ export default function AlertCard({
               </button>
             )}
           </div>
-          {(onCopy || (!acked && (onSnooze || onUnsnooze))) && (
+          {(onCopy || drill || (!acked && (onSnooze || onUnsnooze))) && (
             <div className="flex items-center gap-2">
               {onCopy && (
                 <button type="button" className={`btn ${actionBtn}`} onClick={() => onCopy(a)}>
@@ -137,6 +160,16 @@ export default function AlertCard({
                   </svg>
                   Copy
                 </button>
+              )}
+              {drill && (
+                <Link
+                  className={`btn ${actionBtn}`}
+                  to={drill}
+                  title="Open the case list filtered to this district, crime head and period"
+                  onClick={() => onRead?.(a.alertId)}
+                >
+                  Cases →
+                </Link>
               )}
               {!acked && (snoozed ? (
                 onUnsnooze && (

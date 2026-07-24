@@ -1,18 +1,28 @@
 // /reports — plain-text "share summary" of the Weekly Brief, built from the
-// same useBriefData queries the preview renders, honoring the section toggles.
-// Meant for the clipboard → WhatsApp / e-mail; keep it terse and ASCII-safe.
+// same useBriefData queries the preview renders, honoring the section toggles,
+// the executive-summary override, and the classification stamp. Meant for the
+// clipboard → WhatsApp / e-mail; keep it terse and ASCII-safe.
 // Data selection lives in select.js so this never disagrees with BriefContent.
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
 import { selectOpenAlerts, selectTopHotspots, selectForecastRows, selectRiskRows } from './select.js';
+import { composeExecutiveSummary } from './exec.js';
+import { CLASS_META, normalizeClass } from './classification.js';
 
-export function buildShareSummary(brief, sections = {}) {
+export function buildShareSummary(brief, sections = {}, { execText, classification } = {}) {
   const on = (k) => sections[k] !== false;
   const { win } = brief;
+  const classBanner = CLASS_META[normalizeClass(classification)]?.banner;
   const lines = [
     `DAPPA Weekly Intelligence Brief — ${win.label} (${dateLabel(win.from)} to ${dateLabel(win.to)})`,
     'Karnataka State Police · synthetic demo data',
+    ...(classBanner ? [classBanner] : []),
     '',
   ];
+
+  if (on('exec')) {
+    const text = (execText && String(execText).trim()) || composeExecutiveSummary(brief);
+    if (text) lines.push(text, '');
+  }
 
   if (on('kpis') && brief.kpis.data) {
     const k = brief.kpis.data;

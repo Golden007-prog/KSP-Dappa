@@ -145,6 +145,20 @@ export function bandBucket(startHour) {
   return 'evening';
 }
 
+/** Whether hour `h` falls inside the [start, end) band, wrap-aware
+ * (22 → 6 covers 22,23,0..5). Missing bounds → true (can't judge, keep it). */
+export function hourInBand(start, end, h) {
+  const s = Number(start);
+  const e = Number(end);
+  const n = Number(h);
+  if (!Number.isFinite(s) || !Number.isFinite(e) || !Number.isFinite(n)) return true;
+  const ss = ((Math.round(s) % 24) + 24) % 24;
+  const ee = ((Math.round(e) % 24) + 24) % 24;
+  const hh = ((Math.round(n) % 24) + 24) % 24;
+  if (ss === ee) return true; // degenerate band = all day
+  return ss < ee ? hh >= ss && hh < ee : hh >= ss || hh < ee;
+}
+
 /** Loose match rank for the locate box: 0 = substring, 1 = in-order
  * subsequence ('mysct' → 'Mysuru City'), -1 = no match. */
 export function fuzzyRank(needle, hay) {

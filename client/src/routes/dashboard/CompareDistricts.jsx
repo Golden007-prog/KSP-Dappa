@@ -1,15 +1,19 @@
-// District compare — pick any two districts and see side-by-side mini columns
-// (case count with a relative bar, MoM delta, rate per lakh, anomaly badge)
-// computed client-side from the district-unfiltered geo rows.
+// District compare — pick any two districts (one-tap swap) and see
+// side-by-side mini columns: case count with a relative bar, MoM delta, rate
+// per lakh, share of the state's volume, derived population and anomaly
+// badge — all computed client-side from the district-unfiltered geo rows.
 import { useEffect, useMemo, useState } from 'react';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import StatDelta from '../../components/StatDelta.jsx';
 import Badge from '../../components/Badge.jsx';
-import { fmtInt, fmtNum } from '../../lib/format.js';
+import { fmtInt, fmtNum, fmtPct, fmtCompact } from '../../lib/format.js';
+import { unitPopulation } from './insights.js';
 
-function Column({ row, max }) {
+function Column({ row, max, stateTotal }) {
   const width = max > 0 ? Math.max(4, Math.round(((row.caseCount || 0) / max) * 100)) : 0;
+  const pop = unitPopulation(row);
+  const share = stateTotal > 0 ? ((Number(row.caseCount) || 0) / stateTotal) * 100 : null;
   return (
     <div className="min-w-0 flex-1 space-y-2 rounded-lg border border-grid bg-base/40 p-3">
       <div className="flex items-center gap-2">
@@ -30,6 +34,14 @@ function Column({ row, max }) {
           <dd className="num text-ink">
             {Number.isFinite(Number(row.ratePerLakh)) ? fmtNum(row.ratePerLakh, 1) : '—'}
           </dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted">State share</dt>
+          <dd className="num text-ink">{share === null ? '—' : fmtPct(share, { digits: 1 })}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted">Population (derived)</dt>
+          <dd className="num text-ink">{pop ? fmtCompact(pop) : '—'}</dd>
         </div>
       </dl>
     </div>
@@ -65,10 +77,11 @@ export default function CompareDistricts({ rows = [], loading = false }) {
   const rowA = rows.find((r) => String(r.districtId) === String(a));
   const rowB = rows.find((r) => String(r.districtId) === String(b));
   const max = Math.max(rowA?.caseCount || 0, rowB?.caseCount || 0);
+  const stateTotal = rows.reduce((acc, r) => acc + (Number(r.caseCount) || 0), 0);
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
           className="input-dark min-h-[44px] flex-1 sm:min-h-0"
           value={a}
@@ -79,6 +92,19 @@ export default function CompareDistricts({ rows = [], loading = false }) {
             <option key={r.districtId} value={r.districtId}>{r.districtName || r.districtId}</option>
           ))}
         </select>
+        <button
+          type="button"
+          aria-label="Swap the two districts"
+          title="Swap districts"
+          onClick={() => { setA(b); setB(a); }}
+          className="flex h-11 w-11 sm:h-9 sm:w-9 shrink-0 items-center justify-center self-center rounded-lg border border-grid
+            bg-panel text-muted transition-colors hover:border-primary/50 hover:text-ink"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M7 8h13m0 0-4-4m4 4-4 4M17 16H4m0 0 4 4m-4-4 4-4" />
+          </svg>
+        </button>
         <select
           className="input-dark min-h-[44px] flex-1 sm:min-h-0"
           value={b}
@@ -91,8 +117,8 @@ export default function CompareDistricts({ rows = [], loading = false }) {
         </select>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row">
-        {rowA && <Column row={rowA} max={max} />}
-        {rowB && <Column row={rowB} max={max} />}
+        {rowA && <Column row={rowA} max={max} stateTotal={stateTotal} />}
+        {rowB && <Column row={rowB} max={max} stateTotal={stateTotal} />}
       </div>
       <p className="text-[10px] text-muted">Counts for the current period · bars scale to the larger district</p>
     </div>

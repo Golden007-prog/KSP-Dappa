@@ -30,8 +30,11 @@ export default function ShortcutsSheet({ open, onClose }) {
           <ul className="divide-y divide-grid/40">
             <Row label="Open this shortcuts sheet" keys={<Key>?</Key>} />
             <Row label="Refresh every panel now" keys={<Key>r</Key>} />
-            <Row label="Toggle 60s auto-refresh" keys={<Key>a</Key>} />
+            <Row label="Toggle auto-refresh" keys={<Key>a</Key>} />
+            <Row label="Open saved views" keys={<Key>v</Key>} />
+            <Row label="Print the situation brief" keys={<Key>b</Key>} />
             <Row label="Focus the Ask-DAPPA box" keys={<Key>/</Key>} />
+            <Row label="Restore a maximized panel" keys={<Key>Esc</Key>} />
             <Row
               label="Command palette (everywhere)"
               keys={<><Key>{isMac ? '⌘' : 'Ctrl'}</Key><Key>K</Key></>}

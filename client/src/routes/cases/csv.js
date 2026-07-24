@@ -53,6 +53,15 @@ export function toCsv(rows, columns = EXPORT_COLUMNS) {
   return [header, ...lines].join('\r\n');
 }
 
+/** Rows → GitHub-flavoured Markdown table (for pasting into briefs/notes). */
+export function toMarkdown(rows, columns = EXPORT_COLUMNS) {
+  const cell = (v) => String(v === undefined || v === null ? '' : v).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+  const header = `| ${columns.map((c) => cell(c.label)).join(' | ')} |`;
+  const divider = `| ${columns.map(() => '---').join(' | ')} |`;
+  const lines = rows.map((r) => `| ${columns.map((c) => cell(c.value ? c.value(r) : r?.[c.key])).join(' | ')} |`);
+  return [header, divider, ...lines].join('\n');
+}
+
 export function downloadCsv(filename, csvText) {
   // BOM so Excel opens en-IN text columns as UTF-8.
   const blob = new Blob([String.fromCharCode(0xfeff), csvText], { type: 'text/csv;charset=utf-8' });

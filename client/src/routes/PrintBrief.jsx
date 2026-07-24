@@ -7,6 +7,11 @@
 //   ?order=alerts,kpis,…                     — section order
 //   ?by=Name                                 — "Prepared by" header stamp
 //   ?density=compact                         — compact print density (persisted)
+//   ?class=internal|confidential             — classification stamp (banner,
+//                                              per-page footer, watermark);
+//                                              absent → builder's saved level
+//   ?exec=…                                  — officer-edited executive summary
+//                                              (absent → saved override → auto)
 //   ?autoprint=1                             — fires window.print() once all
 //                                              data has settled — unless every
 //                                              query failed (guarded, retryable).
@@ -18,6 +23,8 @@ import BriefContent from './reports/BriefContent.jsx';
 import BriefPrintStyles from './reports/briefStyles.jsx';
 import { useBriefData, WINDOWS, DEFAULT_WINDOW, CUSTOM_WINDOW, isValidCustomRange } from './reports/useBriefData.js';
 import { sectionsFromParam, sectionsToParam, orderFromParam, orderToParam, DEFAULT_ORDER } from './reports/briefSections.js';
+import { CLASS_LEVELS, CLASS_META, normalizeClass, loadClassification, saveClassification } from './reports/classification.js';
+import { loadExecOverride } from './reports/exec.js';
 
 const toolbarBtn = {
   background: '#ffffff',
@@ -61,6 +68,12 @@ export default function PrintBrief() {
   );
   const sectionsQS = sectionsToParam(sections);
   const orderQS = orderToParam(order);
+  // Classification: ?class= wins; otherwise the builder's saved level.
+  const classParam = searchParams.get('class');
+  const classification = classParam !== null ? normalizeClass(classParam) : loadClassification();
+  // Executive summary: ?exec= wins; else the saved override; else auto-compose.
+  const execParam = (searchParams.get('exec') || '').trim().slice(0, 1600);
+  const execText = execParam || loadExecOverride() || undefined;
   const brief = useBriefData(windowKey, windowKey === CUSTOM_WINDOW ? custom : undefined);
   const printedRef = useRef(false);
 
@@ -99,7 +112,20 @@ export default function PrintBrief() {
     if (orderQS) p.set('order', orderQS);
     if (preparedBy) p.set('by', preparedBy);
     if (density === 'compact') p.set('density', 'compact');
+    if (classification !== 'unclassified') p.set('class', classification);
+    if (execParam) p.set('exec', execParam);
     return `?${p.toString()}`;
+  };
+
+  /** Cycle Unclassified → Internal → Confidential (URL + persisted). */
+  const cycleClass = () => {
+    const next = CLASS_LEVELS[(CLASS_LEVELS.indexOf(classification) + 1) % CLASS_LEVELS.length];
+    saveClassification(next);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next === 'unclassified') p.delete('class'); else p.set('class', next);
+      return p;
+    }, { replace: true });
   };
 
   const sectionCount = DEFAULT_ORDER.filter((k) => sections[k] !== false).length;
@@ -148,6 +174,19 @@ export default function PrintBrief() {
         ))}
         <button
           type="button"
+          style={{
+            ...toolbarBtn,
+            fontWeight: classification !== 'unclassified' ? 700 : 400,
+            color: classification === 'confidential' ? '#b91c1c' : toolbarBtn.color,
+            borderColor: classification === 'confidential' ? '#b91c1c' : '#d1d5db',
+          }}
+          onClick={cycleClass}
+          title="Cycle the classification stamp (header banner, per-page footer, watermark)"
+        >
+          Class: {CLASS_META[classification].label}
+        </button>
+        <button
+          type="button"
           style={{ ...toolbarBtn, fontWeight: density === 'compact' ? 700 : 400 }}
           onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
           aria-pressed={density === 'compact'}
@@ -170,6 +209,8 @@ export default function PrintBrief() {
             order={order}
             density={density}
             preparedBy={preparedBy}
+            execText={execText}
+            classification={classification}
           />
         </div>
       </div>

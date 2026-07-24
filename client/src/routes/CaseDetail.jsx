@@ -1,12 +1,15 @@
 // /cases/:id — FIR detail: CrimeNo digit anatomy, lifecycle timeline with lag
-// analytics, parties, sections, arrest / chargesheet / IO / court panels,
-// narrative insights (Zia or local fallback), anomaly badge with reason, a
-// mini-map of the incident location, and similar-case pattern context.
-// Prev/next walks the sibling list carried in nav state (←/→ keys too);
-// header actions: star, copy CrimeNo / share link, JSON export, print.
+// analytics + completion %, parties (accused link into the offender registry),
+// sections (copyable), arrest / chargesheet / IO / court panels, narrative
+// insights (Zia or local fallback), anomaly badge with reason, a mini-map of
+// the incident with a same-pattern-nearby overlay, pattern-engine similar
+// cases (similarity % + why-matched), incident time-band context, and one-tap
+// pivot chips back into the explorer. Prev/next walks the sibling list carried
+// in nav state (←/→ keys too); header actions: star, copy CrimeNo / share
+// link, JSON export, print.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useCase } from '../lib/api.js';
+import { useCase, useLookups } from '../lib/api.js';
 import Card from '../components/Card.jsx';
 import Badge from '../components/Badge.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -15,20 +18,36 @@ import DataTable from '../components/DataTable.jsx';
 import PulseDot from '../components/PulseDot.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { dateLabel, fmtInt } from '../lib/format.js';
-import CrimeNoBreakdown from './cases/CrimeNoBreakdown.jsx';
-import PartyList, { ARREST_FIELDS } from './cases/PartyList.jsx';
+import CrimeNoBreakdown, { splitCrimeNo } from './cases/CrimeNoBreakdown.jsx';
+import PartyList, { ARREST_FIELDS, NAME_KEYS } from './cases/PartyList.jsx';
 import KeyValuePanel from './cases/KeyValuePanel.jsx';
 import NarrativePanel from './cases/NarrativePanel.jsx';
 import IncidentMap from './cases/IncidentMap.jsx';
 import CaseTimeline from './cases/CaseTimeline.jsx';
 import CaseLagStrip from './cases/CaseLagStrip.jsx';
 import SimilarCases from './cases/SimilarCases.jsx';
+import { useSimilarCases, useNearbyIncidents } from './cases/similar.js';
 import { CHARGESHEET_ROWS, IO_ROWS, COURT_ROWS, hearingCountdown } from './cases/detailPanels.js';
 import { downloadCaseJson } from './cases/exportCaseJson.js';
 import { copyText } from './cases/clipboard.js';
+import { pickValue } from './cases/caseDates.js';
 import { readStars, toggleStar } from './cases/stars.js';
 import { pushRecent } from './cases/recent.js';
 import './cases/case-detail-print.css';
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Weekday + clock + day-part band from the incident timestamp — the list
+ * rows are date-only, so hour-of-day context lives here on the detail. */
+function incidentTimeContext(iso) {
+  if (!iso) return null;
+  const dt = new Date(String(iso).replace(' ', 'T'));
+  if (Number.isNaN(dt.getTime())) return null;
+  const h = dt.getHours();
+  const band = h < 6 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'late night';
+  const hm = `${String(h).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+  return { label: `${WEEKDAYS[dt.getDay()]} ${hm} · ${band}`, band };
+}
 
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
 const Icon = ({ children, size = 14 }) => (
@@ -143,6 +162,58 @@ export default function CaseDetail() {
   };
 
   const countdown = useMemo(() => hearingCountdown(d.court), [d.court]);
+
+  // Lookup-resolved ids for pivots + the nearby-incident overlay.
+  const lookups = useLookups();
+  const lk = lookups.data;
+  const headId = d.headName ? (lk?.crimeHeads || []).find((h) => h.headName === d.headName)?.crimeHeadId || '' : '';
+  const subId = d.subHeadName ? (lk?.crimeSubHeads || []).find((s) => s.subHeadName === d.subHeadName)?.crimeSubHeadId || '' : '';
+  const crimeNoParts = useMemo(() => splitCrimeNo(d.crimeNo), [d.crimeNo]);
+
+  // Pattern-engine similar cases (GET /cases/:id/similar with client fallback).
+  const similar = useSimilarCases(loaded ? d : null);
+  const similarIds = useMemo(
+    () => new Set((similar.data?.rows || []).map((r) => String(r.caseMasterId))),
+    [similar.data],
+  );
+
+  // Same-pattern incidents within ~5 km, overlaid on the mini-map.
+  const [showNearby, setShowNearby] = useState(true);
+  const nearby = useNearbyIncidents({
+    caseId: loaded ? String(d.caseMasterId ?? id) : '',
+    lat: d.latitude,
+    lng: d.longitude,
+    crimeSubHeadId: subId,
+    enabled: showNearby && !!subId,
+  });
+  const mapOthers = useMemo(() => {
+    if (!showNearby) return [];
+    return (nearby.data || [])
+      .filter((p) => String(p.caseMasterId) !== String(d.caseMasterId ?? id))
+      .slice(0, 80)
+      .map((p) => ({
+        id: p.caseMasterId,
+        lat: p.lat,
+        lng: p.lng,
+        highlight: similarIds.has(String(p.caseMasterId)),
+        label: `case ${p.caseMasterId}${similarIds.has(String(p.caseMasterId)) ? ' · similar match' : ''} — tap to open`,
+      }));
+  }, [nearby.data, showNearby, similarIds, d.caseMasterId, id]);
+  const openOther = useCallback((o) => {
+    if (o?.id) navigate({ pathname: `/cases/${o.id}`, search: location.search });
+  }, [navigate, location.search]);
+
+  const timeCtx = useMemo(() => incidentTimeContext(d.incidentFrom), [d.incidentFrom]);
+
+  const copySections = async () => {
+    const list = Array.isArray(d.sections) ? d.sections : [];
+    const text = list
+      .map((s) => `${s.actCode ?? ''} §${s.sectionCode ?? ''}${s.description ? ` — ${s.description}` : ''}`.trim())
+      .join('\n');
+    const ok = await copyText(text);
+    if (ok) toast.success(`Copied ${list.length} section${list.length > 1 ? 's' : ''} (chargesheet-ready)`);
+    else toast.error('Could not copy — clipboard is blocked in this browser.');
+  };
 
   if (c.isLoading) {
     return (
@@ -275,14 +346,55 @@ export default function CaseDetail() {
       />
 
       <Card title="Registration" subtitle="Core FIR attributes">
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
           <InfoItem label="Registered" value={dateLabel(d.registeredDate)} />
+          <InfoItem label="Category" value={d.categoryName} />
           <InfoItem label="District" value={d.districtName} />
           <InfoItem label="Station" value={d.unitName} />
           <InfoItem label="Crime head" value={d.headName} />
           <InfoItem label="Subhead" value={d.subHeadName} />
+          <InfoItem label="Info received" value={dateLabel(d.infoReceivedDate)} />
           <InfoItem label="Incident window" value={incidentWindow} />
         </div>
+        {timeCtx && (
+          <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="Incident time context">
+            <span className="eyebrow">Incident time</span>
+            <Badge tone={timeCtx.band === 'night' || timeCtx.band === 'late night' ? 'amber' : 'slate'}>
+              {timeCtx.label}
+            </Badge>
+            <span className="text-[11px]">hour band feeds the hotspot clustering &amp; similar-case scoring</span>
+          </p>
+        )}
+        {(crimeNoParts || headId) && (
+          <div className="no-print mt-3 pt-3 border-t border-grid/60 flex flex-wrap items-center gap-1.5" aria-label="Pivot to explorer">
+            <span className="eyebrow">Pivot</span>
+            {crimeNoParts && (
+              <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?districtId=${crimeNoParts[1].text}&unitId=${crimeNoParts[2].text}`}>
+                This station's cases
+              </Link>
+            )}
+            {crimeNoParts && (
+              <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?districtId=${crimeNoParts[1].text}`}>
+                This district's cases
+              </Link>
+            )}
+            {headId && (
+              <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?crimeHeadId=${headId}`}>
+                Same crime head
+              </Link>
+            )}
+            {headId && subId && (
+              <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?crimeHeadId=${headId}&crimeSubHeadId=${subId}`}>
+                Same subhead
+              </Link>
+            )}
+            {crimeNoParts && /^\d{4}$/.test(crimeNoParts[3].text) && (
+              <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?from=${crimeNoParts[3].text}-01-01&to=${crimeNoParts[3].text}-12-31`}>
+                Year {crimeNoParts[3].text}
+              </Link>
+            )}
+          </div>
+        )}
       </Card>
 
       <CaseLagStrip caseData={d} />
@@ -300,18 +412,72 @@ export default function CaseDetail() {
               ? `${Number(d.latitude).toFixed(4)}, ${Number(d.longitude).toFixed(4)}`
               : 'No coordinates recorded'
           }
+          actions={subId ? (
+            <label className="no-print flex min-h-[32px] cursor-pointer select-none items-center gap-1.5 text-[11px] text-muted">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-[var(--c-amber)]"
+                checked={showNearby}
+                onChange={(e) => setShowNearby(e.target.checked)}
+              />
+              same-pattern nearby
+              {showNearby && !nearby.isLoading && Array.isArray(nearby.data)
+                ? <span className="num">({fmtInt(mapOthers.length)})</span>
+                : null}
+            </label>
+          ) : null}
         >
-          <IncidentMap lat={d.latitude} lng={d.longitude} label={d.crimeNo} height={280} />
+          <IncidentMap
+            lat={d.latitude}
+            lng={d.longitude}
+            label={d.crimeNo}
+            height={280}
+            others={mapOthers}
+            onOtherClick={openOther}
+            othersLabel="same-pattern nearby (~5 km)"
+          />
         </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <PartyList title="Complainants" people={d.complainants} tone="amber" />
         <PartyList title="Victims" people={d.victims} tone="teal" />
-        <PartyList title="Accused" people={d.accused} tone="red" />
+        <PartyList
+          title="Accused"
+          people={d.accused}
+          tone="red"
+          personAction={(p) => {
+            const name = p && typeof p === 'object' ? pickValue(p, NAME_KEYS) : p;
+            if (!name) return null;
+            // Duplicate-suspect lens: name/alias search across the clustered
+            // offender registry (cross-jurisdiction repeat-offender tracking).
+            return (
+              <Link
+                to={`/offenders?q=${encodeURIComponent(String(name))}`}
+                className="no-print inline-flex items-center gap-1 text-[11px] text-amber hover:underline"
+              >
+                Search offender registry →
+              </Link>
+            );
+          }}
+        />
       </div>
 
-      <Card title="Sections invoked" subtitle="Acts and sections attached to the FIR" padded={false}>
+      <Card
+        title="Sections invoked"
+        subtitle="Acts and sections attached to the FIR"
+        padded={false}
+        actions={Array.isArray(d.sections) && d.sections.length ? (
+          <button
+            type="button"
+            className="btn !py-1 !px-2 text-xs no-print"
+            onClick={copySections}
+            aria-label="Copy the sections list as text"
+          >
+            Copy list
+          </button>
+        ) : null}
+      >
         {Array.isArray(d.sections) && d.sections.length ? (
           <DataTable
             dense
@@ -357,7 +523,7 @@ export default function CaseDetail() {
         />
       </div>
 
-      <SimilarCases caseData={d} />
+      <SimilarCases caseData={d} similar={similar} />
     </div>
   );
 }

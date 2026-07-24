@@ -1,14 +1,21 @@
 // Command palette (Ctrl/Cmd-K) — fuzzy jump to routes and actions. Pure React,
 // no dependencies. Controlled:
 //   <CommandPalette open={open} onClose={fn}
-//     actions={[{id, label, section?, hint?, keywords?, hidden?, perform}]} />
+//     actions={[{id, label, section?, hint?, keywords?, hidden?, perform}]}
+//     remoteSearch={async (query, signal) => actions[]} />
 // Layout owns the global hotkey and builds the action list (routes + theme +
-// density + filters). Fuzzy match: substring beats subsequence, earlier/denser
-// matches score higher. `hidden: true` actions (e.g. the per-district filter
+// density + filters + saved views). Fuzzy match: substring beats subsequence,
+// earlier/denser matches score higher; matched characters are highlighted in
+// the result labels. `hidden: true` actions (e.g. the per-district filter
 // jumps) only surface once the user types — they never flood the initial list.
+// `remoteSearch` (optional) is called debounced (250ms, aborted on newer input)
+// once the query is 2+ chars; its actions append below the static matches —
+// Layout uses it for live offender lookups and FIR-number jumps.
 // With an empty query the last 5 executed actions show first as a "Recent"
-// section (persisted in localStorage). Tab is trapped inside the dialog and
-// the page behind stops scrolling. Full keyboard support: ↑↓ Home End Enter Esc.
+// section (persisted in localStorage; Layout also records every page
+// navigation via recordRecentAction so recents mirror real usage). Tab is
+// trapped inside the dialog and the page behind stops scrolling. Full
+// keyboard support: ↑↓ Home End Enter Esc.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFocusTrap, useScrollLock } from '../lib/modal.js';
@@ -30,6 +37,56 @@ function pushRecent(id) {
   } catch { /* private mode */ }
 }
 
+/** Record an action id (e.g. `nav-/alerts`) into the palette's Recent section
+ * without opening the palette — Layout calls this on every route change so
+ * "Recent" reflects where you actually went, not just what you ran from here. */
+export function recordRecentAction(id) {
+  if (typeof id === 'string' && id) pushRecent(id);
+}
+
+/** Indices of `text` to highlight for `query` (substring first, else the
+ * greedy subsequence the scorer accepts); empty array = nothing to highlight. */
+function matchIndices(query, text) {
+  const q = String(query || '').toLowerCase().replace(/\s+/g, '');
+  const t = String(text || '').toLowerCase();
+  if (!q) return [];
+  const idx = t.indexOf(q);
+  if (idx >= 0) return Array.from({ length: q.length }, (_, i) => idx + i);
+  const out = [];
+  let qi = 0;
+  for (let i = 0; i < t.length && qi < q.length; i += 1) {
+    if (t[i] === q[qi]) { out.push(i); qi += 1; }
+  }
+  return qi === q.length ? out : [];
+}
+
+/** Result label with the matched characters emphasised. */
+function HighlightedLabel({ query, text }) {
+  const marks = useMemo(() => new Set(matchIndices(query, text)), [query, text]);
+  if (!marks.size) return text;
+  const chars = String(text).split('');
+  const parts = [];
+  let buf = '';
+  let marked = marks.has(0);
+  chars.forEach((ch, i) => {
+    const m = marks.has(i);
+    if (m !== marked) {
+      parts.push({ marked, s: buf });
+      buf = '';
+      marked = m;
+    }
+    buf += ch;
+  });
+  parts.push({ marked, s: buf });
+  return (
+    <>
+      {parts.map((p, i) => (p.marked
+        ? <span key={i} className="text-primary font-semibold">{p.s}</span>
+        : <span key={i}>{p.s}</span>))}
+    </>
+  );
+}
+
 /** Substring → strong score by position; else subsequence with streak bonus; -1 = no match. */
 export function fuzzyScore(query, text) {
   const q = String(query || '').toLowerCase().replace(/\s+/g, '');
@@ -44,10 +101,12 @@ export function fuzzyScore(query, text) {
   return qi === q.length ? score : -1;
 }
 
-export default function CommandPalette({ open, onClose, actions = [] }) {
+export default function CommandPalette({ open, onClose, actions = [], remoteSearch }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [recentIds, setRecentIds] = useState([]);
+  const [remote, setRemote] = useState([]);
+  const [remoteBusy, setRemoteBusy] = useState(false);
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const panelRef = useRef(null);
@@ -56,7 +115,7 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
   useScrollLock(open);
   useFocusTrap(open, panelRef);
 
-  const results = useMemo(() => {
+  const staticResults = useMemo(() => {
     if (!query.trim()) {
       const byId = new Map(actions.map((a) => [a.id, a]));
       const recent = recentIds
@@ -72,6 +131,38 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
       .sort((x, y) => y.s - x.s)
       .map((r) => r.a);
   }, [query, actions, recentIds]);
+
+  const results = useMemo(() => {
+    if (!remote.length) return staticResults;
+    const seen = new Set(staticResults.map((a) => a.id));
+    return [...staticResults, ...remote.filter((a) => a && a.id && !seen.has(a.id))];
+  }, [staticResults, remote]);
+
+  // debounced remote lookup (offenders / FIR numbers via Layout's provider)
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || !remoteSearch || q.length < 2) {
+      setRemote([]);
+      setRemoteBusy(false);
+      return undefined;
+    }
+    const ctrl = new AbortController();
+    setRemoteBusy(true);
+    const t = setTimeout(async () => {
+      try {
+        const found = await remoteSearch(q, ctrl.signal);
+        if (!ctrl.signal.aborted) setRemote(Array.isArray(found) ? found : []);
+      } catch {
+        if (!ctrl.signal.aborted) setRemote([]);
+      } finally {
+        if (!ctrl.signal.aborted) setRemoteBusy(false);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [query, open, remoteSearch]);
 
   useEffect(() => {
     if (open) {
@@ -143,9 +234,9 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
           <kbd className="hidden sm:block shrink-0 rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-muted">esc</kbd>
         </div>
         <ul id="cmdk-list" role="listbox" ref={listRef} aria-label="Results" className="max-h-[46vh] overflow-y-auto p-1.5">
-          {results.length === 0 && (
+          {results.length === 0 && !remoteBusy && (
             <li className="px-3 py-8 text-center text-sm text-muted" role="presentation">
-              Nothing matches “{query}”. Try a view name like <span className="text-ink">alerts</span>, a district, or <span className="text-ink">theme</span>.
+              Nothing matches “{query}”. Try a view name like <span className="text-ink">alerts</span>, a district, an offender name, or <span className="text-ink">theme</span>.
             </li>
           )}
           {results.map((a, i) => (
@@ -163,16 +254,26 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
               }`}
             >
               {a.icon && <span className={`shrink-0 ${i === active ? 'text-primary' : 'text-muted'}`}>{a.icon}</span>}
-              <span className="flex-1 truncate text-ink">{a.label}</span>
+              <span className="flex-1 truncate text-ink">
+                <HighlightedLabel query={query} text={a.label} />
+              </span>
               {a.section && <span className="eyebrow shrink-0">{a.section}</span>}
               {a.hint && <kbd className="shrink-0 rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-muted">{a.hint}</kbd>}
             </li>
           ))}
+          {remoteBusy && (
+            <li className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted" role="presentation" aria-live="polite">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-grid border-t-primary" aria-hidden="true" />
+              Searching offenders and case records…
+            </li>
+          )}
         </ul>
         <div className="flex items-center gap-3 border-t border-grid px-4 py-2 text-[10px] text-muted">
           <span><kbd className="text-ink">↑↓</kbd> navigate</span>
           <span><kbd className="text-ink">↵</kbd> open</span>
-          <span className="ml-auto num">{results.length} result{results.length === 1 ? '' : 's'}</span>
+          <span className="ml-auto num">
+            {remoteBusy ? 'searching… · ' : ''}{results.length} result{results.length === 1 ? '' : 's'}
+          </span>
         </div>
       </div>
     </div>,

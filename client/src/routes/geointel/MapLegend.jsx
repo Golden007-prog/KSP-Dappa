@@ -34,6 +34,8 @@ export function LegendItems({ light = false, metricKey = 'cases' }) {
       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber" aria-hidden="true" /> commissionerate</span>
       <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-teal" aria-hidden="true" /> incident point (zoom 12+)</span>
       <span className="flex items-center gap-1.5"><PulseDot /> anomaly district</span>
+      <span className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-amber" aria-hidden="true" /> patrol route</span>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-signal/70" aria-hidden="true" /> high-risk halo (≥70)</span>
     </>
   );
 }

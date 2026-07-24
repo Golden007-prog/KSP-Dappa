@@ -1,13 +1,15 @@
-// Selection drawers for the Network Explorer — offender panel on node tap,
-// shared-case panel on edge tap.
+// Selection drawers for the Network Explorer — offender panel on node tap
+// (with bridge/cut-vertex context and a watchlist star), shared-case panel on
+// edge tap (with tier badge and mutual-associate chips).
 import { Link } from 'react-router-dom';
 import { useOffender } from '../../lib/api.js';
 import Badge from '../../components/Badge.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { fmtInt, fmtNum } from '../../lib/format.js';
-import { communityColor } from './graphUtils.js';
+import { communityColor, edgeTier } from './graphUtils.js';
 import { addToCompare, COMPARE_MAX } from '../offenders/compareStore.js';
+import { useWatchlist, WATCH_MAX } from '../offenders/watchlistStore.js';
 
 function DrawerShell({ title, subtitle, onClose, children }) {
   return (
@@ -41,17 +43,26 @@ function Stat({ label, children }) {
 }
 
 /** Node tap → offender identity drawer (enriched via GET /offenders/:key). */
-export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEgo = false }) {
+export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEgo = false, broker = null, isCut = false }) {
   const toast = useToast();
   const detail = useOffender(node?.id || '');
   const d = detail.data || {};
   const hasCommunity = node?.communityId !== null && node?.communityId !== undefined && node?.communityId !== '';
+  const { keys: watchKeys, toggle: toggleWatch } = useWatchlist();
+  const watched = watchKeys.has(String(node?.id));
 
   const compare = () => {
     const r = addToCompare(node?.id);
     if (r.status === 'added') toast.success(`${node?.label || node?.id} added to compare — open the Offenders registry tray.`);
     else if (r.status === 'exists') toast.info('Already in the compare tray.');
     else toast.info(`Compare holds up to ${COMPARE_MAX} offenders — remove one in the registry first.`);
+  };
+
+  const watch = () => {
+    const r = toggleWatch(node?.id, node?.label);
+    if (r.status === 'added') toast.success(`${node?.label || node?.id} added to the watchlist.`);
+    else if (r.status === 'removed') toast.info('Removed from the watchlist.');
+    else toast.info(`Watchlist holds up to ${WATCH_MAX} people — remove one first.`);
   };
 
   return (
@@ -70,6 +81,19 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
         <Stat label="Degree">{fmtInt(node?.degree)}</Stat>
         <Stat label="Risk">{detail.isLoading ? '…' : fmtNum(d.riskScore, 1)}</Stat>
       </div>
+
+      {(isCut || (broker && broker.crossLinks > 0)) && (
+        <div className="flex flex-wrap gap-1.5">
+          {isCut && (
+            <Badge tone="red">cut vertex — removal splits the group</Badge>
+          )}
+          {broker && broker.crossLinks > 0 && (
+            <Badge tone="amber">
+              bridges {fmtInt(broker.groups.size)} other group{broker.groups.size === 1 ? '' : 's'} · {fmtInt(broker.crossLinks)} cross-link{broker.crossLinks === 1 ? '' : 's'}
+            </Badge>
+          )}
+        </div>
+      )}
 
       {detail.isLoading && <LoadingSkeleton lines={3} />}
       {!detail.isLoading && !detail.error && (
@@ -129,16 +153,32 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
         <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={compare}>
           ＋ Compare
         </button>
+        <button
+          type="button"
+          className={`btn !py-1.5 !px-2.5 text-[11px] min-h-[40px] ${watched ? '!border-amber/60 text-amber' : ''}`}
+          onClick={watch}
+          aria-pressed={watched}
+          title={watched ? 'Remove from the shared watchlist' : 'Star this person — watchlisted people render as diamonds'}
+        >
+          {watched ? '★ Watching' : '☆ Watch'}
+        </button>
       </div>
     </DrawerShell>
   );
 }
 
+const TIER_META = {
+  single: { label: 'single link — 1 shared FIR', tone: 'slate' },
+  repeat: { label: 'repeat pair — 2 shared FIRs', tone: 'amber' },
+  strong: { label: 'strong tie — 3+ shared FIRs', tone: 'red' },
+};
+
 /** Edge tap → shared-case list between the two endpoints. */
-export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode }) {
+export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode, mutuals = [] }) {
   const a = nodesById.get(String(edge?.source));
   const b = nodesById.get(String(edge?.target));
   const caseIds = edge?.caseIds || [];
+  const tier = TIER_META[edgeTier(edge?.weight)];
 
   const endpoint = (n, fallbackId) => (
     <button
@@ -158,6 +198,30 @@ export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode }) {
         <span className="text-muted text-xs shrink-0">↔</span>
         {endpoint(b, edge?.target)}
       </div>
+      <div>
+        <Badge tone={tier.tone}>{tier.label}</Badge>
+      </div>
+      {mutuals.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">
+            Mutual associates ({fmtInt(mutuals.length)})
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {mutuals.slice(0, 8).map((m) => (
+              <button
+                key={String(m.id)}
+                type="button"
+                className="chip !py-1 min-h-[36px] hover:border-amber/50 transition-colors max-w-full"
+                onClick={() => onSelectNode?.(m)}
+                title="Both endpoints share cases with this person — open their panel"
+              >
+                <span className="truncate">{m.label || String(m.id)}</span>
+              </button>
+            ))}
+            {mutuals.length > 8 && <span className="chip !py-1 min-h-[36px] text-muted">+{mutuals.length - 8}</span>}
+          </div>
+        </div>
+      )}
       <div>
         <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Shared cases</p>
         {caseIds.length === 0 ? (

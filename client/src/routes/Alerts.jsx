@@ -1,10 +1,14 @@
-// /alerts — anomaly feed. Severity chips (URL-synced ?sev=) + district/type/
-// period filters, text search (?q=), unread-only toggle (?unread=1), group-by
-// and sort (?group= / ?sort=, defaulting from localStorage), saved views,
-// red-pulse cards with observed-vs-expected sparklines, optimistic acknowledge
-// with demo-mode handling, snooze-24h, per-card copy, local mark-all-read,
-// opt-in sound/desktop notifications (60s poll while enabled, with a test
-// button), keyboard shortcuts (j/k/a/m/s/c/e/u//, 0–4), and CSV export.
+// /alerts — anomaly triage. Feed AND kanban board views (?view=board), severity
+// chips (URL-synced ?sev=) + district/type/period filters, district roll-up
+// chips, text search (?q=), unread-only (?unread=1) and SLA-breached
+// (?breached=1) toggles, group-by and sort (?group= / ?sort=, defaulting from
+// localStorage), saved views, triage-progress meter, escalation SLA countdowns
+// (first-seen persisted), red-pulse cards with observed-vs-expected sparklines
+// and mini bars, per-alert detail sheet (z gauge, similar alerts, case drill),
+// optimistic acknowledge with demo-mode handling, snooze-24h, per-card copy,
+// local mark-all-read, opt-in sound/desktop notifications (60s poll while
+// enabled, with a test button), keyboard shortcuts (j/k/a/m/s/c/e/u/v/o//,
+// 0–4), and CSV export.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,9 +27,14 @@ import AlertCard from './alerts/AlertCard.jsx';
 import OverviewStrip from './alerts/OverviewStrip.jsx';
 import SavedViews from './alerts/SavedViews.jsx';
 import OptionsSheet from './alerts/OptionsSheet.jsx';
+import TriageBoard from './alerts/TriageBoard.jsx';
+import TriageProgress from './alerts/TriageProgress.jsx';
+import DistrictRollup from './alerts/DistrictRollup.jsx';
+import AlertDetailSheet from './alerts/AlertDetailSheet.jsx';
 import useAckAlertOptimistic from './alerts/useAckAlertOptimistic.js';
 import useAlertShortcuts from './alerts/useAlertShortcuts.js';
-import { useAlertPrefs, GROUP_MODES, SORT_MODES } from './alerts/useAlertPrefs.js';
+import { slaFor, useNow } from './alerts/sla.js';
+import { useAlertPrefs, GROUP_MODES, SORT_MODES, VIEW_MODES } from './alerts/useAlertPrefs.js';
 import { exportAlertsCsv } from './alerts/csv.js';
 import { alertShareText } from './alerts/share.js';
 import { copyText } from './copilot/clipboard.js';
@@ -66,6 +75,11 @@ const SORT_OPTIONS = [
   { value: 'severity', label: 'Severity' },
   { value: 'z', label: 'z-score' },
   { value: 'recent', label: 'Recent' },
+];
+
+const VIEW_OPTIONS = [
+  { value: 'feed', label: 'Feed' },
+  { value: 'board', label: 'Board' },
 ];
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -134,7 +148,7 @@ function ToggleChip({ on, onClick, label, tip, className = '', children }) {
 }
 
 export default function Alerts() {
-  const { apiParams } = useUrlFilters();
+  const { apiParams, districtId, setFilter } = useUrlFilters();
   const [searchParams, setSearchParams] = useSearchParams();
   const alerts = useAlerts(apiParams);
   const lookups = useLookups();
@@ -144,12 +158,16 @@ export default function Alerts() {
   const {
     groupBy, setGroupBy, sortBy, setSortBy, notify, setNotify, readIds, markRead,
     snoozes, snooze, unsnooze, views, saveView, deleteView,
+    viewMode, setViewMode, firstSeen, markSeen,
   } = useAlertPrefs();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [showSnoozed, setShowSnoozed] = useState(false);
   const [focusId, setFocusId] = useState(null);
+  const [detailId, setDetailId] = useState(null);
   const cardRefs = useRef(new Map());
   const searchRef = useRef(null);
+  // 30s tick for the SLA countdown badges.
+  const now = useNow(30000);
 
   /** Set/clear one URL search param in place (replace — no history spam). */
   const setParam = (key, value) => {
@@ -176,6 +194,13 @@ export default function Alerts() {
   const changeSort = (v) => { setSortBy(v); setParam('sort', v); };
   const cmp = CMPS[sort] || bySeverity;
 
+  // Feed vs triage-board view: URL wins (?view=board → shareable), localStorage
+  // is the default; 'feed' keeps the URL clean.
+  const urlView = (searchParams.get('view') || '').toLowerCase();
+  const view = VIEW_MODES.includes(urlView) ? urlView : viewMode;
+  const changeView = (v) => { setViewMode(v); setParam('view', v === 'feed' ? '' : v); };
+  const breachedOnly = searchParams.get('breached') === '1';
+
   const rows = alerts.data || [];
   const searched = useMemo(() => {
     if (!q) return rows;
@@ -198,9 +223,21 @@ export default function Alerts() {
     () => [...openVisible.filter((a) => (snoozes[String(a.alertId)] || 0) > Date.now())].sort(cmp),
     [openVisible, snoozes, cmp],
   );
-  const open = useMemo(
+  const openActive = useMemo(
     () => [...openVisible.filter((a) => !((snoozes[String(a.alertId)] || 0) > Date.now()))].sort(cmp),
     [openVisible, snoozes, cmp],
+  );
+  // Escalation SLA state, anchored at the persisted first-seen timestamp.
+  const slaOf = (a) => slaFor(a, firstSeen[String(a.alertId)], now);
+  const breachedCount = useMemo(
+    () => openActive.filter((a) => slaFor(a, firstSeen[String(a.alertId)], now).breached).length,
+    [openActive, firstSeen, now],
+  );
+  const open = useMemo(
+    () => (breachedOnly
+      ? openActive.filter((a) => slaFor(a, firstSeen[String(a.alertId)], now).breached)
+      : openActive),
+    [openActive, breachedOnly, firstSeen, now],
   );
   const acked = useMemo(() => [...filtered.filter(isAcked)].sort(cmp), [filtered, cmp]);
   const groups = useMemo(() => groupAlerts(open, group), [open, group]);
@@ -223,6 +260,11 @@ export default function Alerts() {
     }
     return m;
   }, [openAll]);
+
+  // Record when this console first listed each alert — the SLA anchor.
+  useEffect(() => {
+    if (alerts.data?.length) markSeen(alerts.data.map((a) => String(a.alertId)));
+  }, [alerts.data, markSeen]);
 
   // New-anomaly detection: absorb the first load (and any filter change)
   // silently, then chime / desktop-notify on IDs never seen this session.
@@ -314,6 +356,23 @@ export default function Alerts() {
     else toast.error('Copy failed in this browser.');
   };
 
+  // Alert detail sheet (feed info button, board card tap, or `o` shortcut).
+  const detailAlert = useMemo(
+    () => rows.find((a) => String(a.alertId) === String(detailId)) || null,
+    [rows, detailId],
+  );
+  const openDetail = (a) => { markRead(a.alertId); setDetailId(String(a.alertId)); };
+  const similarAlerts = useMemo(() => {
+    if (!detailAlert) return [];
+    return rows
+      .filter((s) => String(s.alertId) !== String(detailAlert.alertId)
+        && (String(s.districtId) === String(detailAlert.districtId)
+          || (detailAlert.crimeHeadId !== undefined && detailAlert.crimeHeadId !== null
+            && String(s.crimeHeadId) === String(detailAlert.crimeHeadId))))
+      .sort(bySeverity)
+      .slice(0, 4);
+  }, [rows, detailAlert]);
+
   // Keyboard shortcuts: j/k move a focus ring through the open feed.
   const focusedAlert = useMemo(
     () => flatOpen.find((a) => String(a.alertId) === String(focusId)) || null,
@@ -338,6 +397,8 @@ export default function Alerts() {
     snooze: () => focusedAlert && doSnooze(focusedAlert.alertId),
     export: exportCsv,
     unread: () => setParam('unread', unreadOnly ? '' : '1'),
+    view: () => changeView(view === 'board' ? 'feed' : 'board'),
+    open: () => focusedAlert && openDetail(focusedAlert),
     sev: setSev,
     search: () => searchRef.current?.focus(),
   });
@@ -371,29 +432,35 @@ export default function Alerts() {
           onSnooze={opts.acked || opts.snoozed ? undefined : doSnooze}
           snoozedUntil={opts.snoozed ? (snoozes[id] || 0) : 0}
           onUnsnooze={doUnsnooze}
+          sla={opts.acked || opts.snoozed ? null : slaOf(a)}
+          onOpenDetail={openDetail}
         />
       </div>
     );
   };
 
   const emptyTitle = snoozedList.length ? 'All matching alerts are snoozed'
-    : unreadOnly ? 'No unread alerts'
-      : q ? 'No alerts match your search'
-        : sev ? `No open ${sev} alerts`
-          : 'No active alerts';
+    : breachedOnly ? 'No SLA-breached alerts'
+      : unreadOnly ? 'No unread alerts'
+        : q ? 'No alerts match your search'
+          : sev ? `No open ${sev} alerts`
+            : 'No active alerts';
   const emptyMessage = snoozedList.length
     ? 'Every open alert matching these filters is snoozed — expand the Snoozed section below or unsnooze them.'
-    : unreadOnly ? 'Everything matching the current filters has been read.'
-      : q ? `Nothing matches “${q}” — try a district, crime head or narrative keyword.`
-        : sev ? 'Nothing at this severity in the current window — clear the severity filter to see the rest.'
-          : 'No anomalies flagged for the current filters. All clear.';
-  const emptyAction = q
-    ? <button type="button" className="btn" onClick={() => setParam('q', '')}>Clear search</button>
-    : unreadOnly
-      ? <button type="button" className="btn" onClick={() => setParam('unread', '')}>Show all alerts</button>
-      : sev
-        ? <button type="button" className="btn" onClick={() => setSev('')}>Show all severities</button>
-        : null;
+    : breachedOnly ? 'Nothing has overrun its triage SLA — clear the breached filter to see the rest of the feed.'
+      : unreadOnly ? 'Everything matching the current filters has been read.'
+        : q ? `Nothing matches “${q}” — try a district, crime head or narrative keyword.`
+          : sev ? 'Nothing at this severity in the current window — clear the severity filter to see the rest.'
+            : 'No anomalies flagged for the current filters. All clear.';
+  const emptyAction = breachedOnly
+    ? <button type="button" className="btn" onClick={() => setParam('breached', '')}>Show all open alerts</button>
+    : q
+      ? <button type="button" className="btn" onClick={() => setParam('q', '')}>Clear search</button>
+      : unreadOnly
+        ? <button type="button" className="btn" onClick={() => setParam('unread', '')}>Show all alerts</button>
+        : sev
+          ? <button type="button" className="btn" onClick={() => setSev('')}>Show all severities</button>
+          : null;
 
   return (
     <div className="space-y-4 max-w-[1200px] mx-auto">
@@ -405,6 +472,7 @@ export default function Alerts() {
             {!alerts.isLoading && !alerts.error && (
               <span className="num"> · {fmtInt(openAll.length)} open · {fmtInt(rows.length - openAll.length)} acknowledged
                 {unreadOpenCount > 0 && <span className="text-primary"> · {fmtInt(unreadOpenCount)} unread</span>}
+                {breachedCount > 0 && <span className="text-signal"> · {fmtInt(breachedCount)} SLA-breached</span>}
               </span>
             )}
           </p>
@@ -445,6 +513,14 @@ export default function Alerts() {
         onDelete={deleteView}
       />
 
+      {!alerts.isLoading && !alerts.error && (
+        <DistrictRollup
+          openAlerts={openAll}
+          activeDistrictId={districtId}
+          onPick={(id) => setFilter('districtId', id)}
+        />
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[11rem]">
           <svg
@@ -477,12 +553,31 @@ export default function Alerts() {
           Unread only
           {unreadOpenCount > 0 && <span className="num text-muted"> {fmtInt(unreadOpenCount)}</span>}
         </button>
+        <button
+          type="button"
+          aria-pressed={breachedOnly}
+          onClick={() => setParam('breached', breachedOnly ? '' : '1')}
+          title="Only open alerts that have overrun their triage SLA"
+          className={`chip !py-1 min-h-[44px] sm:min-h-[30px] transition-colors ${breachedOnly ? '!border-signal/60 !text-signal' : 'hover:border-signal/40'}`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${breachedCount ? 'bg-signal' : 'bg-muted/50'}`}
+            aria-hidden="true"
+          />
+          SLA breached
+          {breachedCount > 0 && <span className="num text-muted"> {fmtInt(breachedCount)}</span>}
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="hidden sm:flex items-center gap-2">
-          <span className="text-xs text-muted">Group</span>
-          <SegmentedControl options={GROUP_OPTIONS} value={group} onChange={changeGroup} ariaLabel="Group alerts by" />
+          <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={changeView} ariaLabel="Alerts view mode" />
+          {view === 'feed' && (
+            <>
+              <span className="text-xs text-muted">Group</span>
+              <SegmentedControl options={GROUP_OPTIONS} value={group} onChange={changeGroup} ariaLabel="Group alerts by" />
+            </>
+          )}
           <span className="text-xs text-muted">Sort</span>
           <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={changeSort} ariaLabel="Sort alerts by" />
         </div>
@@ -557,9 +652,14 @@ export default function Alerts() {
         </div>
       </div>
 
+      {!alerts.isLoading && !alerts.error && (
+        <TriageProgress rows={filtered} readIds={readIds} snoozes={snoozes} isAcked={isAcked} />
+      )}
+
       <p className="hidden md:block text-[11px] text-muted">
         Shortcuts: <span className="num">j/k</span> navigate · <span className="num">a</span> acknowledge ·{' '}
         <span className="num">m</span> read · <span className="num">s</span> snooze · <span className="num">c</span> copy ·{' '}
+        <span className="num">o</span> details · <span className="num">v</span> board ·{' '}
         <span className="num">u</span> unread · <span className="num">e</span> CSV · <span className="num">/</span> search ·{' '}
         <span className="num">1–4</span> severity · <span className="num">0</span> all
       </p>
@@ -578,6 +678,26 @@ export default function Alerts() {
             action={<button type="button" className="btn" onClick={() => alerts.refetch()}>Retry</button>}
           />
         </Card>
+      ) : view === 'board' ? (
+        (open.length === 0 && snoozedList.length === 0 && acked.length === 0) ? (
+          <Card>
+            <EmptyState title={emptyTitle} message={emptyMessage} action={emptyAction} />
+          </Card>
+        ) : (
+          <TriageBoard
+            open={open}
+            snoozed={snoozedList}
+            acked={acked}
+            readIds={readIds}
+            slaOf={slaOf}
+            onOpen={openDetail}
+            onRead={markRead}
+            onAck={(aid) => ack.mutate(aid)}
+            ackPendingId={ackPendingId}
+            onSnooze={doSnooze}
+            onUnsnooze={doUnsnooze}
+          />
+        )
       ) : (
         <>
           {open.length === 0 ? (
@@ -646,6 +766,25 @@ export default function Alerts() {
         onToggleDesktop={toggleDesktop}
         desktopAvailable={desktopSupported()}
         onTestNotification={testNotification}
+        viewOptions={VIEW_OPTIONS}
+        view={view}
+        onView={changeView}
+      />
+
+      <AlertDetailSheet
+        alert={detailAlert}
+        onClose={() => setDetailId(null)}
+        sla={detailAlert && !isAcked(detailAlert) ? slaOf(detailAlert) : null}
+        stations={detailAlert ? stationsForAlert(detailAlert, units) : null}
+        acked={detailAlert ? isAcked(detailAlert) : false}
+        snoozedUntil={detailAlert ? (snoozes[String(detailAlert.alertId)] || 0) : 0}
+        onAck={(aid) => { markRead(aid); ack.mutate(aid); }}
+        ackPending={detailAlert ? String(ackPendingId) === String(detailAlert.alertId) : false}
+        onSnooze={doSnooze}
+        onUnsnooze={doUnsnooze}
+        onCopy={copyAlert}
+        similar={similarAlerts}
+        onJump={openDetail}
       />
     </div>
   );

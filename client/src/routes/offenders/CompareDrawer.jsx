@@ -1,14 +1,17 @@
 // Side-by-side comparison of 2–3 offenders in a bottom sheet.
 // Registry rows give the instant columns; GET /offenders/:key enriches each
-// column with degree + first/last seen once the sheet is open (queries stay
-// disabled while closed — keys pass through as '' so nothing fetches).
-// Numeric rows tint the highest value so differences read at a glance
-// (risk = red tint, cases/degree = amber).
+// column with degree + first/last seen + timeline + associates once the sheet
+// is open (queries stay disabled while closed — keys pass through as '' so
+// nothing fetches). Numeric rows tint the highest value so differences read at
+// a glance (risk = red tint, cases/degree = amber). Association-detection
+// rows: per-year activity sparkline, direct co-accused links between the
+// compared people, shared MO tags highlighted, and a common-associates footer.
 import { Link } from 'react-router-dom';
 import Sheet from '../../components/Sheet.jsx';
 import { useOffender } from '../../lib/api.js';
 import { fmtInt, dateLabel } from '../../lib/format.js';
-import { RiskBadge, MoChips } from './common.jsx';
+import { RiskBadge } from './common.jsx';
+import YearSparkline from './YearSparkline.jsx';
 import { communityColor } from '../network/graphUtils.js';
 
 function DetCell({ loading, children }) {
@@ -72,7 +75,64 @@ const METRICS = [
       );
     },
   },
-  { id: 'mo', label: 'MO tags', render: (c) => <MoChips tags={c.p.moTags || []} max={4} /> },
+  {
+    id: 'mo',
+    label: 'MO tags',
+    render: (c, ctx) => {
+      const tags = c.p.moTags || [];
+      if (!tags.length) return '—';
+      return (
+        <span className="inline-flex flex-wrap gap-1">
+          {tags.slice(0, 6).map((t) => (
+            <span
+              key={t}
+              className={`chip !py-0 text-[10px] ${ctx?.sharedTags?.has(t) ? '!border-amber text-amber' : ''}`}
+              title={ctx?.sharedTags?.has(t) ? 'Shared with another compared offender' : undefined}
+            >
+              {t}
+            </span>
+          ))}
+          {tags.length > 6 && (
+            <span className="chip !py-0 text-[10px] text-muted" title={tags.slice(6).join(', ')}>+{tags.length - 6}</span>
+          )}
+        </span>
+      );
+    },
+  },
+  {
+    id: 'activity',
+    label: 'Activity',
+    render: (c) => {
+      if (c.loading) return <div className="skeleton h-10 w-28" />;
+      return (c.p.timeline || []).length
+        ? <YearSparkline timeline={c.p.timeline} height={28} />
+        : <span className="text-muted">—</span>;
+    },
+  },
+  {
+    id: 'links',
+    label: 'Direct links',
+    render: (c, ctx) => {
+      if (c.loading) return <div className="skeleton h-4 w-16" />;
+      const links = (ctx?.cols || [])
+        .filter((o) => o.key !== c.key)
+        .map((o) => {
+          const hit = (c.p.associates || []).find((a) => String(a.personKey) === o.key);
+          return hit ? { key: o.key, name: o.p.canonicalName || o.key, n: hit.sharedCases } : null;
+        })
+        .filter(Boolean);
+      if (!links.length) return <span className="text-muted">no direct link</span>;
+      return (
+        <span className="inline-flex flex-wrap gap-1">
+          {links.map((l) => (
+            <span key={l.key} className="chip !py-0 text-[10px] !border-amber/60 text-amber" title="These two are co-accused on the same FIR(s)">
+              ↔ {l.name} · {fmtInt(l.n)} shared
+            </span>
+          ))}
+        </span>
+      );
+    },
+  },
   {
     id: 'community',
     label: 'Community',
@@ -116,6 +176,30 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
     loading: details[i].isLoading,
     p: { ...(baseByKey.get(String(k)) || {}), ...(details[i].data || {}) },
   }));
+
+  // MO tags carried by 2+ compared offenders → highlighted in the MO row.
+  const tagCount = new Map();
+  for (const c of cols) {
+    for (const t of new Set(c.p.moTags || [])) tagCount.set(t, (tagCount.get(t) || 0) + 1);
+  }
+  const sharedTags = new Set([...tagCount].filter(([, n]) => n >= 2).map(([t]) => t));
+  const ctx = { cols, sharedTags };
+
+  // Associates shared by 2+ compared offenders (excluding the compared people
+  // themselves) — hidden-association detection across the set.
+  const assocCount = new Map();
+  for (const c of cols) {
+    for (const a of c.p.associates || []) {
+      const k = String(a.personKey);
+      if (cols.some((o) => o.key === k)) continue;
+      assocCount.set(k, (assocCount.get(k) || 0) + 1);
+    }
+  }
+  const commonAssociates = [...assocCount.entries()]
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => k)
+    .slice(0, 8);
 
   return (
     <Sheet
@@ -175,12 +259,37 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
                         className={`px-2 py-2 num text-xs text-ink align-top ${i === hi ? `${m.maxTint} rounded` : ''}`}
                         title={i === hi ? `Highest ${m.label.toLowerCase()} of the compared set` : undefined}
                       >
-                        {m.render(c)}
+                        {m.render(c, ctx)}
                       </td>
                     ))}
                   </tr>
                 );
               })}
+              <tr className="align-top">
+                <th scope="row" className="text-left text-[10px] uppercase tracking-wide text-muted font-semibold px-2 py-2 whitespace-nowrap">
+                  Common associates
+                </th>
+                <td colSpan={cols.length} className="px-2 py-2 text-xs text-ink">
+                  {cols.some((c) => c.loading) ? (
+                    <div className="skeleton h-4 w-24" />
+                  ) : commonAssociates.length ? (
+                    <span className="inline-flex flex-wrap gap-1">
+                      {commonAssociates.map((k) => (
+                        <Link
+                          key={k}
+                          to={`/offenders/${encodeURIComponent(k)}`}
+                          className="chip !py-0 text-[10px] hover:border-amber/50 transition-colors"
+                          title="Co-accused with at least two of the compared offenders"
+                        >
+                          {baseByKey.get(k)?.canonicalName || k}
+                        </Link>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-muted">none shared by two or more of the compared offenders</span>
+                  )}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>

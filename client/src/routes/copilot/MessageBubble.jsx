@@ -1,13 +1,19 @@
 // /copilot — chat bubbles. User bubbles right-aligned in amber with pin +
 // share-link actions; assistant bubbles carry the answer text, optional
-// ECharts block, a collapsible "Show ZCQL" reveal (with its own copy button),
-// the engine badge, response latency, copy-answer and regenerate buttons, and
-// a relative timestamp (absolute time in the tooltip).
+// ECharts block, the AnswerInsights provenance strip (confidence, intent,
+// source-table citations, "how this was answered"), a collapsible "Show ZCQL"
+// reveal (with its own copy button), the engine badge, response latency,
+// copy / copy-as-Markdown / listen / compare / regenerate buttons, and a
+// relative timestamp (absolute time in the tooltip). Unmatched answers render
+// the server's suggested rephrasings as clickable chips.
 import Badge from '../../components/Badge.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
+import AnswerInsights from './AnswerInsights.jsx';
 import CopilotChart from './CopilotChart.jsx';
-import { copyText, fullTimeLabel, latencyLabel, relativeTimeLabel } from './transcript.js';
+import {
+  answerToMarkdown, copyText, fullTimeLabel, latencyLabel, relativeTimeLabel,
+} from './transcript.js';
 
 const ICON = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
@@ -65,7 +71,10 @@ function Time({ ts, now, className = '' }) {
   );
 }
 
-export default function MessageBubble({ message, now, pinned = false, onRetry, onRegenerate, onTogglePin }) {
+export default function MessageBubble({
+  message, now, pinned = false, onRetry, onRegenerate, onTogglePin,
+  onAsk, onToggleCompare, compareSelected = false, readAloud,
+}) {
   const toast = useToast();
 
   if (message.role === 'user') {
@@ -146,12 +155,36 @@ export default function MessageBubble({ message, now, pinned = false, onRetry, o
     else toast.error('Copy failed — select the query and copy manually.');
   };
 
+  const copyMarkdown = async () => {
+    const ok = await copyText(answerToMarkdown(message));
+    if (ok) toast.success('Answer copied as Markdown (with provenance and ZCQL)');
+    else toast.error('Copy failed — select the text and copy manually.');
+  };
+
+  const speaking = readAloud?.speakingId === message.id;
+  const suggestions = Array.isArray(message.suggestions) ? message.suggestions.filter(Boolean) : [];
+
   return (
     <div className="flex gap-2.5">
       <Avatar />
       <div className="max-w-[88%] md:max-w-[80%] min-w-0 rounded-2xl rounded-tl-sm bg-panel border border-grid px-3.5 py-3">
         <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">{message.text}</p>
+        {suggestions.length > 0 && onAsk && (
+          <div className="no-print mt-2 flex flex-wrap gap-1.5" aria-label="Suggested rephrasings">
+            {suggestions.map((q) => (
+              <button
+                key={q}
+                type="button"
+                className="text-left text-[11px] text-muted border border-grid bg-base/60 rounded-full px-3 min-h-[40px] hover:border-amber/50 hover:text-ink transition-colors"
+                onClick={() => onAsk(q)}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
         <CopilotChart chart={message.chart} />
+        <AnswerInsights message={message} />
         {message.zcql && (
           <details className="mt-2.5">
             <summary className="cursor-pointer text-[11px] text-muted hover:text-amber transition-colors select-none py-2 -my-2">
@@ -191,6 +224,58 @@ export default function MessageBubble({ message, now, pinned = false, onRetry, o
             </svg>
             Copy
           </button>
+          <Tooltip label="Copy answer as Markdown, with provenance and ZCQL">
+            <button
+              type="button"
+              className="no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] text-muted hover:text-primary transition-colors"
+              onClick={copyMarkdown}
+              aria-label="Copy answer as Markdown"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M6 15v-5l2.5 2.5L11 10v5m3-5h3m-1.5 0v5" />
+              </svg>
+              MD
+            </button>
+          </Tooltip>
+          {readAloud?.supported && (
+            <Tooltip label={speaking ? 'Stop reading this answer' : 'Read this answer aloud'}>
+              <button
+                type="button"
+                className={`no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] transition-colors ${
+                  speaking ? 'text-amber' : 'text-muted hover:text-primary'
+                }`}
+                onClick={() => readAloud.toggle(message.id, message.text)}
+                aria-pressed={speaking}
+                aria-label={speaking ? 'Stop reading this answer aloud' : 'Read this answer aloud'}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+                  <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
+                  {speaking ? <path d="M16 9l5 6m0-6-5 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M18.4 6a9 9 0 0 1 0 12" />}
+                </svg>
+                {speaking ? 'Stop' : 'Listen'}
+              </button>
+            </Tooltip>
+          )}
+          {onToggleCompare && (
+            <Tooltip label={compareSelected ? 'Remove from comparison' : 'Pick for side-by-side comparison (choose two answers)'}>
+              <button
+                type="button"
+                className={`no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] transition-colors ${
+                  compareSelected ? 'text-primary' : 'text-muted hover:text-primary'
+                }`}
+                onClick={() => onToggleCompare(message.id)}
+                aria-pressed={compareSelected}
+                aria-label={compareSelected ? 'Remove this answer from comparison' : 'Pick this answer for comparison'}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+                  <rect x="3" y="5" width="7" height="14" rx="1.5" />
+                  <rect x="14" y="5" width="7" height="14" rx="1.5" />
+                </svg>
+                {compareSelected ? 'Picked' : 'Compare'}
+              </button>
+            </Tooltip>
+          )}
           {onRegenerate && message.question && (
             <Tooltip label="Ask this question again (replaces this answer)">
               <button

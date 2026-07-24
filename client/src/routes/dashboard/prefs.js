@@ -70,7 +70,7 @@ export function usePanelPrefs() {
 /** Every react-query key root the dashboard renders from (refresh scope). */
 export const DASH_QUERY_KEYS = [
   'kpis', 'geo-districts', 'trends-monthly', 'trends-category-share',
-  'trends-seasonality', 'alerts',
+  'trends-seasonality', 'alerts', 'geo-hotspots', 'risk-stations', 'forecast',
 ];
 
 /**

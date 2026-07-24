@@ -1,8 +1,11 @@
-// Similar cases — same crime subhead in the same district (falls back to the
-// crime head when the subhead can't be resolved from lookups). The district id
-// comes from the CrimeNo's 4-digit district segment; the subhead id is resolved
-// name → id via /meta/lookups because the detail payload carries names only.
-// Clicking a row navigates with the similar set as prev/next siblings.
+// Similar cases. v2: when the detail page passes the `similar` hook result
+// (useSimilarCases → GET /cases/:id/similar), rows carry a 0–100 similarity
+// score (hour band · station/district · geo proximity) rendered as a bar, plus
+// whyMatched reason chips; the engine badge says whether the server pattern
+// engine or the client fallback produced the list. Without the prop the
+// original client-side heuristic (same subhead/head + district via /cases)
+// still runs — backwards compatible. Clicking a row navigates with the
+// similar set as prev/next siblings.
 import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCases, useLookups } from '../../lib/api.js';
@@ -10,10 +13,110 @@ import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
-import { dateLabel } from '../../lib/format.js';
+import { dateLabel, fmtInt } from '../../lib/format.js';
 import { CrimeNoInline, splitCrimeNo } from './CrimeNoBreakdown.jsx';
 
 const MAX_ROWS = 6;
+
+function RowButton({ r, onOpen }) {
+  const hasScore = Number.isFinite(Number(r.similarity));
+  const score = hasScore ? Math.max(0, Math.min(100, Number(r.similarity))) : 0;
+  const why = Array.isArray(r.whyMatched) ? r.whyMatched.filter(Boolean) : [];
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(r)}
+      className="flex w-full items-center gap-3 px-1 py-2.5 min-h-[48px] text-left rounded-lg hover:bg-grid/25 transition-colors"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm truncate"><CrimeNoInline crimeNo={r.crimeNo} /></p>
+        <p className="text-[11px] text-muted num mt-0.5 truncate">
+          {dateLabel(r.registeredDate)} · {r.unitName || r.districtName || '—'}
+        </p>
+        {why.length > 0 && (
+          <span className="mt-1 flex flex-wrap gap-1">
+            {why.slice(0, 4).map((w, i) => (
+              <span key={`${w}-${i}`} className="chip !py-0.5 !px-1.5 !text-[10px]">{w}</span>
+            ))}
+          </span>
+        )}
+      </div>
+      {hasScore && (
+        <span className="shrink-0 flex flex-col items-end gap-1" aria-label={`Similarity ${score} percent`}>
+          <span className="num text-xs text-ink font-medium">{fmtInt(score)}%</span>
+          <span className="block h-1.5 w-14 rounded-full bg-grid overflow-hidden" aria-hidden="true">
+            <span
+              className={`block h-full ${score >= 60 ? 'bg-amber' : 'bg-teal/70'}`}
+              style={{ width: `${score}%` }}
+            />
+          </span>
+        </span>
+      )}
+      {r.anomalyFlag ? <Badge tone="red" pulse>anomaly</Badge> : null}
+      {r.statusName && !why.length && <Badge tone="slate">{r.statusName}</Badge>}
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-muted">
+        <path d="m9 6 6 6-6 6" />
+      </svg>
+    </button>
+  );
+}
+
+function RowList({ rows, onOpen }) {
+  return (
+    <ul className="divide-y divide-grid/40">
+      {rows.map((r) => (
+        <li key={r.caseMasterId}><RowButton r={r} onOpen={onOpen} /></li>
+      ))}
+    </ul>
+  );
+}
+
+/** Pattern-engine variant — renders the useSimilarCases hook result. */
+function SimilarFromEngine({ caseData, similar }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const d = caseData || {};
+  const rows = (similar.data?.rows || []).slice(0, MAX_ROWS);
+  const engine = similar.data?.engine || 'server';
+  const siblings = rows.map((r) => String(r.caseMasterId));
+  const open = (r) => navigate(
+    { pathname: `/cases/${r.caseMasterId}`, search: location.search },
+    { state: { siblings } },
+  );
+
+  let body;
+  if (similar.isLoading || (similar.isPending && similar.fetchStatus !== 'idle')) {
+    body = <LoadingSkeleton lines={4} />;
+  } else if (similar.error) {
+    body = (
+      <EmptyState
+        compact
+        title="Couldn't score similar cases"
+        message={similar.error.message}
+        action={<button type="button" className="btn" onClick={() => similar.refetch()}>Retry</button>}
+      />
+    );
+  } else if (!rows.length) {
+    body = <EmptyState compact title="No similar cases" message="The pattern engine found no case sharing this one's crime pattern." />;
+  } else {
+    body = <RowList rows={rows} onOpen={open} />;
+  }
+
+  return (
+    <Card
+      title="Similar cases"
+      subtitle={engine === 'server'
+        ? 'Scored on hour band · station/district · geo proximity'
+        : `Same ${d.subHeadName ? 'subhead' : 'crime head'} · same district · newest first`}
+      className="no-print"
+      actions={engine === 'server'
+        ? <Badge tone="teal">pattern engine</Badge>
+        : <Badge tone="slate">client fallback</Badge>}
+    >
+      {body}
+    </Card>
+  );
+}
 
 function SimilarList({ params, matchLabel, currentId }) {
   const navigate = useNavigate();
@@ -41,37 +144,16 @@ function SimilarList({ params, matchLabel, currentId }) {
     { state: { siblings } },
   );
 
-  return (
-    <ul className="divide-y divide-grid/40">
-      {rows.map((r) => (
-        <li key={r.caseMasterId}>
-          <button
-            type="button"
-            onClick={() => open(r)}
-            className="flex w-full items-center gap-3 px-1 py-2.5 min-h-[48px] text-left rounded-lg hover:bg-grid/25 transition-colors"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="text-sm truncate"><CrimeNoInline crimeNo={r.crimeNo} /></p>
-              <p className="text-[11px] text-muted num mt-0.5 truncate">
-                {dateLabel(r.registeredDate)} · {r.unitName || r.districtName || '—'}
-              </p>
-            </div>
-            {r.anomalyFlag ? <Badge tone="red" pulse>anomaly</Badge> : null}
-            {r.statusName && <Badge tone="slate">{r.statusName}</Badge>}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-muted">
-              <path d="m9 6 6 6-6 6" />
-            </svg>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
+  return <RowList rows={rows} onOpen={open} />;
 }
 
-export default function SimilarCases({ caseData }) {
+export default function SimilarCases({ caseData, similar }) {
   const d = caseData || {};
   const lookups = useLookups();
   const lk = lookups.data;
+
+  // Detail page passes the pattern-engine hook result; render that path.
+  if (similar) return <SimilarFromEngine caseData={caseData} similar={similar} />;
 
   const parts = splitCrimeNo(d.crimeNo);
   const districtId = parts ? parts[1].text : '';

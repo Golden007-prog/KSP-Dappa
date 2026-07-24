@@ -56,6 +56,16 @@ export default function MapCanvas({
   hotspots,
   stations,
   selectedUnitId,
+  selectedPolygons = null, // multi-select mode: primary-stroked polygon names
+  rankBadges = null, // [{lat,lng,rank}] — numbered badges on top hotspots
+  patrolStops = null, // ordered [{lat,lng,label,legKm}] — dashed patrol route
+  haloStations = null, // stations that get a pulsing high-risk halo ring
+  probe = null, // {lat,lng,radiusKm} — radius-probe circle
+  probing = false, // radius-probe placement mode (map click → onProbeSet)
+  onProbeSet,
+  compareHeatPoints = null, // month-A heat points for the compare swipe
+  comparePct = null, // divider position 0–100 (null = compare off)
+  nightDim = false, // hour lens night hours — dusk-filter the basemap tiles
   fly,
   light = false, // active theme (drives choropleth ramp + strokes)
   basemap = 'osm', // 'osm' | 'none'
@@ -74,14 +84,19 @@ export default function MapCanvas({
   const hotspotLayersRef = useRef({});
   const handlersRef = useRef({});
   const heatRef = useRef(null);
+  const compareHeatRef = useRef(null);
   const popupOpenRef = useRef(false);
   const measuringRef = useRef(false);
+  const probingRef = useRef(false);
   const executedFlySeq = useRef(0);
   const coordRef = useRef(null); // {lat,lng} under the cursor
   const coordElRef = useRef(null);
   const [zoomedIn, setZoomedIn] = useState(false);
-  handlersRef.current = { onPolygonClick, onStationClick, onCityClick, onHotspotClick, onTileError, onMeasureEnd, onCoordCopy };
+  handlersRef.current = {
+    onPolygonClick, onStationClick, onCityClick, onHotspotClick, onTileError, onMeasureEnd, onCoordCopy, onProbeSet,
+  };
   measuringRef.current = measuring;
+  probingRef.current = probing;
 
   // Map creation — once per mount (StrictMode double-mount recreates cleanly).
   useEffect(() => {
@@ -178,6 +193,7 @@ export default function MapCanvas({
     const fmtValue = choroMetric?.fmtValue || ((v) => `${fmtInt(v)} cases`);
     const zeroFill = choroZeroFill(light);
     const stroke = choroStroke(light);
+    const selSet = new Set(selectedPolygons || []);
     const layer = L.geoJSON(geojson, {
       pane: 'geointel-choro',
       style: (feature) => {
@@ -187,18 +203,24 @@ export default function MapCanvas({
         let fillColor = zeroFill;
         if (has && diverging) fillColor = divergeColor(v / max, light);
         else if (has && v > 0) fillColor = rampColor(v / max, light);
-        return { fillColor, fillOpacity: choroOpacity, color: stroke, weight: 1 };
+        const selected = selSet.has(name);
+        return {
+          fillColor,
+          fillOpacity: choroOpacity,
+          color: selected ? '#5B9DFF' : stroke,
+          weight: selected ? 2.5 : 1,
+        };
       },
       onEachFeature: (feature, lyr) => {
         const name = feature?.properties?.district;
         const v = Number(values[name]);
         const label = Number.isFinite(v) ? fmtValue(v) : 'no data';
         lyr.bindTooltip(
-          `<div class="text-xs"><strong>${esc(name)}</strong><br/>${esc(label)} · click to drill</div>`,
+          `<div class="text-xs"><strong>${esc(name)}</strong><br/>${esc(label)} · click to ${selectedPolygons ? 'select' : 'drill'}</div>`,
           { sticky: true, className: 'dappa-tooltip' },
         );
         lyr.on('click', () => {
-          if (measuringRef.current) return; // measure tool owns map clicks
+          if (measuringRef.current || probingRef.current) return; // measure/probe own map clicks
           handlersRef.current.onPolygonClick?.(name, feature);
         });
         lyr.on('mouseover', () => lyr.setStyle({ weight: 2, color: '#F5A623' }));
@@ -208,7 +230,7 @@ export default function MapCanvas({
     return () => {
       if (mapRef.current) mapRef.current.removeLayer(layer);
     };
-  }, [geojson, choroValues, layers.choropleth, choroMetric, choroOpacity, light]);
+  }, [geojson, choroValues, layers.choropleth, choroMetric, choroOpacity, light, selectedPolygons]);
 
   // Alert pulse overlay — animated red stroke (.alert-poly) on alerted districts.
   useEffect(() => {
@@ -260,7 +282,44 @@ export default function MapCanvas({
   useEffect(() => {
     const layer = heatRef.current;
     if (layer && layer._canvas) layer._canvas.style.opacity = String(heatOpacity);
+    const cmp = compareHeatRef.current;
+    if (cmp && cmp._canvas) cmp._canvas.style.opacity = String(heatOpacity);
   }, [heatOpacity]);
+
+  // Compare heat layer (month A) — a second leaflet.heat canvas; the clip
+  // effect below splits the two canvases along the swipe divider.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layers.heat || !(compareHeatPoints || []).length || typeof L.heatLayer !== 'function') {
+      return undefined;
+    }
+    const layer = L.heatLayer(compareHeatPoints, {
+      radius: 16,
+      blur: 22,
+      max: 1,
+      minOpacity: 0.25,
+      gradient: { 0.15: '#1d4ed8', 0.45: '#2DD4BF', 0.7: '#F5A623', 0.95: '#E5484D' },
+    }).addTo(map);
+    compareHeatRef.current = layer;
+    if (layer._canvas) layer._canvas.style.opacity = String(heatOpacity);
+    return () => {
+      compareHeatRef.current = null;
+      if (mapRef.current) mapRef.current.removeLayer(layer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareHeatPoints, layers.heat]);
+
+  // Swipe split: month A (compare) visible left of the divider, the current
+  // month right of it. Re-applies after either heat canvas is recreated.
+  useEffect(() => {
+    const main = heatRef.current && heatRef.current._canvas;
+    const cmp = compareHeatRef.current && compareHeatRef.current._canvas;
+    // Clip the current-month canvas even when month A has zero incidents —
+    // an empty left half is the honest rendering of "no incidents in A".
+    const active = comparePct !== null && comparePct !== undefined;
+    if (main) main.style.clipPath = active ? `inset(0 0 0 ${comparePct}%)` : '';
+    if (cmp) cmp.style.clipPath = active ? `inset(0 ${100 - comparePct}% 0 0)` : '';
+  }, [comparePct, compareHeatPoints, heatPoints, layers.heat]);
 
   // Individual incident markers with popup cards — only when the incidents
   // layer is on AND the user has zoomed in past INCIDENT_MIN_ZOOM (capped so a
@@ -332,7 +391,7 @@ export default function MapCanvas({
         { className: 'geointel-popup', closeButton: false, offset: [0, -4] },
       );
       circle.on('click', () => {
-        if (measuringRef.current) return;
+        if (measuringRef.current || probingRef.current) return;
         handlersRef.current.onHotspotClick?.(h);
       });
       group.addLayer(circle);
@@ -373,7 +432,7 @@ export default function MapCanvas({
         { sticky: true, className: 'dappa-tooltip' },
       );
       marker.on('click', () => {
-        if (measuringRef.current) return;
+        if (measuringRef.current || probingRef.current) return;
         handlersRef.current.onStationClick?.(s);
       });
       group.addLayer(marker);
@@ -405,7 +464,7 @@ export default function MapCanvas({
         { sticky: true, className: 'dappa-tooltip' },
       );
       marker.on('click', () => {
-        if (measuringRef.current) return;
+        if (measuringRef.current || probingRef.current) return;
         handlersRef.current.onCityClick?.(c);
       });
       group.addLayer(marker);
@@ -415,6 +474,128 @@ export default function MapCanvas({
       if (mapRef.current) mapRef.current.removeLayer(group);
     };
   }, [cityMarkers]);
+
+  // High-risk halos — pulsing red rings (CSS keyframes on the SVG stroke)
+  // around stations whose predicted risk crosses the high band.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !(haloStations || []).length) return undefined;
+    const group = L.layerGroup();
+    for (const s of haloStations) {
+      const lat = Number(s.lat);
+      const lng = Number(s.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      group.addLayer(L.circleMarker([lat, lng], {
+        pane: 'geointel-stations',
+        radius: 13,
+        color: '#E5484D',
+        weight: 2,
+        fill: false,
+        className: 'gi-halo',
+        interactive: false,
+      }));
+    }
+    group.addTo(map);
+    return () => {
+      if (mapRef.current) mapRef.current.removeLayer(group);
+    };
+  }, [haloStations]);
+
+  // Rank badges — numbered discs on the top hotspots, mirroring the chip
+  // ranking so "#2 on the strip" is findable on the map at a glance.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layers.hotspots || !(rankBadges || []).length) return undefined;
+    const group = L.layerGroup();
+    for (const b of rankBadges) {
+      if (!Number.isFinite(b.lat) || !Number.isFinite(b.lng)) continue;
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="gi-rank">${Number(b.rank) || ''}</div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+      group.addLayer(L.marker([b.lat, b.lng], { icon, pane: 'geointel-city', interactive: false, keyboard: false }));
+    }
+    group.addTo(map);
+    return () => {
+      if (mapRef.current) mapRef.current.removeLayer(group);
+    };
+  }, [rankBadges, layers.hotspots]);
+
+  // Patrol route — dashed amber polyline through the suggested stops plus
+  // numbered stop markers with leg-distance tooltips.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !(patrolStops || []).length) return undefined;
+    const group = L.layerGroup();
+    const latlngs = patrolStops.map((s) => [s.lat, s.lng]);
+    if (latlngs.length > 1) {
+      group.addLayer(L.polyline(latlngs, {
+        pane: 'geointel-measure', color: '#F5A623', weight: 3, dashArray: '8 6', opacity: 0.9,
+      }));
+    }
+    patrolStops.forEach((s, i) => {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="gi-stop">${i + 1}</div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+      const m = L.marker([s.lat, s.lng], { icon, pane: 'geointel-city', keyboard: false });
+      m.bindTooltip(
+        `<div class="text-xs"><strong>Patrol stop ${i + 1}</strong> · ${esc(s.label)}`
+          + `${i > 0 && Number.isFinite(s.legKm) ? `<br/>${s.legKm.toFixed(1)} km from stop ${i}` : ''}</div>`,
+        { sticky: true, className: 'dappa-tooltip' },
+      );
+      group.addLayer(m);
+    });
+    group.addTo(map);
+    return () => {
+      if (mapRef.current) mapRef.current.removeLayer(group);
+    };
+  }, [patrolStops]);
+
+  // Radius probe placement — while probing, a map click reports its latlng to
+  // the parent (which computes the incidents-within-radius stats).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !probing) return undefined;
+    const container = map.getContainer();
+    const prevCursor = container.style.cursor;
+    container.style.cursor = 'crosshair';
+    const onClick = (e) => handlersRef.current.onProbeSet?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+    map.on('click', onClick);
+    return () => {
+      map.off('click', onClick);
+      container.style.cursor = prevCursor;
+    };
+  }, [probing]);
+
+  // Probe circle — dashed ring + centre dot at the probed point.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !probe || !Number.isFinite(Number(probe.lat)) || !Number.isFinite(Number(probe.lng))) {
+      return undefined;
+    }
+    const group = L.layerGroup();
+    group.addLayer(L.circle([probe.lat, probe.lng], {
+      pane: 'geointel-measure',
+      radius: Math.max(100, (Number(probe.radiusKm) || 1) * 1000),
+      color: '#5B9DFF',
+      weight: 1.5,
+      dashArray: '4 4',
+      fillColor: '#5B9DFF',
+      fillOpacity: 0.06,
+    }));
+    group.addLayer(L.circleMarker([probe.lat, probe.lng], {
+      pane: 'geointel-measure', radius: 4, color: '#5B9DFF', weight: 2, fillColor: '#5B9DFF', fillOpacity: 0.9,
+    }));
+    group.addTo(map);
+    return () => {
+      if (mapRef.current) mapRef.current.removeLayer(group);
+    };
+  }, [probe]);
 
   // Measure tool — two clicks draw a great-circle segment with a km label; a
   // third click starts a fresh measurement. Leaving the mode clears everything.
@@ -493,6 +674,21 @@ export default function MapCanvas({
           }
         });
       }
+    } else if (fly.type === 'polygons') {
+      if (!geojson) return; // keep pending — executes when the GeoJSON arrives
+      executedFlySeq.current = fly.seq;
+      const names = new Set(fly.names || []);
+      const feats = (geojson.features || []).filter((f) => names.has(f?.properties?.district));
+      if (feats.length) {
+        try {
+          map.flyToBounds(
+            L.geoJSON({ type: 'FeatureCollection', features: feats }).getBounds(),
+            { padding: [60, 60], duration: 0.8 },
+          );
+        } catch {
+          /* degenerate geometry — keep current view */
+        }
+      }
     } else if (fly.type === 'reset') {
       executedFlySeq.current = fly.seq;
       map.flyTo(KARNATAKA_CENTER, 7, { duration: 0.8 });
@@ -509,7 +705,11 @@ export default function MapCanvas({
 
   return (
     <>
-      <div ref={elRef} className="absolute inset-0 z-0" aria-label="Karnataka operational map" />
+      {/* nightDim class lives on a React-owned wrapper (never on the Leaflet
+          container itself — Leaflet manages that element's class list) */}
+      <div className={`absolute inset-0 z-0 ${nightDim ? 'gi-night' : ''}`}>
+        <div ref={elRef} className="absolute inset-0" aria-label="Karnataka operational map" />
+      </div>
       {/* cursor coordinate readout — desktop only, click copies (briefings) */}
       <button
         type="button"

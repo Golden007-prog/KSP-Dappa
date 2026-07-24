@@ -1,7 +1,7 @@
 'use strict';
 // Read-side endpoints: meta, summary, trends, geo.
 
-const { ok, asyncH, commonFilters, nocache, cacheKey } = require('../envelope');
+const { ok, asyncH, commonFilters, nocache, cacheKey, ttlFor } = require('../envelope');
 const { getLookups, TTL_SEC } = require('../lookups');
 const { getFallbackState } = require('../fixture');
 const { ymOf, ymAdd, ymRange, toNum, round, pctDelta, parseJsonSafe } = require('../util');
@@ -86,7 +86,8 @@ function register(router) {
   router.get('/summary/kpis', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
       const curYm = await anchorYm(ctx.ds, null);
       const prevYm = ymAdd(curYm, -1);
@@ -143,14 +144,15 @@ function register(router) {
         asOfYm: curYm
       };
     });
-    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/trends/monthly', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
     const { fromYm, toYm } = ymWindow(filters, null);
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const rows = await ctx.ds.query({
         table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)', 'SUM(HeinousCount)'],
         where: aggWhere(filters, fromYm, toYm), groupBy: ['Ym'], orderBy: { col: 'Ym' }
@@ -162,7 +164,7 @@ function register(router) {
         heinousCount: toNum((byYm.get(ym) || {})['SUM(HeinousCount)'])
       }));
     });
-    ok(res, value, { from: fromYm, to: toYm, cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { from: fromYm, to: toYm, cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   // Side-by-side comparison: two filter sets (A/B) over aligned month windows,
@@ -180,7 +182,8 @@ function register(router) {
       from: q[`${p}From`] || q.from || null,
       to: q[`${p}To`] || q.to || null
     });
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
       const sides = await Promise.all(['a', 'b'].map(async (p) => {
         const f = side(p);
@@ -211,13 +214,14 @@ function register(router) {
         : Array.from({ length: len }, (_, i) => `M${i + 1}`);
       return { categories, sameWindow, series: sides };
     });
-    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/trends/seasonality', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const where = [];
       if (filters.from) where.push({ col: 'CrimeRegisteredDate', op: '>=', val: filters.from });
       if (filters.to) where.push({ col: 'CrimeRegisteredDate', op: '<=', val: filters.to });
@@ -243,14 +247,15 @@ function register(router) {
       }
       return { weekdays: WEEKDAYS, hours: [...Array(24).keys()], matrix, maxCount, sampleSize: rows.length };
     });
-    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/trends/category-share', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
     const { fromYm, toYm } = ymWindow(filters, null);
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
       const where = aggWhere(filters, fromYm, toYm).filter((c) => !['CrimeHeadID', 'CrimeSubHeadID'].includes(c.col));
       const rows = await ctx.ds.query({
@@ -265,14 +270,15 @@ function register(router) {
         sharePct: total > 0 ? round((toNum(r['SUM(CaseCount)']) / total) * 100, 1) : 0
       }));
     });
-    ok(res, value, { from: fromYm, to: toYm, cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { from: fromYm, to: toYm, cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/districts', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
     const { fromYm, toYm } = ymWindow(filters, null);
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
       const curYm = await anchorYm(ctx.ds, null);
       const prevYm = ymAdd(curYm, -1);
@@ -315,14 +321,15 @@ function register(router) {
         };
       }).sort((a, b) => b.caseCount - a.caseCount);
     });
-    ok(res, value, { from: fromYm, to: toYm, cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { from: fromYm, to: toYm, cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/stations', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
+    const ttl = ttlFor(req);
     // Map pans re-request this constantly — cache like the other geo reads.
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
       const unitFilter = filters.districtId ? lk.unitsOfDistrict(filters.districtId).map((u) => u.unitId) : null;
       const where = [];
@@ -352,7 +359,7 @@ function register(router) {
         };
       }).sort((a, b) => b.caseCount - a.caseCount);
     });
-    ok(res, value, { districtId: filters.districtId || null, cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { districtId: filters.districtId || null, cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/incidents', asyncH(async (req, res) => {
@@ -375,8 +382,9 @@ function register(router) {
     if (filters.crimeSubHeadId) where.push({ col: 'CrimeMinorHeadID', op: '=', val: filters.crimeSubHeadId });
     else if (filters.crimeHeadId) where.push({ col: 'CrimeMajorHeadID', op: '=', val: filters.crimeHeadId });
     if (filters.unitId) where.push({ col: 'PoliceStationID', op: '=', val: filters.unitId });
-    // Cached (5 min) — the point layer refetches on every bbox change.
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 300, nocache(req), async () => {
+    // Cached (short TTL) — the point layer refetches on every bbox change.
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const rows = await ctx.ds.query({
         table: 'CaseMaster',
         columns: ['CaseMasterID', 'latitude', 'longitude', 'CrimeMajorHeadID', 'CrimeMinorHeadID', 'CrimeRegisteredDate'],
@@ -391,13 +399,14 @@ function register(router) {
         registeredDate: r.CrimeRegisteredDate
       }));
     });
-    ok(res, value, { limit, count: value.length, cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { limit, count: value.length, cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   router.get('/geo/hotspots', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const filters = commonFilters(req);
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
       const where = [];
       if (filters.districtId) where.push({ col: 'DistrictID', op: '=', val: filters.districtId });
@@ -426,7 +435,7 @@ function register(router) {
         };
       });
     });
-    ok(res, value, { cached, asOf: await asOfMeta(ctx) });
+    ok(res, value, { cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
   }));
 
   // Data freshness: last nightly refresh (RefreshMeta), the anchor month the
@@ -434,7 +443,8 @@ function register(router) {
   // when the container is answering from the bundled fixture.
   router.get('/meta/refresh', asyncH(async (req, res) => {
     const ctx = req.ctx;
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 120, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       let nightly = null;
       try {
         const rows = await ctx.ds.query({
@@ -454,7 +464,7 @@ function register(router) {
       return { nightly, liveAlerts, anchorYm: await anchorYm(ctx.ds, null), serverTime: new Date().toISOString() };
     });
     const fb = getFallbackState();
-    ok(res, Object.assign({}, value, { mode: fb.datastore ? 'fixture-demo' : 'live' }), { cached });
+    ok(res, Object.assign({}, value, { mode: fb.datastore ? 'fixture-demo' : 'live' }), { cached, ttlSec: ttl });
   }));
 
   // District socio-economic context (population, urbanisation, literacy,
@@ -479,4 +489,4 @@ function register(router) {
   }));
 }
 
-module.exports = { register, anchorYm, asOfMeta };
+module.exports = { register, anchorYm, asOfMeta, ymWindow };

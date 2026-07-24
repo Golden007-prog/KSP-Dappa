@@ -1,19 +1,28 @@
-// Command Dashboard — KPI link tiles (sparkline, MoM + YoY), quick filter
-// chips, month-vs-month compare strip, Karnataka choropleth with a value-mode
-// toggle, 12-month trend (stacked / 100% share / line, series-click head
-// focus, PNG export), rising subheads, category donut, seasonality heatmap,
-// district leaderboard + side-by-side compare, live alerts feed with severity
-// digest, saved views, CSV exports, keyboard shortcuts, 60s auto-refresh and
-// a print-ready situation brief. Route-local modules live in ./dashboard/.
-import { useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+// Command Dashboard — strategic intelligence hub. KPI link tiles (sparkline
+// with 12-mo baseline, MoM + YoY, detection-rate target bar, next-month
+// forecast tile), live intelligence ticker, quick filter chips, month-vs-month
+// compare strip with direction filter, Karnataka choropleth with five value
+// modes (cases / per-lakh / MoM / derived population / station risk), z≥2
+// red-zone pulsing, city-unit markers, population-correlation readout and a
+// per-district drill sheet, 12-month trend (stacked / share / line / total
+// with rolling mean + 2σ spikes + forecast band, month-range brush that can
+// become the global date filter, PNG export), rising subheads, category
+// donut/Pareto, seasonality heatmap with night/weekend splits, district
+// leaderboard + compare, hotspot windows, station-risk watchlist, alerts feed
+// with quick-ack, saved views, CSV/poster exports, panel maximize, keyboard
+// shortcuts, configurable auto-refresh and a print-ready situation brief.
+// Route-local modules live in ./dashboard/.
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   useKpis, useDistrictsGeo, useTrendsMonthly, useCategoryShare, useSeasonality,
-  useAlerts, useLookups,
+  useAlerts, useLookups, useHotspots, useStationRisk, useForecast,
 } from '../lib/api.js';
 import { useUrlFilters, filterSearchString } from '../lib/filters.js';
-import { polygonForUnit, unitsForPolygon, normalizeUnitCode } from '../lib/districtGeoMap.js';
+import {
+  polygonForUnit, normalizeUnitCode, unitInfo, CITY_UNIT_IDS,
+} from '../lib/districtGeoMap.js';
 import Card from '../components/Card.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import LoadingSkeleton from '../components/LoadingSkeleton.jsx';
@@ -23,7 +32,7 @@ import SegmentedControl from '../components/SegmentedControl.jsx';
 import MiniChoropleth from '../components/MiniChoropleth.jsx';
 import { useTheme } from '../components/ThemeProvider.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
-import { fmtInt, fmtPct, monthLabel, dateLabel } from '../lib/format.js';
+import { fmtInt, fmtPct, fmtNum, monthLabel, dateLabel } from '../lib/format.js';
 
 import DashPanel from './dashboard/DashPanel.jsx';
 import DashChart from './dashboard/DashChart.jsx';
@@ -40,12 +49,23 @@ import SavedViews from './dashboard/SavedViews.jsx';
 import CategoryDonut from './dashboard/CategoryDonut.jsx';
 import SeasonalityPanel from './dashboard/SeasonalityPanel.jsx';
 import CompareDistricts from './dashboard/CompareDistricts.jsx';
+import IntelTicker from './dashboard/IntelTicker.jsx';
+import HotspotWindows from './dashboard/HotspotWindows.jsx';
+import RiskWatchlist from './dashboard/RiskWatchlist.jsx';
+import DistrictDrillSheet from './dashboard/DistrictDrillSheet.jsx';
 import { usePanelPrefs, useAutoRefresh } from './dashboard/prefs.js';
 import { downloadCsv, downloadDataUrl, stamp } from './dashboard/exports.js';
 import {
   detectionRatePct, CHORO_RAMP, buildCompareView, buildTrendOption,
-  useLocalPref, useMedia,
+  buildTotalTrendOption, withBrush, useLocalPref, useMedia,
 } from './dashboard/lib.js';
+import {
+  unitPopulation, populationCorrelation, riskPerPolygon, redZonesFromAlerts,
+  detectSpikes, seasonalitySplits, buildInsights,
+} from './dashboard/insights.js';
+import { buildDashboardPoster } from './dashboard/poster.js';
+
+const DETECTION_TARGET = 65; // state target, %
 
 function QueryFallback({ query, what }) {
   if (query.isLoading) return <LoadingSkeleton lines={4} />;
@@ -111,6 +131,7 @@ const ICON = {
   views: <Ic><path d="M6 3h12v18l-6-4-6 4Z" /></Ic>,
   link: <Ic><path d="M10.5 13.5a4 4 0 0 0 5.7 0l3.3-3.3a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3.3 3.3a4 4 0 0 0 5.7 5.7l1.5-1.5" /></Ic>,
   print: <Ic><path d="M6 9V3h12v6" /><rect x="4" y="9" width="16" height="8" rx="1.5" /><path d="M7 14h10v7H7Z" /></Ic>,
+  poster: <Ic><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></Ic>,
   collapse: <Ic><path d="m7 10 5-5 5 5M7 19l5-5 5 5" /></Ic>,
   expand: <Ic><path d="m7 5 5 5 5-5M7 14l5 5 5-5" /></Ic>,
   reset: <Ic><path d="M3 12a9 9 0 1 0 2.64-6.36" /><path d="M3 3v6h6" /></Ic>,
@@ -141,14 +162,20 @@ function ToolBtn({ label, title, onClick, active = false, children }) {
 const CHORO_MODES = [
   { value: 'cases', label: 'Cases' },
   { value: 'rate', label: 'Per lakh' },
-  { value: 'mom', label: 'MoM rise' },
+  { value: 'mom', label: 'MoM' },
+  { value: 'pop', label: 'Population' },
+  { value: 'risk', label: 'Risk' },
 ];
 const CHORO_SUB = {
   cases: 'All police units, summed per census district',
   rate: 'Average cases per lakh population',
   mom: 'Positive month-over-month change (falling districts muted)',
+  pop: 'Socio-economic overlay — derived population per district',
+  risk: 'Socio-economic overlay — average predicted station risk (30d)',
 };
-const CHORO_LABEL = { cases: 'cases', rate: 'per lakh (avg)', mom: '% MoM rise' };
+const CHORO_LABEL = {
+  cases: 'cases', rate: 'per lakh (avg)', mom: '% MoM rise', pop: 'people (derived)', risk: 'avg station risk',
+};
 
 function choroAggregate(rows, mode) {
   const acc = {};
@@ -159,6 +186,7 @@ function choroAggregate(rows, mode) {
     let v;
     if (mode === 'rate') v = Number(r.ratePerLakh) || 0;
     else if (mode === 'mom') v = Math.max(0, Number(r.momDeltaPct) || 0);
+    else if (mode === 'pop') v = unitPopulation(r) || 0;
     else v = Number(r.caseCount ?? r.count) || 0;
     acc[poly] = (acc[poly] || 0) + v;
     cnt[poly] = (cnt[poly] || 0) + 1;
@@ -170,15 +198,17 @@ function choroAggregate(rows, mode) {
   return acc;
 }
 
+const AUTO_INTERVALS = [30, 60, 300];
+const intervalLabel = (s) => (s >= 60 ? `${Math.round(s / 60)}m` : `${s}s`);
+
 // ---------------------------------------------------------------------------
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const toast = useToast();
   const { theme } = useTheme();
   const [searchParams] = useSearchParams();
   const search = filterSearchString(searchParams);
-  const { apiParams, districtId, crimeHeadId, from, to, setFilter } = useUrlFilters();
+  const { apiParams, districtId, crimeHeadId, from, to, setFilter, setFilters } = useUrlFilters();
   const lookups = useLookups();
 
   const kpis = useKpis(apiParams);
@@ -196,18 +226,31 @@ export default function Dashboard() {
   const share = useCategoryShare(apiParams);
   const seasonality = useSeasonality(apiParams);
   const alerts = useAlerts();
+  const hotspots = useHotspots({});
+  const riskQ = useStationRisk({});
+  const forecastQ = useForecast(apiParams);
 
   // ---- layout prefs / refresh / shortcuts ---------------------------------
   const { pinned, collapsed, togglePin, toggleCollapse, collapseAll, expandAll, resetLayout } = usePanelPrefs();
-  const auto = useAutoRefresh(60);
+  const [autoInt, setAutoInt] = useLocalPref('dappa-dash-autoint', 60);
+  const auto = useAutoRefresh(Number(autoInt) || 60);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
+  const [maxPanelId, setMaxPanelId] = useState(null);
   const omniRef = useRef(null);
   const manualRefresh = () => { auto.refreshNow(); toast.info('Dashboard refreshed'); };
+  const cycleInterval = () => {
+    const idx = AUTO_INTERVALS.indexOf(Number(autoInt));
+    const next = AUTO_INTERVALS[(idx + 1) % AUTO_INTERVALS.length];
+    setAutoInt(next);
+    toast.info(`Auto-refresh cadence: every ${intervalLabel(next)}`);
+  };
   useDashShortcuts({
     onRefresh: manualRefresh,
     onToggleAuto: auto.toggle,
     onFocusSearch: () => omniRef.current?.focus(),
+    onOpenViews: () => setViewsOpen(true),
+    onPrint: () => window.print(),
   });
 
   // ---- KPI derivations ----------------------------------------------------
@@ -223,6 +266,10 @@ export default function Dashboard() {
   }, [trends.data]);
 
   const firSpark = monthlyTotals ? monthlyTotals.totals.slice(-12) : undefined;
+  const firAvg12 = useMemo(() => {
+    if (!firSpark || !firSpark.length) return null;
+    return firSpark.reduce((a, b) => a + b, 0) / firSpark.length;
+  }, [firSpark]);
   const yoyPct = useMemo(() => {
     if (!monthlyTotals || monthlyTotals.totals.length < 13) return undefined;
     const n = monthlyTotals.totals.length;
@@ -233,31 +280,92 @@ export default function Dashboard() {
 
   const compareView = useMemo(() => buildCompareView(trends.data), [trends.data]);
 
+  // Next-month projection (model + confidence interval) for the 5th KPI tile.
+  const fcNext = forecastQ.data?.forecast?.[0] || null;
+  const fcDeltaPct = useMemo(() => {
+    const hist = forecastQ.data?.history;
+    const last = hist?.length ? Number(hist[hist.length - 1].actual) : null;
+    if (!fcNext || !last || last <= 0) return undefined;
+    return ((Number(fcNext.predicted) - last) / last) * 100;
+  }, [forecastQ.data, fcNext]);
+  const showForecastTile = !forecastQ.error;
+
   // ---- choropleth ---------------------------------------------------------
   const [choroMode, setChoroMode] = useLocalPref('dappa-dash-choromode', 'cases');
-  const choroValues = useMemo(() => choroAggregate(geo.data, choroMode), [geo.data, choroMode]);
-  const alertPolygons = useMemo(
-    () => [...new Set((geo.data || []).filter((d) => d.alert).map((d) => polygonForUnit(d.districtId)).filter(Boolean))],
-    [geo.data],
+  const [cityMarkersOn, setCityMarkersOn] = useLocalPref('dappa-dash-citymarkers', false);
+  const riskPoly = useMemo(() => riskPerPolygon(riskQ.data), [riskQ.data]);
+  const choroValues = useMemo(
+    () => (choroMode === 'risk' ? riskPoly : choroAggregate(geo.data, choroMode)),
+    [geo.data, choroMode, riskPoly],
   );
+  // Red zones: server anomaly flags UNION districts whose open alerts run
+  // |z| ≥ 2 above their historical mean — both pulse on the map.
+  const redZones = useMemo(() => redZonesFromAlerts(alerts.data), [alerts.data]);
+  const alertPolygons = useMemo(
+    () => [...new Set([
+      ...(geo.data || []).filter((d) => d.alert).map((d) => polygonForUnit(d.districtId)).filter(Boolean),
+      ...redZones.map((z) => z.polygon),
+    ])],
+    [geo.data, redZones],
+  );
+  const correlation = useMemo(() => populationCorrelation(geoAll.data), [geoAll.data]);
+  const cityMarkers = useMemo(() => {
+    if (!cityMarkersOn) return [];
+    return CITY_UNIT_IDS.map((id) => {
+      const u = unitInfo(id);
+      if (!u) return null;
+      const row = (geoAll.data || []).find((r) => normalizeUnitCode(r.districtId) === id);
+      return {
+        lat: u.lat,
+        lng: u.lng,
+        label: u.name,
+        value: choroMode === 'cases' ? row?.caseCount : undefined,
+        unitId: id,
+      };
+    }).filter(Boolean);
+  }, [cityMarkersOn, geoAll.data, choroMode]);
   const ramp = CHORO_RAMP[theme] || CHORO_RAMP.dark;
-  const onPolygonClick = (name) => {
-    // merge districtId into the CURRENT filters instead of replacing them
-    const units = unitsForPolygon(name);
-    const qs = new URLSearchParams(search ? search.slice(1) : '');
-    if (units.length) qs.set('districtId', units[0]);
-    const s = qs.toString();
-    navigate(`/map${s ? `?${s}` : ''}`);
-  };
+
+  // Polygon click opens the drill sheet (GeoIntel stays one tap away inside it).
+  const [drillPolygon, setDrillPolygon] = useState(null);
+  const onPolygonClick = (name) => setDrillPolygon(name);
+  const onMarkerClick = (m) => setDrillPolygon(polygonForUnit(m.unitId));
+  const choroLoading = geo.isLoading || (choroMode === 'risk' && riskQ.isLoading);
 
   // ---- trend chart --------------------------------------------------------
   const [trendMode, setTrendMode] = useLocalPref('dappa-dash-trendmode', 'stacked');
+  const [brushOn, setBrushOn] = useLocalPref('dappa-dash-trendbrush', false);
+  const [pendingRange, setPendingRange] = useState(null);
   const isNarrow = useMedia('(max-width: 480px)');
-  const trendOption = useMemo(
-    () => buildTrendOption(trends.data, trendMode, isNarrow),
-    [trends.data, trendMode, isNarrow],
+  const totalSpikes = useMemo(
+    () => (trendMode === 'total' && monthlyTotals ? detectSpikes(monthlyTotals.totals) : []),
+    [trendMode, monthlyTotals],
   );
+  const trendOption = useMemo(() => {
+    const opt = trendMode === 'total'
+      ? buildTotalTrendOption(trends.data, { narrow: isNarrow, forecast: forecastQ.data, spikes: totalSpikes })
+      : buildTrendOption(trends.data, trendMode, isNarrow);
+    return brushOn ? withBrush(opt, isNarrow) : opt;
+  }, [trends.data, trendMode, isNarrow, forecastQ.data, totalSpikes, brushOn]);
   const trendRef = useRef(null);
+
+  // months currently on the x-axis (actual data only, forecast excluded) — the
+  // brush handler maps slider percents back onto these.
+  const brushMonths = useMemo(() => {
+    const m = trends.data?.months || [];
+    return trendMode === 'total' ? m : m.slice(-12);
+  }, [trends.data, trendMode]);
+  const brushAxisLen = useMemo(() => {
+    if (trendMode !== 'total') return brushMonths.length;
+    const extra = (forecastQ.data?.forecast || [])
+      .filter((f) => f?.ym && !(trends.data?.months || []).includes(f.ym)).length;
+    return brushMonths.length + extra;
+  }, [trendMode, brushMonths, forecastQ.data, trends.data]);
+  const brushRef = useRef({});
+  brushRef.current = { months: brushMonths, axisLen: brushAxisLen };
+
+  useEffect(() => { setPendingRange(null); }, [search, trendMode, brushOn]);
+
   const focusHead = (name) => {
     const head = (lookups.data?.crimeHeads || []).find((h) => h.headName === name);
     if (!head) return;
@@ -269,11 +377,43 @@ export default function Dashboard() {
       toast.info(`Dashboard filtered to ${name}`);
     }
   };
-  // echarts-for-react binds onEvents at chart init — route through a ref so
-  // clicks always see the current crimeHeadId/lookups.
+  // echarts-for-react binds onEvents at chart init — route through refs so
+  // clicks/zooms always see the current crimeHeadId/lookups/months.
   const trendClickRef = useRef(focusHead);
   trendClickRef.current = focusHead;
-  const trendEvents = useMemo(() => ({ click: (p) => p?.seriesName && trendClickRef.current(p.seriesName) }), []);
+  const trendEvents = useMemo(() => ({
+    click: (p) => p?.seriesName && trendClickRef.current(p.seriesName),
+    datazoom: (e) => {
+      const { months, axisLen } = brushRef.current;
+      if (!months.length) return;
+      const b = e?.batch?.[0] || e || {};
+      let i0;
+      let i1;
+      if (Number.isFinite(Number(b.startValue)) && Number.isFinite(Number(b.endValue))) {
+        i0 = Number(b.startValue);
+        i1 = Number(b.endValue);
+      } else if (Number.isFinite(Number(b.start)) && Number.isFinite(Number(b.end))) {
+        i0 = Math.round((Number(b.start) / 100) * (axisLen - 1));
+        i1 = Math.round((Number(b.end) / 100) * (axisLen - 1));
+      } else return;
+      i0 = Math.max(0, Math.min(i0, months.length - 1));
+      i1 = Math.max(0, Math.min(i1, months.length - 1));
+      if (i1 < i0) [i0, i1] = [i1, i0];
+      const full = i0 === 0 && i1 >= months.length - 1;
+      setPendingRange(full ? null : { fromYm: months[i0], toYm: months[i1] });
+    },
+  }), []);
+
+  const applyBrushRange = () => {
+    if (!pendingRange) return;
+    const { fromYm, toYm } = pendingRange;
+    const [y, m] = toYm.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    setFilters({ range: '', from: `${fromYm}-01`, to: `${toYm}-${String(lastDay).padStart(2, '0')}` });
+    setPendingRange(null);
+    toast.success(`Date filter set to ${monthLabel(fromYm)} – ${monthLabel(toYm)}`);
+  };
+
   const exportTrendPng = () => {
     const url = trendRef.current?.toDataURL();
     if (url) {
@@ -307,11 +447,28 @@ export default function Dashboard() {
     [geoAll.data],
   );
 
+  // ---- intelligence ticker ------------------------------------------------
+  const insights = useMemo(() => buildInsights({
+    compareView,
+    geoRows: geoAll.data,
+    openAlerts: (alerts.data || []).filter(isOpenAlert),
+    redZones,
+    seasonalityData: seasonality.data,
+    splits: seasonalitySplits(seasonality.data),
+    forecast: forecastQ.data,
+    riskRows: riskQ.data,
+    hotspots: hotspots.data,
+    correlation,
+    detectionPct,
+    search,
+  }), [compareView, geoAll.data, alerts.data, redZones, seasonality.data,
+    forecastQ.data, riskQ.data, hotspots.data, correlation, detectionPct, search]);
+
   // ---- exports / share / print --------------------------------------------
   const exportGeoCsv = () => downloadCsv(
     `district-density-${stamp()}.csv`,
-    ['District', 'Cases', 'Rate per lakh', 'MoM %', 'Anomaly'],
-    (geo.data || []).map((r) => [r.districtName || r.districtId, r.caseCount, r.ratePerLakh, r.momDeltaPct, r.alert ? 'yes' : '']),
+    ['District', 'Cases', 'Rate per lakh', 'MoM %', 'Population (derived)', 'Anomaly'],
+    (geo.data || []).map((r) => [r.districtName || r.districtId, r.caseCount, r.ratePerLakh, r.momDeltaPct, unitPopulation(r) || '', r.alert ? 'yes' : '']),
   );
   const exportLeaderboardCsv = () => downloadCsv(
     `district-leaderboard-${stamp()}.csv`,
@@ -336,6 +493,16 @@ export default function Dashboard() {
     ['Alert', 'District', 'Crime head', 'Severity', 'z-score', 'Status', 'Period end'],
     (feedQuery.data || []).map((a) => [a.alertId, a.districtName || a.districtId, a.headName, a.severity, a.zScore, a.status, a.periodEnd]),
   );
+  const exportHotspotsCsv = () => downloadCsv(
+    `hotspot-windows-${stamp()}.csv`,
+    ['Cluster', 'Sub head', 'Police unit', 'Hour start', 'Hour end', 'Cases', 'Intensity'],
+    (hotspots.data || []).map((h) => [h.clusterId, h.subHeadName || h.label, unitInfo(h.districtId)?.name || h.districtId, h.hourBandStart, h.hourBandEnd, h.caseCount, h.intensity]),
+  );
+  const exportRiskCsv = () => downloadCsv(
+    `station-risk-${stamp()}.csv`,
+    ['Station', 'District', 'Risk (30d)', 'Drivers'],
+    (riskQ.data || []).map((r) => [r.unitName || r.unitId, unitInfo(r.districtId)?.name || '', r.riskScore, Array.isArray(r.drivers) ? r.drivers.join('; ') : '']),
+  );
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -345,9 +512,57 @@ export default function Dashboard() {
     }
   };
 
+  const donutRef = useRef(null);
+  const exportPoster = async () => {
+    const sevCounts = {};
+    for (const a of openFeed) {
+      const sev = String(a.severity || 'medium').toLowerCase();
+      sevCounts[sev] = (sevCounts[sev] || 0) + 1;
+    }
+    const sevBits = ['critical', 'high', 'medium', 'low']
+      .filter((s) => sevCounts[s])
+      .map((s) => `${sevCounts[s]} ${s}`);
+    const alertLine = [
+      sevBits.length ? `Open alerts — ${sevBits.join(' · ')}` : 'No open alerts',
+      redZones.length ? `${redZones.length} red-zone district${redZones.length > 1 ? 's' : ''} at z ≥ 2` : '',
+    ].filter(Boolean).join(' · ');
+    const movers = [...(geoAll.data || [])]
+      .filter((r) => Number.isFinite(Number(r.momDeltaPct)))
+      .sort((a, b) => Number(b.momDeltaPct) - Number(a.momDeltaPct))
+      .slice(0, 5)
+      .map((r) => ({ name: r.districtName || r.districtId, deltaPct: Number(r.momDeltaPct), caseCount: fmtInt(r.caseCount) }));
+    const url = await buildDashboardPoster({
+      filterSummary,
+      generatedAt: dateLabel(new Date().toISOString().slice(0, 10)),
+      kpis: [
+        {
+          label: 'FIRs this month',
+          value: fmtInt(k.totalFirs),
+          delta: momPct !== undefined ? `${momPct >= 0 ? '▲' : '▼'}${Math.abs(momPct).toFixed(1)}% MoM` : '',
+          tone: 'amber',
+        },
+        { label: 'Heinous cases', value: fmtInt(k.heinousCount), tone: 'red' },
+        { label: 'Detection rate', value: detectionPct == null ? '—' : `${detectionPct.toFixed(1)}%`, tone: 'teal' },
+        { label: 'Active alerts', value: fmtInt(k.activeAlerts), tone: 'red' },
+        ...(fcNext ? [{ label: 'Next-month proj.', value: fmtInt(fcNext.predicted), tone: 'amber' }] : []),
+      ],
+      trendImg: trendRef.current?.toDataURL() || null,
+      donutImg: donutRef.current?.toDataURL() || null,
+      movers,
+      alertLine,
+    });
+    if (url) {
+      downloadDataUrl(url, `dashboard-poster-${stamp()}.png`);
+      toast.success('Situation poster downloaded');
+    } else {
+      toast.error('Could not build the poster');
+    }
+  };
+
   const lastUpdated = Math.max(
     kpis.dataUpdatedAt || 0, geo.dataUpdatedAt || 0, trends.dataUpdatedAt || 0,
-    share.dataUpdatedAt || 0, alerts.dataUpdatedAt || 0,
+    share.dataUpdatedAt || 0, alerts.dataUpdatedAt || 0, hotspots.dataUpdatedAt || 0,
+    riskQ.dataUpdatedAt || 0, forecastQ.dataUpdatedAt || 0,
   );
 
   const filterSummary = useMemo(() => {
@@ -365,6 +580,8 @@ export default function Dashboard() {
     collapsed: collapsed.includes(id),
     onTogglePin: () => togglePin(id),
     onToggleCollapse: () => toggleCollapse(id),
+    maximized: maxPanelId === id,
+    onToggleMax: () => setMaxPanelId((prev) => (prev === id ? null : id)),
   });
 
   const panels = [
@@ -385,24 +602,38 @@ export default function Dashboard() {
         >
           {geo.error ? (
             <QueryFallback query={geo} what="the choropleth" />
-          ) : geo.isLoading ? (
+          ) : choroLoading ? (
             <LoadingSkeleton height={300} />
           ) : (
             <>
-              <div className="mb-2">
+              <div className="mb-2 flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
                 <SegmentedControl
                   ariaLabel="Choropleth value mode"
                   value={choroMode}
                   onChange={setChoroMode}
                   options={CHORO_MODES}
+                  className="shrink-0"
                 />
+                <button
+                  type="button"
+                  aria-pressed={cityMarkersOn}
+                  title="Show the five city commissionerate markers"
+                  onClick={() => setCityMarkersOn(!cityMarkersOn)}
+                  className={`chip min-h-[36px] px-2.5 shrink-0 transition-colors ${
+                    cityMarkersOn ? '!border-amber/60 !text-amber bg-amber/5' : 'hover:border-amber/40'
+                  }`}
+                >
+                  City units
+                </button>
               </div>
               <MiniChoropleth
                 values={choroValues}
                 alerts={alertPolygons}
+                markers={cityMarkers}
                 height={272}
                 valueLabel={CHORO_LABEL[choroMode]}
                 onPolygonClick={onPolygonClick}
+                onMarkerClick={onMarkerClick}
               />
               <div className="mt-2 flex items-center gap-2 text-[10px] text-muted">
                 <span>Low</span>
@@ -412,9 +643,23 @@ export default function Dashboard() {
                 />
                 <span>High</span>
                 {alertPolygons.length > 0 && (
-                  <span className="ml-auto inline-flex items-center gap-1.5"><PulseDot /> anomaly district</span>
+                  <span className="ml-auto inline-flex items-center gap-1.5">
+                    <PulseDot />
+                    {redZones.length
+                      ? `${alertPolygons.length} anomaly · ${redZones.length} red zone${redZones.length > 1 ? 's' : ''} (z ≥ 2)`
+                      : 'anomaly district'}
+                  </span>
                 )}
               </div>
+              {correlation && (
+                <p className="mt-1.5 text-[10px] text-muted">
+                  Cases vs population: r = <span className="num text-ink">{correlation.r.toFixed(2)}</span> across{' '}
+                  {correlation.n} units — {Math.abs(correlation.r) >= 0.6
+                    ? 'volume largely tracks population; Per lakh isolates the true outliers'
+                    : 'volume diverges from population — worth a Per lakh look'}
+                </p>
+              )}
+              <p className="mt-1 text-[10px] text-muted">Click a district for the drill sheet</p>
             </>
           )}
         </DashPanel>
@@ -427,12 +672,14 @@ export default function Dashboard() {
         <DashPanel
           {...panelProps('trend')}
           title="12-month trend by crime head"
-          subtitle={crimeHeadId
-            ? `Focused on ${headName || 'one head'} — click the series again to clear`
-            : 'Click a series to focus the whole dashboard on that head'}
+          subtitle={trendMode === 'total'
+            ? 'Full history — total FIRs, 3-month mean, 2σ spikes and forecast band'
+            : crimeHeadId
+              ? `Focused on ${headName || 'one head'} — click the series again to clear`
+              : 'Click a series to focus the whole dashboard on that head'}
           onExportPng={trendOption ? exportTrendPng : undefined}
         >
-          <div className="mb-2">
+          <div className="mb-2 flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
             <SegmentedControl
               ariaLabel="Trend chart mode"
               value={trendMode}
@@ -441,8 +688,41 @@ export default function Dashboard() {
                 { value: 'stacked', label: 'Stacked' },
                 { value: 'share', label: '100%' },
                 { value: 'line', label: 'Line' },
+                { value: 'total', label: 'Total+F' },
               ]}
+              className="shrink-0"
             />
+            <button
+              type="button"
+              aria-pressed={brushOn}
+              title="Toggle the month-range brush"
+              onClick={() => setBrushOn(!brushOn)}
+              className={`chip min-h-[36px] px-2.5 shrink-0 transition-colors ${
+                brushOn ? '!border-amber/60 !text-amber bg-amber/5' : 'hover:border-amber/40'
+              }`}
+            >
+              Brush
+            </button>
+            {pendingRange && (
+              <>
+                <button
+                  type="button"
+                  onClick={applyBrushRange}
+                  className="chip min-h-[36px] px-2.5 shrink-0 !border-teal/60 !text-teal bg-teal/5 transition-colors"
+                  title="Set the global date filter to the brushed months"
+                >
+                  Apply {monthLabel(pendingRange.fromYm)} – {monthLabel(pendingRange.toYm)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingRange(null)}
+                  aria-label="Discard the brushed range"
+                  className="chip min-h-[36px] px-2.5 shrink-0 hover:border-signal/50"
+                >
+                  ✕
+                </button>
+              </>
+            )}
           </div>
           {trends.isLoading ? (
             <LoadingSkeleton height={isNarrow ? 250 : 300} />
@@ -454,6 +734,13 @@ export default function Dashboard() {
             />
           ) : (
             <DashChart ref={trendRef} option={trendOption} height={isNarrow ? 250 : 300} onEvents={trendEvents} />
+          )}
+          {trendMode === 'total' && forecastQ.data?.model && (
+            <p className="mt-1 text-[10px] text-muted">
+              Forecast: {forecastQ.data.model}
+              {forecastQ.data.mape != null && ` · MAPE ${fmtNum(forecastQ.data.mape, 1)}%`}
+              {' '}· dashed line + shaded confidence band
+            </p>
           )}
         </DashPanel>
       ),
@@ -517,7 +804,7 @@ export default function Dashboard() {
           subtitle="Share of FIRs by crime head"
           onExportCsv={share.data?.length ? exportShareCsv : undefined}
         >
-          <CategoryDonut query={share} linkSearch={search} />
+          <CategoryDonut query={share} linkSearch={search} chartRef={donutRef} />
         </DashPanel>
       ),
     },
@@ -541,7 +828,7 @@ export default function Dashboard() {
         <DashPanel
           {...panelProps('leaderboard')}
           title="District movers"
-          subtitle="Biggest month-over-month risers and fallers"
+          subtitle="Risers, fallers and the busiest districts"
           onExportCsv={geoAll.data?.length ? exportLeaderboardCsv : undefined}
         >
           {geoAll.error ? (
@@ -575,6 +862,44 @@ export default function Dashboard() {
         </DashPanel>
       ),
     },
+    {
+      id: 'hotspots',
+      span: 'xl:col-span-2',
+      node: (
+        <DashPanel
+          {...panelProps('hotspots')}
+          title="Hotspot windows"
+          subtitle="Spatiotemporal clusters — where and when they burn"
+          headerExtra={(
+            <Link to={`/map${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
+              Map →
+            </Link>
+          )}
+          onExportCsv={hotspots.data?.length ? exportHotspotsCsv : undefined}
+        >
+          <HotspotWindows query={hotspots} linkSearch={search} />
+        </DashPanel>
+      ),
+    },
+    {
+      id: 'risk',
+      span: '',
+      node: (
+        <DashPanel
+          {...panelProps('risk')}
+          title="Station risk watchlist"
+          subtitle="Predicted 30-day station risk"
+          headerExtra={(
+            <Link to={`/predict${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
+              Predict →
+            </Link>
+          )}
+          onExportCsv={riskQ.data?.length ? exportRiskCsv : undefined}
+        >
+          <RiskWatchlist query={riskQ} linkSearch={search} />
+        </DashPanel>
+      ),
+    },
   ];
 
   const PANEL_IDS = panels.map((p) => p.id);
@@ -605,19 +930,26 @@ export default function Dashboard() {
         <FilterBar className="!bg-transparent !border-0 !px-0 !py-0 print:hidden" />
       </div>
 
-      {/* toolbar — refresh / auto / views / share / print / layout / help */}
+      {/* toolbar — refresh / auto / views / share / print / poster / layout / help */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 print:hidden" role="toolbar" aria-label="Dashboard tools">
         <ToolBtn label="Refresh all panels" title="Refresh now (r)" onClick={manualRefresh}>
           {ICON.refresh}<span className="hidden sm:inline">Refresh</span>
         </ToolBtn>
         <ToolBtn
-          label={auto.enabled ? 'Turn off auto-refresh' : 'Turn on 60s auto-refresh'}
-          title="Toggle 60s auto-refresh (a)"
+          label={auto.enabled ? 'Turn off auto-refresh' : `Turn on ${intervalLabel(Number(autoInt) || 60)} auto-refresh`}
+          title="Toggle auto-refresh (a)"
           onClick={auto.toggle}
           active={auto.enabled}
         >
           <PulseDot color={auto.enabled ? 'teal' : 'amber'} />
           <span className="num">{auto.enabled ? `Auto ${auto.remaining}s` : 'Auto off'}</span>
+        </ToolBtn>
+        <ToolBtn
+          label="Cycle the auto-refresh interval"
+          title={`Auto-refresh every ${intervalLabel(Number(autoInt) || 60)} — click to change`}
+          onClick={cycleInterval}
+        >
+          <span className="num">every {intervalLabel(Number(autoInt) || 60)}</span>
         </ToolBtn>
         {lastUpdated > 0 && (
           <span className="num shrink-0 px-1 text-[11px] text-muted">
@@ -625,14 +957,17 @@ export default function Dashboard() {
           </span>
         )}
         <span className="h-4 w-px shrink-0 bg-grid mx-0.5" aria-hidden="true" />
-        <ToolBtn label="Saved views" onClick={() => setViewsOpen(true)}>
+        <ToolBtn label="Saved views" title="Saved views (v)" onClick={() => setViewsOpen(true)}>
           {ICON.views}<span>Views</span>
         </ToolBtn>
         <ToolBtn label="Copy a shareable link with the current filters" onClick={copyLink}>
           {ICON.link}<span className="hidden sm:inline">Copy link</span>
         </ToolBtn>
-        <ToolBtn label="Print a one-page situation brief" onClick={() => window.print()}>
+        <ToolBtn label="Print a one-page situation brief" title="Print brief (b)" onClick={() => window.print()}>
           {ICON.print}<span className="hidden sm:inline">Print brief</span>
+        </ToolBtn>
+        <ToolBtn label="Download the dashboard as a PNG situation poster" onClick={exportPoster}>
+          {ICON.poster}<span className="hidden sm:inline">Poster</span>
         </ToolBtn>
         <span className="h-4 w-px shrink-0 bg-grid mx-0.5" aria-hidden="true" />
         <ToolBtn
@@ -644,7 +979,7 @@ export default function Dashboard() {
         </ToolBtn>
         <ToolBtn
           label="Reset dashboard layout (clears pins and collapsed panels)"
-          onClick={() => { resetLayout(); toast.info('Dashboard layout reset'); }}
+          onClick={() => { resetLayout(); setMaxPanelId(null); toast.info('Dashboard layout reset'); }}
         >
           {ICON.reset}<span className="hidden sm:inline">Reset</span>
         </ToolBtn>
@@ -653,6 +988,8 @@ export default function Dashboard() {
         </ToolBtn>
       </div>
 
+      <IntelTicker items={insights} className="print:hidden" />
+
       <OmniBox inputRef={omniRef} linkSearch={search} className="print:hidden" />
 
       <div className="print:hidden">
@@ -660,7 +997,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI link tiles */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className={`grid grid-cols-2 gap-3 ${showForecastTile ? 'md:grid-cols-3 xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
         <KpiLinkTile
           to={`/cases${search}`}
           label="FIRs this month"
@@ -669,8 +1006,9 @@ export default function Dashboard() {
           yoy={yoyPct}
           positiveIsGood={false}
           loading={kpis.isLoading}
-          hint="vs previous month · tap for cases"
+          hint={firAvg12 ? `12-mo avg ${fmtInt(firAvg12)} (dashed) · tap for cases` : 'vs previous month · tap for cases'}
           spark={firSpark}
+          sparkBaseline
         />
         <KpiLinkTile
           to={`/cases${search}`}
@@ -686,7 +1024,8 @@ export default function Dashboard() {
           value={detectionPct == null ? '—' : `${detectionPct.toFixed(1)}%`}
           accent="teal"
           loading={kpis.isLoading}
-          hint="chargesheet A / (A + C)"
+          hint={`chargesheet A / (A + C) · target ${DETECTION_TARGET}%`}
+          progress={detectionPct == null ? undefined : { pct: detectionPct, target: DETECTION_TARGET }}
         />
         <KpiLinkTile
           to={`/alerts${search}`}
@@ -697,6 +1036,21 @@ export default function Dashboard() {
           loading={kpis.isLoading}
           hint="unacknowledged anomalies"
         />
+        {showForecastTile && (
+          <KpiLinkTile
+            to={`/predict${search}`}
+            label="Next-month projection"
+            value={fcNext ? Math.round(Number(fcNext.predicted) || 0) : '—'}
+            mom={fcDeltaPct}
+            positiveIsGood={false}
+            loading={forecastQ.isLoading}
+            hint={fcNext
+              ? `${forecastQ.data?.model || 'model'}${Number.isFinite(Number(fcNext.lo)) && Number.isFinite(Number(fcNext.hi))
+                ? ` · CI ${fmtInt(fcNext.lo)}–${fmtInt(fcNext.hi)}` : ''}${forecastQ.data?.mape != null
+                ? ` · MAPE ${fmtNum(forecastQ.data.mape, 1)}%` : ''}`
+              : 'no forecast for this selection'}
+          />
+        )}
       </div>
       {kpis.error && (
         <Card><QueryFallback query={kpis} what="headline KPIs" /></Card>
@@ -711,6 +1065,24 @@ export default function Dashboard() {
 
       <ShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <SavedViews open={viewsOpen} onClose={() => setViewsOpen(false)} />
+      {drillPolygon && (
+        <DistrictDrillSheet
+          polygon={drillPolygon}
+          onClose={() => setDrillPolygon(null)}
+          baseParams={geoAllParams}
+          rows={geoAll.data || []}
+          alerts={alerts.data || []}
+          hotspots={hotspots.data || []}
+          riskRows={riskQ.data || []}
+          linkSearch={search}
+          activeDistrictId={districtId}
+          onFilterDistrict={(id) => {
+            setFilter('districtId', id);
+            setDrillPolygon(null);
+            toast.info(id ? 'Dashboard filtered to the district' : 'District filter cleared');
+          }}
+        />
+      )}
     </div>
   );
 }

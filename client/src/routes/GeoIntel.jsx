@@ -1,4 +1,13 @@
-// Route 2 — /map GeoIntel. Full-bleed Leaflet command map for Karnataka:
+// Route 2 — /map GeoIntel. Full-bleed Leaflet command map for Karnataka.
+// Second pass adds: an hour-of-day lens (?h= deep link, 24-hour sweep, night
+// basemap dimming, hotspots filtered by HourBandStart/End), a hotspot detail
+// drill (24h histogram, nearest station, incidents-in-radius, GeoJSON export),
+// numbered rank badges, a nearest-neighbour patrol-route suggestion with copy-
+// as-text, an A/B month compare with a draggable heat swipe divider, district
+// multi-select with aggregate stats + CSV, pulsing high-risk station halos, a
+// red-zone tour, a radius probe (incident density around a point), GeoJSON
+// layer exports, a click-to-jump month histogram on the scrubber, and a
+// copy-text situational brief. Original capabilities below:
 // OSM tiles (dark-filtered in dark theme; OSM is an allowed client data source
 // per docs/CONTRACTS.md, with a tile-error notice + blank-basemap fallback for
 // offline demos) with layer toggles + one-click presets (zustand + localStorage
@@ -34,7 +43,7 @@ import Tooltip from '../components/Tooltip.jsx';
 import MapCanvas from './geointel/MapCanvas.jsx';
 import LayerToggles from './geointel/LayerToggles.jsx';
 import TimeScrubber, { SCRUB_SPEEDS } from './geointel/TimeScrubber.jsx';
-import HotspotChips, { BandFilterChips } from './geointel/HotspotChips.jsx';
+import HotspotChips, { BandFilterChips, HOUR_BANDS } from './geointel/HotspotChips.jsx';
 import SidePanel from './geointel/SidePanel.jsx';
 import LocateSearch from './geointel/LocateSearch.jsx';
 import MobileSheet from './geointel/MobileSheet.jsx';
@@ -43,8 +52,15 @@ import ExportMenu from './geointel/ExportMenu.jsx';
 import TopMovers from './geointel/TopMovers.jsx';
 import ShortcutsOverlay from './geointel/ShortcutsOverlay.jsx';
 import LegendBar, { LegendItems, MetricChips, OpacityControls } from './geointel/MapLegend.jsx';
+import HourScrubber from './geointel/HourScrubber.jsx';
+import CompareStrip from './geointel/CompareStrip.jsx';
+import SelectionBar from './geointel/SelectionBar.jsx';
+import PatrolRoutePill from './geointel/PatrolRoutePill.jsx';
 import { useIncidentsLayer } from './geointel/hooks.js';
-import { bandBucket, copyText, monthWindow, risk01 } from './geointel/utils.js';
+import {
+  bandBucket, copyText, haversineKm, hourBand, hourInBand, monthWindow, risk01,
+} from './geointel/utils.js';
+import { nearestNeighborRoute } from './geointel/geo.js';
 import { loadPrefs, savePrefs } from './geointel/prefs.js';
 
 const MAX_SCRUB_MONTHS = 24;
@@ -96,7 +112,29 @@ html.dark .geointel-tiles { filter: invert(1) hue-rotate(200deg) brightness(0.6)
   .gi-noprint { display: none !important; }
   .gi-print-only { display: block; }
 }
+/* hour-lens night hours — dusk-filter the basemap (both themes) */
+.gi-night .geointel-tiles { filter: grayscale(0.25) brightness(0.6) saturate(0.55); }
+html.dark .gi-night .geointel-tiles { filter: invert(1) hue-rotate(200deg) brightness(0.38) contrast(1.1) saturate(0.3); }
+/* pulsing high-risk station halo (SVG stroke animation) */
+.gi-halo { animation: gi-halo-pulse 1.9s ease-out infinite; }
+@keyframes gi-halo-pulse {
+  0% { stroke-opacity: 0.8; stroke-width: 1.5; }
+  70% { stroke-opacity: 0.06; stroke-width: 8; }
+  100% { stroke-opacity: 0; stroke-width: 9; }
+}
+@media (prefers-reduced-motion: reduce) { .gi-halo { animation: none; stroke-opacity: 0.55; } }
+html[data-motion='reduce'] .gi-halo { animation: none; stroke-opacity: 0.55; }
+/* numbered hotspot rank badges + patrol stop markers (Leaflet divIcons) */
+.gi-rank { width:18px; height:18px; border-radius:9999px; background:#F5A623; color:#0B1220;
+  font:700 10px/14px ui-monospace,SFMono-Regular,monospace; text-align:center;
+  border:2px solid rgba(11,18,32,.85); box-shadow:0 1px 4px rgba(0,0,0,.45); }
+.gi-stop { width:20px; height:20px; border-radius:9999px; background:#0B1220; color:#F5A623;
+  font:700 11px/16px ui-monospace,SFMono-Regular,monospace; text-align:center;
+  border:2px solid #F5A623; box-shadow:0 1px 4px rgba(0,0,0,.45); }
 `;
+
+const NO_SELECTION = []; // stable identity — MapCanvas effects key on reference
+const BAND_KEYS = HOUR_BANDS.map((b) => b.key);
 
 const ExpandIcon = (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -122,6 +160,22 @@ const RulerIcon = (
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M2 15.5 15.5 2 22 8.5 8.5 22 2 15.5Z" />
     <path d="m6.5 11 2 2m1.5-5.5 2 2m1.5-5.5 2 2" />
+  </svg>
+);
+const ProbeIcon = (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="7" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+  </svg>
+);
+const BriefIcon = (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" />
+    <path d="M9 12h6m-6 4h4" />
   </svg>
 );
 
@@ -169,11 +223,30 @@ export default function GeoIntel() {
   const [tileError, setTileError] = useState(false);
   const [measuring, setMeasuring] = useState(false);
   const [measureKm, setMeasureKm] = useState(null);
-  const [hotspotBand, setHotspotBand] = useState('all'); // 'all'|'night'|'day'|'evening'
+  const [hotspotBand, setHotspotBand] = useState('all'); // 'all'|'night'|'day'|'evening' (persisted)
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pins, setPins] = useState([]); // up to two stations pinned for compare
+  const [halos, setHalos] = useState(false); // pulsing high-risk station rings (persisted)
+  const [hourPlaying, setHourPlaying] = useState(false);
+  const [hour, setHour] = useState(() => {
+    // ?h= deep link — the hour lens is shareable spatiotemporal state
+    const v = searchParams.get('h');
+    const n = Number(v);
+    return v !== null && v !== '' && Number.isFinite(n) && n >= 0 && n <= 23 ? Math.round(n) : null;
+  });
+  const [compareOn, setCompareOn] = useState(false); // A/B month heat swipe
+  const [compareMonth, setCompareMonth] = useState(null); // month A (left side)
+  const [comparePct, setComparePct] = useState(50); // divider position %
+  const [selectMode, setSelectMode] = useState(false); // district multi-select
+  const [selectedPolygons, setSelectedPolygons] = useState([]);
+  const [probing, setProbing] = useState(false); // radius probe placement mode
+  const [probe, setProbe] = useState(null); // {lat,lng}
+  const [probeKm, setProbeKm] = useState(2);
+  const [patrolOn, setPatrolOn] = useState(false); // patrol-route suggestion
+  const [tourIdx, setTourIdx] = useState(0); // red-zone tour position
   const flySeq = useRef(0);
   const mapApiRef = useRef(null);
+  const shellRef = useRef(null); // compare divider drag needs the shell box
   const issueFly = (cmd) => {
     flySeq.current += 1;
     setFly({ seq: flySeq.current, ...cmd });
@@ -199,6 +272,8 @@ export default function GeoIntel() {
     if (typeof p.heatOpacity === 'number') setHeatOpacity(Math.max(0.2, Math.min(1, p.heatOpacity)));
     if (typeof p.legendOpen === 'boolean') setLegendOpen(p.legendOpen);
     if (METRIC_PROPS[p.choroMetric]) setMetric(p.choroMetric);
+    if (typeof p.halos === 'boolean') setHalos(p.halos);
+    if (BAND_KEYS.includes(p.hotspotBand)) setHotspotBand(p.hotspotBand);
     // URL beats prefs: a pasted ?layers= link reproduces the exact composition.
     const lp = searchParams.get('layers');
     if (lp !== null) {
@@ -213,8 +288,23 @@ export default function GeoIntel() {
     if (firstPersist.current) { firstPersist.current = false; return; }
     savePrefs({
       mapLayers, scrubSpeed: speed, loop, basemap, choroOpacity, heatOpacity, legendOpen, choroMetric: metric,
+      halos, hotspotBand,
     });
-  }, [mapLayers, speed, loop, basemap, choroOpacity, heatOpacity, legendOpen, metric]);
+  }, [mapLayers, speed, loop, basemap, choroOpacity, heatOpacity, legendOpen, metric, halos, hotspotBand]);
+  // Hour lens mirrored to ?h= — a pasted link reproduces the exact hour view.
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (hour === null) next.delete('h'); else next.set('h', String(hour));
+      return String(next) === String(prev) ? prev : next;
+    }, { replace: true });
+  }, [hour, setSearchParams]);
+  // Hour sweep — one hour per tick, wraps at midnight.
+  useEffect(() => {
+    if (!hourPlaying || hour === null) return undefined;
+    const t = setInterval(() => setHour((h) => (h === null ? 0 : (h + 1) % 24)), 900);
+    return () => clearInterval(t);
+  }, [hourPlaying, hour === null]); // eslint-disable-line react-hooks/exhaustive-deps
   // …and the active layer set mirrored into the URL (share = same composition).
   useEffect(() => {
     if (!layersReady.current) return;
@@ -232,7 +322,17 @@ export default function GeoIntel() {
     () => (scrubMonth ? { ...apiParams, ...monthWindow(scrubMonth) } : apiParams),
     [apiParams, scrubMonth],
   );
-  const incidents = useIncidentsLayer(incidentParams, mapLayers.heat || mapLayers.incidents);
+  // The radius probe also needs incident rows, even with both layers off.
+  const incidents = useIncidentsLayer(
+    incidentParams,
+    mapLayers.heat || mapLayers.incidents || probing || !!probe,
+  );
+  // Month-A incidents for the compare swipe (only fetched while comparing).
+  const compareParams = useMemo(
+    () => (compareOn && compareMonth ? { ...apiParams, ...monthWindow(compareMonth) } : apiParams),
+    [apiParams, compareOn, compareMonth],
+  );
+  const compareIncidents = useIncidentsLayer(compareParams, compareOn && !!compareMonth);
 
   // Filter change can shrink the month list — clamp the scrub position.
   useEffect(() => {
@@ -300,19 +400,26 @@ export default function GeoIntel() {
       const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
       if (e.key === 'Escape') {
         // Inner-most first: inputs (locate search) own their Esc; then the
-        // help overlay, the measure tool, any open Leaflet popup, the drill
-        // panel — and only then fullscreen.
+        // help overlay, the measure/probe tools, any open Leaflet popup, the
+        // drill panel, selection mode, compare — and only then fullscreen.
         if (typing) return;
         if (shortcutsOpen) { setShortcutsOpen(false); return; }
         if (measuring) { setMeasuring(false); return; }
+        if (probing || probe) { setProbing(false); setProbe(null); return; }
         if (mapApiRef.current?.closePopup?.()) return;
         if (drill) { setDrill(null); return; }
+        if (selectMode) { setSelectMode(false); setSelectedPolygons([]); return; }
+        if (compareOn) { setCompareOn(false); return; }
         setFullscreen(false);
         return;
       }
       if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'f' || e.key === 'F') { setFullscreen((v) => !v); return; }
       if (e.key === '?') { setShortcutsOpen((v) => !v); return; }
+      if (e.key === 'm' || e.key === 'M') { toggleMeasure(); return; }
+      if (e.key === 'h' || e.key === 'H') { toggleHourLens(); return; }
+      if (e.key === 'c' || e.key === 'C') { toggleCompare(); return; }
+      if (e.key === 'p' || e.key === 'P') { setPatrolOn((v) => !v); return; }
       if (e.key === '/') {
         e.preventDefault();
         const el = document.getElementById('gi-locate');
@@ -401,13 +508,91 @@ export default function GeoIntel() {
       : hotspotRows.filter((h) => bandBucket(h.hourBandStart) === hotspotBand)),
     [hotspotRows, hotspotBand],
   );
+  // …then the hour lens narrows further to clusters active at the chosen hour.
+  const visibleHotspots = useMemo(
+    () => (hour === null
+      ? filteredHotspots
+      : filteredHotspots.filter((h) => hourInBand(h.hourBandStart, h.hourBandEnd, hour))),
+    [filteredHotspots, hour],
+  );
   // A refetch/filter change can drop the selected cluster — clear the stale highlight.
   useEffect(() => {
     if (selectedHotspotId == null) return;
-    if (!filteredHotspots.some((h) => String(h.clusterId) === String(selectedHotspotId))) {
+    if (!visibleHotspots.some((h) => String(h.clusterId) === String(selectedHotspotId))) {
       setSelectedHotspotId(null);
     }
-  }, [filteredHotspots, selectedHotspotId]);
+  }, [visibleHotspots, selectedHotspotId]);
+
+  // Month-A heat points for the compare swipe.
+  const comparePoints = useMemo(() => {
+    const pts = [];
+    for (const r of compareIncidents.data || []) {
+      const lat = Number(r.lat ?? r.latitude);
+      const lng = Number(r.lng ?? r.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push([lat, lng, 0.6]);
+    }
+    return pts;
+  }, [compareIncidents.data]);
+  // Numbered rank badges on the top-3 visible hotspots (mirrors the chips).
+  const rankBadges = useMemo(
+    () => visibleHotspots.slice(0, 3)
+      .map((h, i) => ({ lat: Number(h.centroidLat), lng: Number(h.centroidLng), rank: i + 1 }))
+      .filter((b) => Number.isFinite(b.lat) && Number.isFinite(b.lng)),
+    [visibleHotspots],
+  );
+  // Patrol-route suggestion — nearest-neighbour over the top-3 visible hotspots.
+  const patrolRoute = useMemo(
+    () => (patrolOn ? nearestNeighborRoute(visibleHotspots, 3) : null),
+    [patrolOn, visibleHotspots],
+  );
+  // High-risk stations for the pulsing halo layer (risk ≥ 70).
+  const haloRows = useMemo(
+    () => (halos
+      ? (stations.data || []).filter((s) => {
+        const r = risk01(s.riskScore);
+        return r !== null && r >= 0.7;
+      })
+      : NO_SELECTION),
+    [halos, stations.data],
+  );
+  // Case totals per polygon — powers the district multi-select aggregate.
+  const polygonCases = useMemo(() => aggregateCountsPerPolygon(districts.data || []), [districts.data]);
+  const stateTotal = useMemo(
+    () => Object.values(polygonCases).reduce((a, v) => a + (Number(v) || 0), 0),
+    [polygonCases],
+  );
+  // Radius-probe stats against the loaded incident window.
+  const probeObj = useMemo(() => (probe ? { ...probe, radiusKm: probeKm } : null), [probe, probeKm]);
+  const probeStats = useMemo(() => {
+    if (!probe) return null;
+    let count = 0;
+    const heads = {};
+    for (const r of incidentRows) {
+      if (haversineKm(probe.lat, probe.lng, r.lat, r.lng) <= probeKm) {
+        count += 1;
+        const k = String(r.crimeHeadId ?? '');
+        heads[k] = (heads[k] || 0) + 1;
+      }
+    }
+    let topHead = null;
+    let topN = 0;
+    for (const [k, n] of Object.entries(heads)) {
+      if (n > topN) { topN = n; topHead = k; }
+    }
+    return {
+      count,
+      topHead: topHead ? headNames[topHead] || `Head ${topHead}` : null,
+      perKm2: count / (Math.PI * probeKm * probeKm),
+    };
+  }, [probe, probeKm, incidentRows, headNames]);
+  // Per-month case totals aligned to the scrubber window (histogram bars).
+  const monthTotals = useMemo(() => {
+    const d = trends.data;
+    if (!d || !d.months?.length || !months.length) return null;
+    const sums = d.months.map((_, i) => d.series.reduce((a, s) => a + (Number(s.data[i]) || 0), 0));
+    const offset = d.months.length - months.length;
+    return months.map((_, i) => sums[offset + i] ?? 0);
+  }, [trends.data, months]);
 
   // ---- interactions ---------------------------------------------------------
   const openDistrict = (polygonName, opts = {}) => {
@@ -415,11 +600,24 @@ export default function GeoIntel() {
     if (!unitIds.length) return;
     setDrill({ type: 'district', polygon: polygonName, unitIds, title: opts.title || polygonName });
   };
+  const togglePolygonSelect = (name) => {
+    setSelectedPolygons((cur) => (
+      cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name]
+    ));
+  };
   const onPolygonClick = (name) => {
+    if (selectMode) {
+      togglePolygonSelect(name);
+      return;
+    }
     openDistrict(name);
     issueFly({ type: 'polygon', name });
   };
   const onCityClick = (c) => {
+    if (selectMode) {
+      togglePolygonSelect(c.polygon);
+      return;
+    }
     openDistrict(c.polygon, { unitIds: [c.unitId], title: `${c.name} (commissionerate)` });
     issueFly({ type: 'point', lat: c.lat, lng: c.lng, zoom: 11 });
   };
@@ -432,6 +630,7 @@ export default function GeoIntel() {
   const onHotspotClick = (h) => {
     if (!mapLayers.hotspots) setMapLayer('hotspots', true);
     setSelectedHotspotId(h.clusterId ?? null);
+    setDrill({ type: 'hotspot', hotspot: h }); // cluster detail panel
     issueFly({ type: 'hotspot', hotspot: h });
   };
   const onLocateUnit = (u) => {
@@ -459,9 +658,122 @@ export default function GeoIntel() {
 
   const shareLink = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.success('Share link copied — filters, layers and month included');
+    if (ok) toast.success('Share link copied — filters, layers, month and hour included');
     else toast.error('Could not copy the link');
   };
+
+  // ---- new tool toggles -----------------------------------------------------
+  const toggleMeasure = () => {
+    setProbing(false);
+    setProbe(null);
+    setMeasuring((v) => !v);
+    setMeasureKm(null);
+  };
+  const toggleProbe = () => {
+    if (probing || probe) {
+      setProbing(false);
+      setProbe(null);
+      return;
+    }
+    setMeasuring(false);
+    setMeasureKm(null);
+    setProbing(true);
+  };
+  const toggleHourLens = () => {
+    setHourPlaying(false);
+    setHour((h) => (h === null ? 20 : null));
+  };
+  const toggleSelectMode = () => {
+    setSelectMode((v) => {
+      const next = !v;
+      if (next && !useUiStore.getState().mapLayers.choropleth) setMapLayer('choropleth', true);
+      if (!next) setSelectedPolygons([]);
+      return next;
+    });
+  };
+  const toggleCompare = () => {
+    if (compareOn) {
+      setCompareOn(false);
+      return;
+    }
+    if (months.length < 2) return;
+    setPlaying(false);
+    if (!useUiStore.getState().mapLayers.heat) setMapLayer('heat', true);
+    const bIdx = scrubIndex > 0 ? scrubIndex : months.length; // B = current or latest month
+    setScrubIndex(bIdx);
+    setCompareMonth(months[Math.max(0, bIdx - 2)]); // A defaults to the previous month
+    setCompareOn(true);
+  };
+  const redZoneTour = () => {
+    if (!alertPolygons.length) return;
+    if (!useUiStore.getState().mapLayers.alertPulse) setMapLayer('alertPulse', true);
+    const i = tourIdx % alertPolygons.length;
+    issueFly({ type: 'polygon', name: alertPolygons[i] });
+    setTourIdx(i + 1);
+  };
+  const copyRoute = async () => {
+    if (!patrolRoute || !patrolRoute.stops.length) return;
+    const bandLabel = HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'All hours';
+    const lines = patrolRoute.stops.map((s, i) => (
+      `${i + 1}. ${s.label} (${s.lat.toFixed(4)}, ${s.lng.toFixed(4)})${i > 0 ? ` — ${s.legKm.toFixed(1)} km leg` : ''}`
+    ));
+    const text = [
+      `KSP patrol route — ${bandLabel}${scrubMonth ? ` · ${monthLabel(scrubMonth)}` : ''}`,
+      ...lines,
+      `Total ${patrolRoute.totalKm.toFixed(1)} km · est ${patrolRoute.etaMin} min at 30 km/h`,
+    ].join('\n');
+    const ok = await copyText(text);
+    if (ok) toast.success('Patrol route copied as text');
+    else toast.error('Could not copy the route');
+  };
+  const copyBrief = async () => {
+    const lines = [`KSP GeoIntel brief — ${new Date().toISOString().slice(0, 10)}`, `Scope: ${printFilterSummary}`];
+    if (visibleHotspots.length) {
+      lines.push('Top hotspots:');
+      visibleHotspots.slice(0, 3).forEach((h, i) => {
+        const band = hourBand(h.hourBandStart, h.hourBandEnd);
+        const dName = unitInfo(h.districtId)?.name || h.districtId || '—';
+        lines.push(`  ${i + 1}. ${h.label || h.subHeadName || `Cluster ${h.clusterId}`} (${dName}) — ${Number(h.caseCount) || 0} cases${band ? `, peak ${band}` : ''}`);
+      });
+    }
+    const movers = (districts.data || [])
+      .filter((r) => Number.isFinite(Number(r.momDeltaPct)))
+      .sort((a, b) => Math.abs(Number(b.momDeltaPct)) - Math.abs(Number(a.momDeltaPct)))
+      .slice(0, 3);
+    if (movers.length) {
+      lines.push(`Top movers (MoM): ${movers.map((r) => {
+        const d = Number(r.momDeltaPct);
+        return `${r.districtName || r.districtId} ${d > 0 ? '+' : ''}${d.toFixed(0)}%`;
+      }).join(' · ')}`);
+    }
+    if (alertPolygons.length) lines.push(`Red-zone districts: ${alertPolygons.join(', ')}`);
+    lines.push(`Stations mapped: ${(stations.data || []).length} · hotspot clusters: ${hotspotRows.length}`);
+    const ok = await copyText(lines.join('\n'));
+    if (ok) toast.success('Situational brief copied as text');
+    else toast.error('Could not copy the brief');
+  };
+  // Compare-divider drag (pointer events on the handle, moves on the shell).
+  const onDividerPointerDown = (e) => {
+    e.preventDefault();
+    const el = shellRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const move = (ev) => {
+      const pct = ((ev.clientX - rect.left) / Math.max(1, rect.width)) * 100;
+      setComparePct(Math.round(Math.min(92, Math.max(8, pct))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // New alert set → restart the red-zone tour from the top.
+  useEffect(() => {
+    setTourIdx(0);
+  }, [alertPolygons]);
 
   // ---- saved views ----------------------------------------------------------
   const getCurrentView = () => ({
@@ -469,6 +781,9 @@ export default function GeoIntel() {
     layers: { ...mapLayers },
     metric,
     m: scrubMonth,
+    band: hotspotBand,
+    hour,
+    halos,
     filters: {
       districtId,
       crimeHeadId,
@@ -488,6 +803,13 @@ export default function GeoIntel() {
     });
     if (v.layers) for (const k of LAYER_KEYS) setMapLayer(k, !!v.layers[k]);
     if (METRIC_PROPS[v.metric]) setMetric(v.metric);
+    setHotspotBand(BAND_KEYS.includes(v.band) ? v.band : 'all');
+    if (typeof v.halos === 'boolean') setHalos(v.halos);
+    setHourPlaying(false);
+    const hv = Number(v.hour);
+    setHour(v.hour === null || v.hour === undefined || !Number.isFinite(hv)
+      ? null
+      : Math.min(23, Math.max(0, Math.round(hv))));
     if (v.m) {
       const idx = months.indexOf(v.m);
       if (idx >= 0) setScrubIndex(idx + 1);
@@ -542,7 +864,7 @@ export default function GeoIntel() {
   ].filter(Boolean).join(' · ');
 
   return (
-    <div className={shellCls}>
+    <div className={shellCls} ref={shellRef}>
       <style>{GEOINTEL_CSS}</style>
 
       <MapCanvas
@@ -557,9 +879,19 @@ export default function GeoIntel() {
         heatPoints={heatPoints}
         incidentRows={incidentRows}
         headNames={headNames}
-        hotspots={filteredHotspots}
+        hotspots={visibleHotspots}
         stations={stations.data || []}
         selectedUnitId={selectedUnitId}
+        selectedPolygons={selectMode ? selectedPolygons : null}
+        rankBadges={rankBadges}
+        patrolStops={patrolRoute ? patrolRoute.stops : null}
+        haloStations={haloRows}
+        probe={probeObj}
+        probing={probing}
+        onProbeSet={(pt) => setProbe(pt)}
+        compareHeatPoints={compareOn && compareMonth ? comparePoints : null}
+        comparePct={compareOn && compareMonth && scrubMonth ? comparePct : null}
+        nightDim={hour !== null && (hour >= 19 || hour < 6)}
         fly={fly}
         light={light}
         basemap={basemap}
@@ -573,6 +905,38 @@ export default function GeoIntel() {
         onCityClick={onCityClick}
         onHotspotClick={onHotspotClick}
       />
+
+      {/* month-compare swipe divider (drag to reveal A left / B right) */}
+      {compareOn && compareMonth && scrubMonth && mapLayers.heat && (
+        <div
+          className="gi-noprint hidden md:block absolute inset-y-0 z-10 pointer-events-none"
+          style={{ left: `calc(${comparePct}% - 1px)` }}
+        >
+          <div className="absolute inset-y-0 left-0 w-0.5 bg-primary/80" aria-hidden="true" />
+          <span className="absolute top-24 left-0 -translate-x-full pr-2">
+            <span className="chip bg-panel/95 shadow-lg !border-primary/50 text-primary num whitespace-nowrap">
+              A · {monthLabel(compareMonth)}
+            </span>
+          </span>
+          <span className="absolute top-24 left-0 pl-2">
+            <span className="chip bg-panel/95 shadow-lg !border-amber/50 text-amber num whitespace-nowrap">
+              B · {monthLabel(scrubMonth)}
+            </span>
+          </span>
+          <button
+            type="button"
+            onPointerDown={onDividerPointerDown}
+            aria-label="Drag to move the month-compare divider"
+            title="Drag to compare months"
+            className="pointer-events-auto absolute top-1/2 -translate-y-1/2 -left-3.5 h-9 w-7 rounded-lg border border-primary/60 bg-panel/95 shadow-lg flex items-center justify-center cursor-ew-resize text-primary touch-none"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 7 3 12l5 5M16 7l5 5-5 5" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* print-only briefing header (the print rules hide interactive chrome;
           fixed light colors — the printed page is always white) */}
@@ -621,20 +985,41 @@ export default function GeoIntel() {
             <SavedViews getCurrent={getCurrentView} onApply={applyView} />
             <ExportMenu
               stations={stations.data || []}
-              hotspots={filteredHotspots}
+              hotspots={visibleHotspots}
               incidents={incidentRows}
               apiParams={apiParams}
               scrubMonth={scrubMonth}
             />
-            <Tooltip label={measuring ? 'Exit measure (Esc)' : 'Measure distance — click two points'} position="bottom">
+            <Tooltip label={measuring ? 'Exit measure (Esc)' : 'Measure distance — click two points (M)'} position="bottom">
               <button
                 type="button"
                 className={`btn gi-tap !px-2 !py-1.5 ${measuring ? '!text-primary !border-primary/60' : ''}`}
                 aria-pressed={measuring}
                 aria-label={measuring ? 'Exit distance measuring' : 'Measure a distance on the map'}
-                onClick={() => { setMeasuring((v) => !v); setMeasureKm(null); }}
+                onClick={toggleMeasure}
               >
                 {RulerIcon}
+              </button>
+            </Tooltip>
+            <Tooltip label={probing || probe ? 'Exit radius probe (Esc)' : 'Radius probe — count incidents around a point'} position="bottom">
+              <button
+                type="button"
+                className={`btn gi-tap !px-2 !py-1.5 ${probing || probe ? '!text-primary !border-primary/60' : ''}`}
+                aria-pressed={probing || !!probe}
+                aria-label={probing || probe ? 'Exit the radius probe' : 'Probe incident density around a point'}
+                onClick={toggleProbe}
+              >
+                {ProbeIcon}
+              </button>
+            </Tooltip>
+            <Tooltip label="Copy a text situational brief (hotspots, movers, red zones)" position="bottom">
+              <button
+                type="button"
+                className="btn gi-tap !px-2 !py-1.5"
+                aria-label="Copy a text situational brief to the clipboard"
+                onClick={copyBrief}
+              >
+                {BriefIcon}
               </button>
             </Tooltip>
           </div>
@@ -662,6 +1047,43 @@ export default function GeoIntel() {
             >
               ⌂ Reset view
             </button>
+            <span className="h-4 w-px bg-grid shrink-0" aria-hidden="true" />
+            <button
+              type="button"
+              className={`chip gi-tap shrink-0 transition-colors ${halos ? '!border-signal/60 !text-signal !bg-signal/10' : 'text-muted hover:text-ink'}`}
+              aria-pressed={halos}
+              onClick={() => {
+                if (!halos && !useUiStore.getState().mapLayers.stations) setMapLayer('stations', true);
+                setHalos((v) => !v);
+              }}
+              title="Pulse a red halo around stations with predicted risk ≥ 70 (turns the station layer on)"
+            >
+              Risk halos
+            </button>
+            <button
+              type="button"
+              className={`chip gi-tap shrink-0 transition-colors ${selectMode ? '!border-primary/60 !text-primary !bg-primary/10' : 'text-muted hover:text-ink'}`}
+              aria-pressed={selectMode}
+              onClick={toggleSelectMode}
+              title="Multi-select districts by clicking polygons — aggregate stats + CSV (spatial filter)"
+            >
+              ▣ Select
+            </button>
+            {alertPolygons.length > 0 && (
+              <button
+                type="button"
+                className="chip gi-tap shrink-0 text-signal hover:text-ink transition-colors"
+                onClick={redZoneTour}
+                title="Fly through the anomaly-flagged districts one by one"
+              >
+                ⚠ Red zones {alertPolygons.length}
+                {tourIdx > 0 && (
+                  <span className="num text-muted">
+                    {((tourIdx - 1) % alertPolygons.length) + 1}/{alertPolygons.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
           <LocateSearch
             className="pointer-events-auto hidden md:block shrink-0"
@@ -677,6 +1099,57 @@ export default function GeoIntel() {
               ? 'Measure: click two points on the map · Esc to exit'
               : `Distance ${measureKm < 10 ? measureKm.toFixed(2) : measureKm.toFixed(1)} km · click to remeasure · Esc to exit`}
           </div>
+        )}
+        {(probing || probe) && (
+          <div className="pointer-events-auto chip bg-panel/95 shadow-lg !border-primary/50 text-primary max-w-full flex-wrap">
+            {!probe || !probeStats ? (
+              'Probe: click the map to place a radius probe · Esc to exit'
+            ) : (
+              <>
+                <span className="num font-semibold">{fmtInt(probeStats.count)}</span>
+                <span>incidents within</span>
+                <button
+                  type="button"
+                  className="btn !px-1.5 !py-0 num"
+                  aria-label="Shrink the probe radius"
+                  onClick={() => setProbeKm((k) => Math.max(0.5, +(k - 0.5).toFixed(1)))}
+                >
+                  −
+                </button>
+                <span className="num">{probeKm} km</span>
+                <button
+                  type="button"
+                  className="btn !px-1.5 !py-0 num"
+                  aria-label="Grow the probe radius"
+                  onClick={() => setProbeKm((k) => Math.min(25, +(k + 0.5).toFixed(1)))}
+                >
+                  +
+                </button>
+                {probeStats.topHead && <span className="text-muted">· mostly {probeStats.topHead}</span>}
+                <span className="text-muted num">· {fmtNum(probeStats.perKm2, 1)}/km²</span>
+                <span className="text-muted hidden sm:inline">· click to re-place</span>
+                <button
+                  type="button"
+                  className="hover:text-ink transition-colors"
+                  aria-label="Exit the radius probe"
+                  onClick={toggleProbe}
+                >
+                  ✕
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {selectMode && (
+          <SelectionBar
+            selected={selectedPolygons}
+            values={polygonCases}
+            stateTotal={stateTotal}
+            onRemove={togglePolygonSelect}
+            onClear={() => setSelectedPolygons([])}
+            onFocus={() => selectedPolygons.length && issueFly({ type: 'polygons', names: selectedPolygons })}
+            onExit={() => { setSelectMode(false); setSelectedPolygons([]); }}
+          />
         )}
         {tileError && basemap === 'osm' && (
           <div className="pointer-events-auto chip self-start bg-panel/95 shadow-lg !border-amber/50 text-amber">
@@ -743,13 +1216,71 @@ export default function GeoIntel() {
           </div>
         )}
         {hotspotRows.length > 0 && (
-          <div className="gi-noprint pointer-events-auto">
+          <div className="gi-noprint pointer-events-auto flex flex-wrap items-center gap-1">
             <BandFilterChips value={hotspotBand} onChange={setHotspotBand} />
+            <span className="h-4 w-px bg-grid shrink-0" aria-hidden="true" />
+            <button
+              type="button"
+              className={`chip gi-tap shrink-0 bg-panel/95 shadow-lg transition-colors text-[11px] ${
+                hour !== null ? '!border-primary/60 !text-primary' : 'text-muted hover:text-ink'
+              }`}
+              aria-pressed={hour !== null}
+              onClick={toggleHourLens}
+              title="Hour lens — filter hotspots by hour of day and sweep the full day (H)"
+            >
+              ◔ Hour lens
+            </button>
+            <button
+              type="button"
+              className={`chip gi-tap shrink-0 bg-panel/95 shadow-lg transition-colors text-[11px] ${
+                patrolOn ? '!border-amber/60 !text-amber' : 'text-muted hover:text-ink'
+              }`}
+              aria-pressed={patrolOn}
+              onClick={() => setPatrolOn((v) => !v)}
+              title="Suggest a patrol route connecting the top-3 hotspots (P)"
+            >
+              ⇢ Patrol route
+            </button>
+            <button
+              type="button"
+              className={`chip gi-tap shrink-0 bg-panel/95 shadow-lg transition-colors text-[11px] ${
+                compareOn ? '!border-primary/60 !text-primary' : 'text-muted hover:text-ink'
+              } disabled:opacity-45`}
+              aria-pressed={compareOn}
+              disabled={months.length < 2}
+              onClick={toggleCompare}
+              title="Compare two months side by side with a heat swipe (C)"
+            >
+              ⇆ Compare
+            </button>
+          </div>
+        )}
+        {hour !== null && (
+          <div className="gi-noprint pointer-events-auto w-full max-w-md">
+            <HourScrubber
+              hour={hour}
+              onHourChange={setHour}
+              playing={hourPlaying}
+              onPlayToggle={() => setHourPlaying((v) => !v)}
+              onExit={toggleHourLens}
+              activeCount={visibleHotspots.length}
+              totalCount={filteredHotspots.length}
+            />
+          </div>
+        )}
+        {patrolOn && (
+          <div className="gi-noprint max-w-full">
+            <PatrolRoutePill
+              route={patrolRoute}
+              bandLabel={hotspotBand === 'all' ? null : HOUR_BANDS.find((b) => b.key === hotspotBand)?.label}
+              onCopy={copyRoute}
+              onExit={() => setPatrolOn(false)}
+            />
           </div>
         )}
         <div className="gi-noprint max-w-full">
           <HotspotChips
-            hotspots={filteredHotspots.slice(0, 10)}
+            hotspots={visibleHotspots.slice(0, 10)}
             loading={hotspots.isLoading}
             error={hotspots.error}
             onRetry={() => hotspots.refetch()}
@@ -757,6 +1288,30 @@ export default function GeoIntel() {
             selectedId={selectedHotspotId}
           />
         </div>
+        {compareOn && (
+          <div className="gi-noprint max-w-full">
+            <CompareStrip
+              months={months}
+              monthA={compareMonth}
+              monthB={scrubMonth}
+              onMonthA={setCompareMonth}
+              onMonthB={(ym) => {
+                const idx = months.indexOf(ym);
+                if (idx >= 0) { setPlaying(false); setScrubIndex(idx + 1); }
+              }}
+              countA={comparePoints.length}
+              countB={heatPoints.length}
+              loading={compareIncidents.isFetching || incidents.isFetching}
+              onSwap={() => {
+                if (!scrubMonth || !compareMonth) return;
+                const idx = months.indexOf(compareMonth);
+                setCompareMonth(scrubMonth);
+                if (idx >= 0) setScrubIndex(idx + 1);
+              }}
+              onExit={() => setCompareOn(false)}
+            />
+          </div>
+        )}
         <div className="gi-noprint pointer-events-auto w-full max-w-xl">
           <TimeScrubber
             months={months}
@@ -769,6 +1324,7 @@ export default function GeoIntel() {
             onSpeedChange={setSpeed}
             loop={loop}
             onLoopToggle={() => setLoop((v) => !v)}
+            totals={monthTotals}
           />
         </div>
       </div>
@@ -783,6 +1339,9 @@ export default function GeoIntel() {
             onStationSelect={onStationClick}
             pins={pins}
             onTogglePin={onTogglePin}
+            incidentRows={incidentRows}
+            stationsAll={stations.data || []}
+            headNames={headNames}
             onBackToDistrict={(station) => {
               const polygon = polygonForUnit(station.districtId);
               if (polygon) {
@@ -827,6 +1386,9 @@ export default function GeoIntel() {
               onStationSelect={onStationClick}
               pins={pins}
               onTogglePin={onTogglePin}
+              incidentRows={incidentRows}
+              stationsAll={stations.data || []}
+              headNames={headNames}
               onBackToDistrict={(station) => {
                 const polygon = polygonForUnit(station.districtId);
                 if (polygon) openDistrict(polygon);
@@ -849,13 +1411,78 @@ export default function GeoIntel() {
                 <BandFilterChips className="mb-1.5 flex-wrap" value={hotspotBand} onChange={setHotspotBand} />
               )}
               <HotspotChips
-                hotspots={filteredHotspots.slice(0, 10)}
+                hotspots={visibleHotspots.slice(0, 10)}
                 loading={hotspots.isLoading}
                 error={hotspots.error}
                 onRetry={() => hotspots.refetch()}
                 onSelect={(h) => { onHotspotClick(h); setSheetOpen(false); }}
                 selectedId={selectedHotspotId}
               />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Tools</p>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className={`chip gi-tap transition-colors ${hour !== null ? '!border-primary/60 !text-primary !bg-primary/10' : 'text-muted hover:text-ink'}`}
+                  aria-pressed={hour !== null}
+                  onClick={toggleHourLens}
+                >
+                  ◔ Hour lens
+                </button>
+                <button
+                  type="button"
+                  className={`chip gi-tap transition-colors ${patrolOn ? '!border-amber/60 !text-amber !bg-amber/10' : 'text-muted hover:text-ink'}`}
+                  aria-pressed={patrolOn}
+                  onClick={() => setPatrolOn((v) => !v)}
+                >
+                  ⇢ Patrol route
+                </button>
+                <button
+                  type="button"
+                  className={`chip gi-tap transition-colors ${halos ? '!border-signal/60 !text-signal !bg-signal/10' : 'text-muted hover:text-ink'}`}
+                  aria-pressed={halos}
+                  onClick={() => {
+                    if (!halos && !useUiStore.getState().mapLayers.stations) setMapLayer('stations', true);
+                    setHalos((v) => !v);
+                  }}
+                >
+                  Risk halos
+                </button>
+                {alertPolygons.length > 0 && (
+                  <button
+                    type="button"
+                    className="chip gi-tap text-signal"
+                    onClick={() => { redZoneTour(); setSheetOpen(false); }}
+                  >
+                    ⚠ Red zones {alertPolygons.length}
+                  </button>
+                )}
+              </div>
+              {hour !== null && (
+                <div className="mt-2">
+                  <HourScrubber
+                    compact
+                    hour={hour}
+                    onHourChange={setHour}
+                    playing={hourPlaying}
+                    onPlayToggle={() => setHourPlaying((v) => !v)}
+                    onExit={toggleHourLens}
+                    activeCount={visibleHotspots.length}
+                    totalCount={filteredHotspots.length}
+                  />
+                </div>
+              )}
+              {patrolOn && (
+                <div className="mt-2">
+                  <PatrolRoutePill
+                    route={patrolRoute}
+                    bandLabel={hotspotBand === 'all' ? null : HOUR_BANDS.find((b) => b.key === hotspotBand)?.label}
+                    onCopy={copyRoute}
+                    onExit={() => setPatrolOn(false)}
+                  />
+                </div>
+              )}
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Display</p>

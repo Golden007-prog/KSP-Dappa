@@ -16,8 +16,9 @@ import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import { dateLabel, fmtInt, monthLabel } from '../../lib/format.js';
 import { useSeasonalityForUnits, useStationsForUnits, useTrendsForUnits } from './hooks.js';
 import { risk01, riskColor, riskLabel } from './utils.js';
+import HotspotPanel from './HotspotPanel.jsx';
 
-function PanelHeader({ title, subtitle, onBack, onClose }) {
+export function PanelHeader({ title, subtitle, onBack, onClose }) {
   return (
     <header className="flex items-center gap-2 px-3 py-2.5 border-b border-grid shrink-0">
       {onBack && (
@@ -397,6 +398,7 @@ function CompareBlock({ pins, onTogglePin, onClear }) {
 
 export default function SidePanel({
   drill, apiParams, onClose, onStationSelect, onBackToDistrict, pins = [], onTogglePin,
+  incidentRows = [], stationsAll = [], headNames = {},
 }) {
   return (
     <div className="h-full flex flex-col bg-panel/95 border border-grid rounded-xl shadow-xl overflow-hidden">
@@ -410,6 +412,17 @@ export default function SidePanel({
           title={drill.title}
           apiParams={apiParams}
           onStationSelect={onStationSelect}
+          onClose={onClose}
+        />
+      ) : drill.type === 'hotspot' ? (
+        <HotspotPanel
+          hotspot={drill.hotspot}
+          apiParams={apiParams}
+          incidentRows={incidentRows}
+          stations={stationsAll}
+          headNames={headNames}
+          onStationSelect={onStationSelect}
+          onBack={() => onBackToDistrict({ districtId: drill.hotspot.districtId })}
           onClose={onClose}
         />
       ) : (

@@ -1,6 +1,7 @@
 // Offender 360 case timeline — sorted most-recent-first client-side (the
 // subtitle promises it, so we enforce it rather than trusting API order), with
-// client-side status + district chip filters and year group headers.
+// client-side status + district + crime-head chip filters, year group headers,
+// and dormancy markers flagging gaps of 12+ months between consecutive cases.
 // CrimeNo rows without a caseMasterId render as plain text (no dead links).
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -45,9 +46,12 @@ function FilterChips({ label, options, value, onChange }) {
   );
 }
 
+const DORMANT_MONTHS = 12;
+
 export default function OffenderTimeline({ timeline = [] }) {
   const [status, setStatus] = useState('');
   const [district, setDistrict] = useState('');
+  const [head, setHead] = useState('');
 
   const sorted = useMemo(
     () => [...timeline].sort((a, b) => String(b?.registeredDate || '').localeCompare(String(a?.registeredDate || ''))),
@@ -67,23 +71,38 @@ export default function OffenderTimeline({ timeline = [] }) {
 
   const statusOptions = useMemo(() => countBy(sorted, (t) => String(t?.statusName || '')), [sorted]);
   const districtOptions = useMemo(() => countBy(sorted, districtNameOf), [sorted]);
+  const headOptions = useMemo(() => countBy(sorted, (t) => String(t?.headName || '')), [sorted]);
 
   const visible = useMemo(
     () => sorted.filter((t) => (!status || String(t?.statusName || '') === status)
-      && (!district || districtNameOf(t) === district)),
-    [sorted, status, district],
+      && (!district || districtNameOf(t) === district)
+      && (!head || String(t?.headName || '') === head)),
+    [sorted, status, district, head],
   );
+
+  // Gap (in months) between each visible case and the NEXT OLDER one — 12+
+  // month gaps render as dormancy dividers under the entry.
+  const withGaps = useMemo(() => visible.map((t, i) => {
+    const next = visible[i + 1];
+    if (!next) return { t, gapMonths: 0 };
+    const a = Date.parse(String(t?.registeredDate || '').slice(0, 10));
+    const b = Date.parse(String(next?.registeredDate || '').slice(0, 10));
+    const gapMonths = Number.isFinite(a) && Number.isFinite(b)
+      ? Math.round((a - b) / (30.44 * 86400000))
+      : 0;
+    return { t, gapMonths };
+  }), [visible]);
 
   // Year groups over the (already descending) visible rows.
   const groups = useMemo(() => {
     const out = [];
-    for (const t of visible) {
-      const y = String(t?.registeredDate || '').slice(0, 4) || 'Undated';
+    for (const entry of withGaps) {
+      const y = String(entry.t?.registeredDate || '').slice(0, 4) || 'Undated';
       if (!out.length || out[out.length - 1].year !== y) out.push({ year: y, items: [] });
-      out[out.length - 1].items.push(t);
+      out[out.length - 1].items.push(entry);
     }
     return out;
-  }, [visible]);
+  }, [withGaps]);
 
   if (!timeline.length) {
     return (
@@ -95,20 +114,21 @@ export default function OffenderTimeline({ timeline = [] }) {
     );
   }
 
-  const filtering = status || district;
+  const filtering = status || district || head;
 
   return (
     <div className="space-y-3">
       <div className="space-y-1.5 no-print">
         <FilterChips label="Status" options={statusOptions} value={status} onChange={setStatus} />
         <FilterChips label="District" options={districtOptions} value={district} onChange={setDistrict} />
+        <FilterChips label="Head" options={headOptions} value={head} onChange={setHead} />
         {filtering && (
           <p className="text-[11px] text-muted">
             Showing <span className="num text-ink">{fmtInt(visible.length)}</span> of {fmtInt(sorted.length)} cases
             <button
               type="button"
               className="btn-ghost !px-2 !py-1 text-[11px] min-h-[32px] ml-1.5"
-              onClick={() => { setStatus(''); setDistrict(''); }}
+              onClick={() => { setStatus(''); setDistrict(''); setHead(''); }}
             >
               Clear filters
             </button>
@@ -126,7 +146,7 @@ export default function OffenderTimeline({ timeline = [] }) {
                 {g.year} · {fmtInt(g.items.length)} case{g.items.length === 1 ? '' : 's'}
               </p>
               <ol className="space-y-4">
-                {g.items.map((t) => (
+                {g.items.map(({ t, gapMonths }) => (
                   <li key={t.caseMasterId || t.crimeNo} className="relative">
                     <span className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full bg-amber border-2 border-panel" aria-hidden="true" />
                     <div className="flex flex-wrap items-center gap-2">
@@ -147,6 +167,16 @@ export default function OffenderTimeline({ timeline = [] }) {
                     <p className="text-xs text-muted mt-0.5">
                       {t.subHeadName || t.headName || 'Case'} · {t.unitName || 'Unknown station'} · {dateLabel(t.registeredDate)}
                     </p>
+                    {gapMonths >= DORMANT_MONTHS && (
+                      <p
+                        className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted mt-3"
+                        title="No linked case registered during this stretch"
+                      >
+                        <span className="h-px flex-1 bg-grid/70" aria-hidden="true" />
+                        dormant ≈ {fmtInt(gapMonths)} months
+                        <span className="h-px flex-1 bg-grid/70" aria-hidden="true" />
+                      </p>
+                    )}
                   </li>
                 ))}
               </ol>

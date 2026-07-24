@@ -1,9 +1,11 @@
 // /predict — 30-day station-risk league table with driver chips, station
-// search, percentile risk tiers, CSV export and a copyable top-5 briefing.
+// search, percentile risk tiers, a score-distribution histogram, per-station
+// 6-month sparklines, CSV export and a copyable top-5 briefing.
 // Rows arrive pre-ranked (rank field) from Predict.jsx; the driver chip row
 // and search box filter the table client-side. The station name in each row
 // is a real button so keyboard users can open a station on the map (the row
-// onClick on <tr> has no keyboard path — shared DataTable limitation).
+// onClick on <tr> has no keyboard path — shared DataTable limitation); when
+// an onDetails handler is given, clicking a row opens the station drawer.
 import { useMemo, useState } from 'react';
 import Card from '../../components/Card.jsx';
 import DataTable from '../../components/DataTable.jsx';
@@ -11,26 +13,64 @@ import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
-import { fmtNum } from '../../lib/format.js';
+import { fmtInt, fmtNum } from '../../lib/format.js';
 import { downloadCsv } from '../trends/csv.js';
+import Sparkline from '../trends/Sparkline.jsx';
+import { makeTierOf } from './riskTiers.js';
 
 const SHOW_DEFAULT = 15;
+const HIST_BINS = 16;
 
-// Percentile tiers against the current league (risk scores have no absolute
-// scale contract, so thresholds derive from the distribution on screen).
-const TIERS = [
-  { label: 'Severe', tone: 'red', min: 0.9 },
-  { label: 'High', tone: 'amber', min: 0.75 },
-  { label: 'Guarded', tone: 'neutral', min: 0.5 },
-  { label: 'Low', tone: 'slate', min: 0 },
-];
+const BIN_TONE = { red: 'bg-signal/80', amber: 'bg-amber/80', neutral: 'bg-muted/60', slate: 'bg-grid' };
 
-function quantile(sortedAsc, q) {
-  if (!sortedAsc.length) return 0;
-  const pos = (sortedAsc.length - 1) * q;
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (pos - lo);
+/** Tiny CSS histogram of the league's risk scores, colored by tier. */
+function RiskHistogram({ rows, tierOf }) {
+  const model = useMemo(() => {
+    const scores = rows.map((r) => Number(r.riskScore) || 0);
+    if (scores.length < 8) return null;
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const span = max - min || 1;
+    const bins = Array.from({ length: HIST_BINS }, () => 0);
+    for (const s of scores) {
+      const b = Math.min(HIST_BINS - 1, Math.floor(((s - min) / span) * HIST_BINS));
+      bins[b] += 1;
+    }
+    const peak = Math.max(...bins, 1);
+    return {
+      min,
+      max,
+      bars: bins.map((n, i) => {
+        const mid = min + ((i + 0.5) / HIST_BINS) * span;
+        return { n, hPct: (n / peak) * 100, tone: tierOf(mid).tone, from: min + (i / HIST_BINS) * span, to: min + ((i + 1) / HIST_BINS) * span };
+      }),
+    };
+  }, [rows, tierOf]);
+
+  if (!model) return null;
+  return (
+    <div aria-label="Distribution of station risk scores">
+      <div className="flex items-end gap-px h-9" aria-hidden="true">
+        {model.bars.map((b, i) => (
+          <span
+            key={i}
+            className="group relative flex-1 flex items-end"
+            title={`${fmtNum(b.from, 0)}–${fmtNum(b.to, 0)}: ${fmtInt(b.n)} station${b.n === 1 ? '' : 's'}`}
+          >
+            <span
+              className={`w-full rounded-t-sm ${BIN_TONE[b.tone] || 'bg-grid'}`}
+              style={{ height: `${Math.max(b.n ? 8 : 2, b.hPct)}%` }}
+            />
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-muted mt-0.5 num">
+        <span>{fmtNum(model.min, 0)}</span>
+        <span className="text-muted/80">risk score distribution — {fmtInt(rows.length)} stations, colored by tier</span>
+        <span>{fmtNum(model.max, 0)}</span>
+      </div>
+    </div>
+  );
 }
 
 function DriverChip({ label, count, active, onClick }) {
@@ -52,7 +92,7 @@ function DriverChip({ label, count, active, onClick }) {
   );
 }
 
-export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowClick }) {
+export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowClick, onDetails }) {
   const toast = useToast();
   const [driverFilter, setDriverFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -69,11 +109,12 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
 
   // Tier thresholds come from the FULL league (pre-filter) so a driver or
   // search filter never re-labels the surviving stations.
-  const tierOf = useMemo(() => {
-    const scores = rows.map((r) => Number(r.riskScore) || 0).sort((a, b) => a - b);
-    const cuts = TIERS.map((t) => ({ ...t, at: quantile(scores, t.min) }));
-    return (score) => cuts.find((t) => score >= t.at) || TIERS[TIERS.length - 1];
-  }, [rows]);
+  const tierOf = useMemo(() => makeTierOf(rows), [rows]);
+
+  const hasSpark = useMemo(
+    () => rows.some((r) => Array.isArray(r.spark) && r.spark.some((v) => Number(v) > 0)),
+    [rows],
+  );
 
   const filteredAll = useMemo(() => {
     let r = rows;
@@ -168,6 +209,14 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
         </div>
       ),
     },
+    ...(hasSpark ? [{
+      key: 'spark', label: '6-mo trend', width: 96,
+      render: (r) => (
+        Array.isArray(r.spark) && r.spark.some((v) => Number(v) > 0)
+          ? <Sparkline values={r.spark} color="currentColor" height={22} className="w-20 text-muted" />
+          : <span className="text-[11px] text-muted">—</span>
+      ),
+    }] : []),
     {
       key: 'drivers', label: 'Drivers',
       render: (r) => {
@@ -197,7 +246,9 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
   return (
     <Card
       title="Station risk league — next 30 days"
-      subtitle="Every police station scored by the nightly risk model (all crime heads); open a station to see it on the map"
+      subtitle={onDetails
+        ? 'Every police station scored by the nightly risk model (all crime heads); click a row for the station dossier, or the name to open it on the map'
+        : 'Every police station scored by the nightly risk model (all crime heads); open a station to see it on the map'}
       padded={false}
       actions={(
         <div className="flex items-center gap-1.5">
@@ -225,6 +276,7 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
       ) : (
         <>
           <div className="flex flex-col gap-2 px-3 py-2.5 border-b border-grid/60">
+            {!loading && <RiskHistogram rows={rows} tierOf={tierOf} />}
             <input
               type="search"
               className="input-dark w-full sm:max-w-xs !py-2 min-h-[40px]"
@@ -257,7 +309,7 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
             emptyMessage={driverFilter || search
               ? 'No stations match the current search / driver filter.'
               : 'No station risk scores for the current filters — run the analytics pass.'}
-            onRowClick={onRowClick}
+            onRowClick={onDetails || onRowClick}
             dense
           />
           {!loading && filteredCount > SHOW_DEFAULT && (

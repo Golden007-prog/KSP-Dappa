@@ -88,11 +88,36 @@ export default function CaseTimeline({ caseData }) {
   const steps = buildSteps(d);
   const lastDone = steps.reduce((acc, s, i) => (s.done ? i : acc), -1);
 
+  // Completion % + time sitting in the current stage (days since the last
+  // dated done step) — quick pendency reads for reviewers and supervisors.
+  const doneCount = steps.filter((s) => s.done).length;
+  const progressPct = Math.round((doneCount / steps.length) * 100);
+  const lastDated = [...steps].reverse().find((s) => s.done && s.date) || null;
+  const stageDays = lastDone >= 0 && lastDone < steps.length - 1 && lastDated
+    ? differenceInCalendarDays(new Date(), lastDated.date)
+    : null;
+
   return (
     <Card
       title="Case lifecycle"
       subtitle="Incident to court — derived from the FIR joins"
-      actions={d.statusName ? <Badge tone="amber">{d.statusName}</Badge> : null}
+      actions={
+        <span className="flex flex-wrap items-center justify-end gap-2">
+          <span
+            className="num inline-flex items-center gap-1.5 text-[11px] text-muted"
+            title={`${doneCount} of ${steps.length} lifecycle stages complete`}
+          >
+            <span className="inline-block h-1.5 w-14 rounded-full bg-grid overflow-hidden" aria-hidden="true">
+              <span className="block h-full rounded-full bg-amber" style={{ width: `${progressPct}%` }} />
+            </span>
+            {progressPct}%
+          </span>
+          {Number.isFinite(stageDays) && stageDays > 0 && (
+            <Badge tone={stageDays > 60 ? 'amber' : 'slate'}>{stageDays}d in stage</Badge>
+          )}
+          {d.statusName ? <Badge tone="amber">{d.statusName}</Badge> : null}
+        </span>
+      }
     >
       <ol className="case-timeline flex items-stretch overflow-x-auto no-scrollbar -mx-1 px-1" aria-label="Case lifecycle">
         {steps.map((s, i) => {

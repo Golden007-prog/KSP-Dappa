@@ -1,12 +1,16 @@
 // /reports — Markdown rendering of the Weekly Brief for the ".md" download.
-// Honors the section toggles and custom section order; data selection comes
-// from select.js so it always matches the preview and PDF.
+// Honors the section toggles, custom section order, the executive-summary
+// override, and the classification stamp; data selection comes from select.js
+// (and exec.js / annex.js) so it always matches the preview and PDF.
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
 import {
   selectOpenAlerts, selectTopHotspots, selectCommunities,
   selectForecastRows, selectRiskRows,
 } from './select.js';
 import { DEFAULT_ORDER, normalizeOrder } from './briefSections.js';
+import { composeExecutiveSummary } from './exec.js';
+import { annexNotes } from './annex.js';
+import { CLASS_META, normalizeClass } from './classification.js';
 
 const esc = (v) => String(v ?? '—').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
@@ -19,16 +23,18 @@ function table(headers, aligns, rows) {
   ];
 }
 
-export function buildBriefMarkdown(brief, sections = {}, { order, preparedBy } = {}) {
+export function buildBriefMarkdown(brief, sections = {}, { order, preparedBy, execText, classification } = {}) {
   const on = (k) => sections[k] !== false;
   const seq = (order ? normalizeOrder(order) : DEFAULT_ORDER).filter(on);
   const { win } = brief;
   const k = brief.kpis.data || {};
   const det = Number(k.detectionRate) <= 1 ? Number(k.detectionRate) * 100 : Number(k.detectionRate);
+  const classBanner = CLASS_META[normalizeClass(classification)]?.banner;
 
   const lines = [
     '# Weekly Intelligence Brief',
     '',
+    ...(classBanner ? [`**${classBanner}**`, ''] : []),
     'Karnataka State Police · DAPPA decision-support prototype',
     '',
     `- **Period:** ${dateLabel(win.from)} – ${dateLabel(win.to)} (${win.label})`,
@@ -40,6 +46,17 @@ export function buildBriefMarkdown(brief, sections = {}, { order, preparedBy } =
   ];
 
   const renderers = {
+    exec: () => {
+      const text = (execText && String(execText).trim()) || composeExecutiveSummary(brief);
+      if (!text) return ['## Executive summary', '', '_Not enough loaded data to compose a summary._', ''];
+      return ['## Executive summary', '', text, ''];
+    },
+    annex: () => [
+      '## Annex — methodology notes',
+      '',
+      ...annexNotes(brief).map((n, i) => `${i + 1}. **${n.title}.** ${n.body}`),
+      '',
+    ],
     kpis: () => {
       if (!brief.kpis.data) return ['## Headline indicators', '', '_Section unavailable._', ''];
       const mom = Number.isFinite(Number(k.momPct)) ? fmtPct(Number(k.momPct), { sign: true, fraction: false }) : '—';

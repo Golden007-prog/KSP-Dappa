@@ -6,9 +6,13 @@ import { useEffect, useRef } from 'react';
 
 const SHORTCUTS = [
   ['F', 'Toggle fullscreen map'],
-  ['Esc', 'Close help / measure / popup / panel, then exit fullscreen'],
+  ['Esc', 'Close help / measure / probe / popup / panel, then selection, compare, fullscreen'],
   ['␣ Space', 'Play or pause the month animation'],
   ['← →', 'Step the scrub month back / forward'],
+  ['H', 'Toggle the hour lens (hotspots by hour of day)'],
+  ['C', 'Toggle month compare (A/B heat swipe)'],
+  ['P', 'Toggle the patrol-route suggestion'],
+  ['M', 'Toggle the distance measure tool'],
   ['/', 'Focus the locate search'],
   ['?', 'Show this help'],
 ];

@@ -326,4 +326,16 @@ html[data-motion='reduce'] { scroll-behavior: auto !important; }
   #main-scroll { overflow: visible !important; height: auto !important; flex: none !important; }
   .print-page { max-width: none; padding: 0; min-height: 0; }
   @page { size: A4; margin: 12mm; }
+  /* pagination polish: keep a card (Card renders <section>), a figure or a
+     table row in one piece rather than splitting it across a page turn —
+     browsers still break a block that is taller than a whole page */
+  section, figure { break-inside: avoid; }
+  tr { break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; }
+  /* ink-safe chrome: drop drop-shadows, force readable hairlines and de-tint
+     links so photocopies stay legible */
+  * { box-shadow: none !important; text-shadow: none !important; }
+  section { border-color: #d1d5db !important; }
+  th, td { border-color: #e5e7eb !important; }
+  a { color: #111827 !important; text-decoration: none !important; }
 }

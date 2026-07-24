@@ -1,10 +1,12 @@
 // Offenders registry — searchable, risk-scored table of identity-resolved
-// persons. Repeat-only + risk-band + MO-tag + district filters (URL-synced),
-// full-set column sorting, CSV export, copy-view-link, risk-band distribution
-// strip, recently-viewed chips, and a 2–3 person compare tray (persisted in
-// localStorage so "Add to compare" works from other routes) → bottom-sheet
-// side-by-side view. Row → /offenders/:personKey (Offender 360); the name cell
-// is a real link so the profile is reachable by keyboard.
+// persons. Repeat-only + risk-band + MO-tag + watchlist + cross-district
+// filters (URL-synced), full-set column sorting (incl. alias/district counts),
+// KPI tile strip, CSV export, copy-view-link, risk-band distribution strip,
+// MO co-occurrence matrix, recently-viewed chips, per-row watchlist stars, and
+// a 2–3 person compare tray (persisted in localStorage so "Add to compare"
+// works from other routes) → bottom-sheet side-by-side view. Row →
+// /offenders/:personKey (Offender 360); the name cell is a real link so the
+// profile is reachable by keyboard.
 // Spec: master prompt §7 route 5.
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -19,13 +21,16 @@ import Badge from '../components/Badge.jsx';
 import SegmentedControl from '../components/SegmentedControl.jsx';
 import DensityToggle from '../components/DensityToggle.jsx';
 import Tooltip from '../components/Tooltip.jsx';
+import KpiTile from '../components/KpiTile.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt } from '../lib/format.js';
 import { RiskBadge, MoChips } from './offenders/common.jsx';
 import CompareDrawer from './offenders/CompareDrawer.jsx';
+import MoMatrix from './offenders/MoMatrix.jsx';
 import { RiskBandStrip, MoTagChips, RecentRow } from './offenders/FilterStrips.jsx';
 import { readCompare, writeCompare, COMPARE_MAX } from './offenders/compareStore.js';
 import { readRecent, clearRecent } from './offenders/recentStore.js';
+import { useWatchlist, WATCH_MAX } from './offenders/watchlistStore.js';
 import { communityColor } from './network/graphUtils.js';
 import { downloadCsv } from './network/download.js';
 import { copyText } from './network/clipboard.js';
@@ -85,6 +90,9 @@ export default function Offenders() {
   const repeatParam = searchParams.get('repeat');
   const storedRepeat = useMemo(() => readPref(REPEAT_PREF, null), []);
   const repeatOnly = repeatParam !== null ? repeatParam === '1' : storedRepeat !== '0';
+  const watchOnly = searchParams.get('watch') === '1';
+  const spanMulti = searchParams.get('span') === 'multi';
+  const { keys: watchKeys, toggle: toggleWatchKey } = useWatchlist();
 
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState({ key: 'riskScore', dir: 'desc' });
@@ -128,7 +136,16 @@ export default function Offenders() {
   if (districtName) params.district = districtName;
   const offenders = useOffenders(params);
 
-  const allRows = offenders.data?.rows || [];
+  // Alias/district counts precomputed so those columns sort like any numeric
+  // column through the shared controlled-sort path.
+  const allRows = useMemo(
+    () => (offenders.data?.rows || []).map((r) => ({
+      ...r,
+      aliasCount: (r.aliases || []).length,
+      districtCount: (r.districts || []).length,
+    })),
+    [offenders.data],
+  );
 
   const rowsByKey = useMemo(() => {
     const m = new Map();
@@ -145,11 +162,14 @@ export default function Offenders() {
       .includes(q);
   };
   const matchesMo = (r) => !moSel.length || moSel.every((t) => (r.moTags || []).includes(t));
+  const matchesWatch = (r) => !watchOnly || watchKeys.has(String(r.personKey));
+  const matchesSpan = (r) => !spanMulti || (r.districts || []).length >= 2;
 
   const filtered = useMemo(
-    () => allRows.filter((r) => inBand(band, r.riskScore) && matchesSearch(r) && matchesMo(r)),
+    () => allRows.filter((r) => inBand(band, r.riskScore) && matchesSearch(r) && matchesMo(r)
+      && matchesWatch(r) && matchesSpan(r)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allRows, band, q, moParam],
+    [allRows, band, q, moParam, watchOnly, spanMulti, watchKeys],
   );
 
   // Band distribution over everything EXCEPT the band filter itself, so the
@@ -157,20 +177,20 @@ export default function Offenders() {
   const bandCounts = useMemo(() => {
     const counts = { high: 0, med: 0, low: 0 };
     for (const r of allRows) {
-      if (!matchesSearch(r) || !matchesMo(r)) continue;
+      if (!matchesSearch(r) || !matchesMo(r) || !matchesWatch(r) || !matchesSpan(r)) continue;
       const b = bandOf(r.riskScore);
       if (b) counts[b] += 1;
     }
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, q, moParam]);
+  }, [allRows, q, moParam, watchOnly, spanMulti, watchKeys]);
 
   // MO-tag universe (top by frequency over the rows that pass search + band);
   // selected tags always stay visible so an active chip can be un-toggled.
   const moTags = useMemo(() => {
     const freq = new Map();
     for (const r of allRows) {
-      if (!matchesSearch(r) || !inBand(band, r.riskScore)) continue;
+      if (!matchesSearch(r) || !inBand(band, r.riskScore) || !matchesWatch(r) || !matchesSpan(r)) continue;
       for (const t of r.moTags || []) freq.set(t, (freq.get(t) || 0) + 1);
     }
     const top = [...freq.entries()]
@@ -182,7 +202,24 @@ export default function Offenders() {
     }
     return top;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, q, band, moParam]);
+  }, [allRows, q, band, moParam, watchOnly, spanMulti, watchKeys]);
+
+  // Matrix rows honor every filter EXCEPT the MO chips, so the co-occurrence
+  // grid stays stable while a pair is being picked from it.
+  const matrixRows = useMemo(
+    () => allRows.filter((r) => inBand(band, r.riskScore) && matchesSearch(r)
+      && matchesWatch(r) && matchesSpan(r)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allRows, band, q, watchOnly, spanMulti, watchKeys],
+  );
+
+  // KPI strip over the loaded slice (the server caps at FETCH_CAP by risk).
+  const kpi = useMemo(() => ({
+    total: allRows.length,
+    high: allRows.filter((r) => Number(r.riskScore) >= 70).length,
+    multi: allRows.filter((r) => (r.districts || []).length >= 2).length,
+    watched: allRows.filter((r) => watchKeys.has(String(r.personKey))).length,
+  }), [allRows, watchKeys]);
 
   // Sort the WHOLE filtered slice (not just the visible page) so column sorts
   // behave like a real registry — DataTable runs in controlled-sort mode.
@@ -201,7 +238,7 @@ export default function Offenders() {
     });
   }, [filtered, sort]);
 
-  useEffect(() => { setPage(1); }, [search, repeatOnly, districtName, band, moParam, sort]);
+  useEffect(() => { setPage(1); }, [search, repeatOnly, districtName, band, moParam, sort, watchOnly, spanMulti]);
 
   // Clamp when the result set shrinks out-of-band (e.g. a refetch returns fewer
   // rows while a late page is open) — never strand the user on an empty page.
@@ -231,6 +268,20 @@ export default function Offenders() {
   };
 
   const removeCompare = (key) => setCompare((prev) => prev.filter((k) => k !== String(key)));
+
+  const onToggleWatch = (r) => {
+    const res = toggleWatchKey(String(r.personKey), r.canonicalName);
+    if (res.status === 'full') toast.info(`Watchlist holds up to ${WATCH_MAX} people — remove one first.`);
+  };
+
+  // Cell click applies/clears an MO pair from the co-occurrence matrix
+  // (single tag from a header click falls back to the ordinary toggle).
+  const pickMoPair = (a, b) => {
+    if (!b || a === b) { toggleMo(a); return; }
+    const next = new Set(moSel);
+    if (next.has(a) && next.has(b)) { next.delete(a); next.delete(b); } else { next.add(a); next.add(b); }
+    setParams({ mo: [...next].join(',') });
+  };
 
   const exportCsv = () => {
     if (!sorted.length) { toast.info('Nothing to export under the current filters.'); return; }
@@ -279,8 +330,9 @@ export default function Offenders() {
       ),
     },
     {
-      key: 'aliases',
+      key: 'aliasCount',
       label: 'Aliases',
+      sortable: true,
       align: 'right',
       width: 70,
       render: (r) => (
@@ -289,13 +341,27 @@ export default function Offenders() {
     },
     { key: 'caseCount', label: 'Cases', sortable: true, align: 'right', width: 70 },
     {
-      key: 'districts',
+      key: 'districtCount',
       label: 'Districts',
+      sortable: true,
       align: 'right',
-      width: 80,
-      render: (r) => (
-        <span title={(r.districts || []).join(', ') || '—'}>{fmtInt((r.districts || []).length)}</span>
-      ),
+      width: 90,
+      render: (r) => {
+        const n = (r.districts || []).length;
+        return (
+          <span className="inline-flex items-center justify-end gap-1.5" title={(r.districts || []).join(', ') || '—'}>
+            {n > 1 && (
+              <span className="inline-flex gap-0.5" aria-hidden="true">
+                {Array.from({ length: Math.min(n, 4) }).map((_, i) => (
+                  // eslint-disable-next-line react/no-array-index-key
+                  <span key={i} className="h-1.5 w-1.5 rounded-full bg-amber/70" />
+                ))}
+              </span>
+            )}
+            <span className="num">{fmtInt(n)}</span>
+          </span>
+        );
+      },
     },
     {
       key: 'moTags',
@@ -329,6 +395,29 @@ export default function Offenders() {
         </Link>
       )),
     },
+    {
+      key: 'watch',
+      label: '★',
+      align: 'center',
+      width: 44,
+      render: (r) => {
+        const watched = watchKeys.has(String(r.personKey));
+        return (
+          <button
+            type="button"
+            className={`flex h-9 w-9 -my-1.5 mx-auto items-center justify-center rounded-lg transition-colors ${
+              watched ? 'text-amber' : 'text-muted hover:text-amber'
+            }`}
+            onClick={(e) => { e.stopPropagation(); onToggleWatch(r); }}
+            aria-pressed={watched}
+            aria-label={`${watched ? 'Remove' : 'Add'} ${r.canonicalName || r.personKey} ${watched ? 'from' : 'to'} the watchlist`}
+            title={watched ? 'Remove from watchlist' : 'Add to watchlist (shared with Network + Offender 360)'}
+          >
+            {watched ? '★' : '☆'}
+          </button>
+        );
+      },
+    },
   ];
 
   return (
@@ -361,7 +450,56 @@ export default function Offenders() {
           />
           Repeat only (≥3 cases)
         </label>
+        <button
+          type="button"
+          className={`chip !py-1 min-h-[40px] whitespace-nowrap transition-colors hover:border-amber/50 ${watchOnly ? '!border-amber text-amber' : ''}`}
+          onClick={() => setParams({ watch: watchOnly ? '' : '1' })}
+          aria-pressed={watchOnly}
+          title={watchOnly ? 'Show all offenders again' : 'Only offenders on the shared watchlist'}
+        >
+          ★ Watchlist
+          <span className="num text-muted">{fmtInt(kpi.watched)}</span>
+        </button>
+        <button
+          type="button"
+          className={`chip !py-1 min-h-[40px] whitespace-nowrap transition-colors hover:border-amber/50 ${spanMulti ? '!border-amber text-amber' : ''}`}
+          onClick={() => setParams({ span: spanMulti ? '' : 'multi' })}
+          aria-pressed={spanMulti}
+          title={spanMulti ? 'Show all offenders again' : 'Only offenders active across 2+ districts (cross-jurisdiction)'}
+        >
+          Cross-district
+          <span className="num text-muted">{fmtInt(kpi.multi)}</span>
+        </button>
       </FilterBar>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <KpiTile
+          label="Loaded offenders"
+          value={kpi.total}
+          loading={offenders.isLoading}
+          hint={`${fmtInt(serverTotal)} on file`}
+        />
+        <KpiTile
+          label="High risk (≥70)"
+          value={kpi.high}
+          accent="red"
+          loading={offenders.isLoading}
+          hint="in the loaded slice"
+        />
+        <KpiTile
+          label="Cross-district"
+          value={kpi.multi}
+          accent="teal"
+          loading={offenders.isLoading}
+          hint="active in 2+ districts"
+        />
+        <KpiTile
+          label="Watchlisted"
+          value={kpi.watched}
+          loading={offenders.isLoading}
+          hint="starred anywhere in the app"
+        />
+      </div>
 
       {(recent.length > 0 || moTags.length > 0
         || bandCounts.high + bandCounts.med + bandCounts.low > 0) && (
@@ -419,13 +557,17 @@ export default function Offenders() {
             rows={pageRows}
             rowKey="personKey"
             loading={offenders.isLoading}
-            emptyMessage={moSel.length
-              ? 'No offender carries all the selected MO tags — clear some tag chips.'
-              : search
-                ? 'No offender matches this search — try a shorter fragment.'
-                : repeatOnly
-                  ? 'No repeat offenders (≥3 cases) under the current filters — untick “Repeat only”.'
-                  : 'No offender profiles under the current filters.'}
+            emptyMessage={watchOnly
+              ? 'No watchlisted offender matches the current filters — star people from the table, the Network node panel or Offender 360.'
+              : moSel.length
+                ? 'No offender carries all the selected MO tags — clear some tag chips.'
+                : spanMulti
+                  ? 'No cross-district offender under the current filters — clear the Cross-district chip.'
+                  : search
+                    ? 'No offender matches this search — try a shorter fragment.'
+                    : repeatOnly
+                      ? 'No repeat offenders (≥3 cases) under the current filters — untick “Repeat only”.'
+                      : 'No offender profiles under the current filters.'}
             total={sorted.length}
             page={page}
             perPage={PER_PAGE}
@@ -436,6 +578,8 @@ export default function Offenders() {
           />
         )}
       </Card>
+
+      <MoMatrix rows={matrixRows} selected={moSel} onPickPair={pickMoPair} />
 
       {compare.length > 0 && (
         <div

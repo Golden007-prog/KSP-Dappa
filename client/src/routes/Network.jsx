@@ -1,11 +1,14 @@
 // Network Explorer — co-accused communities from shared FIRs.
 // Cytoscape graph (color = community, size = degree) with a layout switcher
-// (fcose/concentric/grid), min-degree slider, edge-tier checkboxes, ego-network
-// focus mode with depth control (URL-synced), node search with fly-to + full
-// combobox keyboard support, PNG/CSV export, copy-view-link, saved views,
-// keyboard shortcuts (/ f + − Esc), label + neighbor-focus toggles, legend
-// panel, community picker/isolate with a detail summary, top-connectors list,
-// shortest-path tool and node/edge drawers (bottom sheet on mobile).
+// (fcose/concentric/grid/tree), min-degree slider, edge-tier checkboxes,
+// ego-network focus mode with depth control (URL-synced), node search with
+// fly-to + full combobox keyboard support, PNG/CSV export, copy-view-link,
+// saved views, keyboard shortcuts (/ f + − Esc), label + neighbor-focus +
+// bridge-highlight toggles, legend panel with degree histogram, community
+// picker/isolate with a detail summary (top MO + key connector), top-connectors
+// list, cross-route watchlist panel (diamond nodes), shortest-path tool
+// (swap + strength) and node/edge drawers with bridge/cut-vertex context and
+// mutual associates (bottom sheet on mobile).
 // Spec: master prompt §7 route 4.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -21,26 +24,30 @@ import Sheet from '../components/Sheet.jsx';
 import SegmentedControl from '../components/SegmentedControl.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
-import { fmtInt } from '../lib/format.js';
+import { fmtInt, fmtNum, fmtPct } from '../lib/format.js';
 import CytoGraph from './network/CytoGraph.jsx';
 import { NodeDrawer, EdgeDrawer } from './network/Drawers.jsx';
 import SavedViews from './network/SavedViews.jsx';
 import TopConnectors from './network/TopConnectors.jsx';
 import CommunitySummary from './network/CommunitySummary.jsx';
+import WatchlistPanel from './network/WatchlistPanel.jsx';
 import {
   communityColor, computeCommunityStats, shortestPath, edgeKey,
-  edgeTier, egoSubgraph, countComponents,
+  edgeTier, egoSubgraph, countComponents, brokerStats, articulationPoints,
+  mutualNeighbors,
 } from './network/graphUtils.js';
 import { downloadDataUrl, downloadCsv } from './network/download.js';
 import { copyText } from './network/clipboard.js';
 import { useMediaQuery, readPref, writePref } from './network/hooks.js';
+import { useWatchlist } from './offenders/watchlistStore.js';
 
 const NODE_CAP = 400;
-const LAYOUTS = ['fcose', 'concentric', 'grid'];
+const LAYOUTS = ['fcose', 'concentric', 'grid', 'breadthfirst'];
 const LAYOUT_PREF = 'dappa-net-layout';
 const LEGEND_PREF = 'dappa-net-legend';
 const LABELS_PREF = 'dappa-net-labels';
 const NEIGHBOR_PREF = 'dappa-net-neighbor';
+const BRIDGE_PREF = 'dappa-net-bridges';
 
 const EDGE_TIERS = [
   { id: 'single', label: '1 case', hint: 'links from a single shared FIR' },
@@ -61,6 +68,38 @@ const EDGE_CSV = [
   { key: 'weight', label: 'Shared cases' },
   { label: 'Case IDs', map: (e) => (e.caseIds || []).join('; ') },
 ];
+
+/** Tiny degree-distribution bar strip for the Legend card (degrees 1..7, 8+). */
+function DegreeHistogram({ nodes }) {
+  const counts = [0, 0, 0, 0, 0, 0, 0, 0];
+  for (const n of nodes) {
+    const d = Math.max(1, Math.min(8, Number(n.degree) || 1));
+    counts[d - 1] += 1;
+  }
+  const max = Math.max(...counts, 1);
+  if (!nodes.length) return null;
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide mb-1.5">Degree distribution</p>
+      <div
+        className="flex items-end gap-1"
+        role="img"
+        aria-label={`People per degree: ${counts.map((c, i) => `${i + 1 === 8 ? '8+' : i + 1}: ${c}`).join(', ')}`}
+      >
+        {counts.map((c, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+            <div
+              className={`w-full rounded-sm ${c ? 'bg-amber/70' : 'bg-grid/50'}`}
+              style={{ height: `${3 + Math.round((c / max) * 30)}px` }}
+              title={`degree ${i + 1 === 8 ? '8+' : i + 1}: ${fmtInt(c)} people`}
+            />
+            <span className="text-[9px] text-muted num" aria-hidden="true">{i + 1 === 8 ? '8+' : i + 1}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PersonSelect({ label, value, onChange, options }) {
   return (
@@ -103,6 +142,8 @@ export default function Network() {
   const [legendOpen, setLegendOpen] = useState(() => readPref(LEGEND_PREF, '1') !== '0');
   const [showLabels, setShowLabels] = useState(() => readPref(LABELS_PREF, '1') !== '0');
   const [neighborFocus, setNeighborFocus] = useState(() => readPref(NEIGHBOR_PREF, '0') === '1');
+  const [showBridges, setShowBridges] = useState(() => readPref(BRIDGE_PREF, '0') === '1');
+  const { keys: watchKeys } = useWatchlist();
   const cyApi = useRef(null);
   const pendingFly = useRef(null);
   const searchRef = useRef(null);
@@ -133,6 +174,13 @@ export default function Network() {
   const districtsByPerson = useMemo(() => {
     const m = new Map();
     for (const r of registry.data?.rows || []) m.set(String(r.personKey), r.districts || []);
+    return m;
+  }, [registry.data]);
+
+  // Full registry rows by personKey — MO-tag enrichment for the community panel.
+  const profilesByKey = useMemo(() => {
+    const m = new Map();
+    for (const r of registry.data?.rows || []) m.set(String(r.personKey), r);
     return m;
   }, [registry.data]);
 
@@ -205,6 +253,36 @@ export default function Network() {
     [filtered.nodes, filtered.edges],
   );
 
+  // Link-analysis depth: cross-community brokers (computed on the FULL graph —
+  // community isolation and edge filters strip the very cross-links that make
+  // someone a bridge), articulation points over the visible view, and the
+  // bridge-highlight id set for the visible edges.
+  const brokers = useMemo(
+    () => brokerStats(graph.data?.nodes || [], graph.data?.edges || []),
+    [graph.data],
+  );
+  const cutSet = useMemo(
+    () => articulationPoints(filtered.nodes, filtered.edges),
+    [filtered.nodes, filtered.edges],
+  );
+  const bridgeIds = useMemo(() => {
+    if (!showBridges) return [];
+    const commOf = new Map(filtered.nodes.map((n) => [String(n.id), String(n.communityId ?? '')]));
+    const ids = new Set();
+    for (const e of filtered.edges) {
+      const cs = commOf.get(String(e.source)); const ct = commOf.get(String(e.target));
+      if (cs !== undefined && ct !== undefined && cs !== '' && ct !== '' && cs !== ct) {
+        ids.add(e.id); ids.add(String(e.source)); ids.add(String(e.target));
+      }
+    }
+    return [...ids];
+  }, [showBridges, filtered.nodes, filtered.edges]);
+
+  const density = filtered.nodes.length > 1
+    ? (2 * filtered.edges.length) / (filtered.nodes.length * (filtered.nodes.length - 1))
+    : 0;
+  const avgDegree = filtered.nodes.length ? (2 * filtered.edges.length) / filtered.nodes.length : 0;
+
   const nodesById = useMemo(() => {
     const m = new Map();
     for (const n of filtered.nodes) m.set(String(n.id), n);
@@ -224,6 +302,7 @@ export default function Network() {
         caseCount: n.caseCount,
         degree: n.degree,
         isEgo: ego && String(n.id) === ego ? 1 : 0,
+        watch: watchKeys.has(String(n.id)) ? 1 : 0,
       },
     }));
     const edges = filtered.edges.map((e) => ({
@@ -237,7 +316,7 @@ export default function Network() {
       },
     }));
     return [...nodes, ...edges];
-  }, [filtered, ego]);
+  }, [filtered, ego, watchKeys]);
 
   // Shortest path (BFS over the visible edges).
   const path = useMemo(
@@ -250,6 +329,14 @@ export default function Network() {
     for (let i = 0; i < path.length - 1; i += 1) ids.push(edgeKey(path[i], path[i + 1]));
     return ids;
   }, [path]);
+  // Path strength — total shared FIRs across the hops (evidence weight).
+  const pathStrength = useMemo(() => {
+    if (!path || path.length < 2) return 0;
+    const wByKey = new Map(filtered.edges.map((e) => [e.id, Number(e.weight) || 0]));
+    let sum = 0;
+    for (let i = 0; i < path.length - 1; i += 1) sum += wByKey.get(edgeKey(path[i], path[i + 1])) || 0;
+    return sum;
+  }, [path, filtered.edges]);
 
   // Deep links: /network?communityId=…&focus=<personKey> (from Offender 360) —
   // select the node once and fly to it after the first layout settles.
@@ -302,6 +389,9 @@ export default function Network() {
   };
   const toggleNeighbor = () => {
     setNeighborFocus((v) => { writePref(NEIGHBOR_PREF, v ? '0' : '1'); return !v; });
+  };
+  const toggleBridges = () => {
+    setShowBridges((v) => { writePref(BRIDGE_PREF, v ? '0' : '1'); return !v; });
   };
 
   const clearGraphFilters = () => {
@@ -412,6 +502,8 @@ export default function Network() {
           onSetPathEnd={(end, id) => setPathEnds((p) => ({ ...p, [end]: String(id) }))}
           onEgo={setEgo}
           isEgo={!!ego && String(sel.data.id) === ego}
+          broker={brokers.get(String(sel.data.id)) || null}
+          isCut={cutSet.has(String(sel.data.id))}
         />
       );
     }
@@ -422,6 +514,9 @@ export default function Network() {
           nodesById={nodesById}
           onClose={() => setSelected(null)}
           onSelectNode={selectNode}
+          mutuals={mutualNeighbors(filtered.edges, sel.data.source, sel.data.target)
+            .map((id) => nodesById.get(id))
+            .filter(Boolean)}
         />
       );
     }
@@ -460,6 +555,7 @@ export default function Network() {
         layout={layout}
         selectedId={selected?.type === 'node' ? selected.data.id : selected?.type === 'edge' ? selected.data.id : ''}
         pathIds={pathIds}
+        highlightIds={bridgeIds}
         showLabels={showLabels}
         neighborFocus={neighborFocus}
         ariaLabel={`Co-accused network graph: ${fmtInt(filtered.nodes.length)} people and ${fmtInt(filtered.edges.length)} links. Use the Find-person search or the Top connectors list for keyboard access.`}
@@ -557,10 +653,19 @@ export default function Network() {
             <span className="num">{fmtInt(components)} component{components === 1 ? '' : 's'}</span>
             <span>·</span>
             <span className="num">{fmtInt(communities.length)} groups</span>
+            <span className="hidden md:inline">·</span>
+            <Tooltip label="Share of possible pairwise links that actually exist in this view">
+              <span className="num hidden md:inline">{fmtPct(density * 100, { digits: 1 })} dense</span>
+            </Tooltip>
+            <span className="hidden md:inline">·</span>
+            <Tooltip label="Average co-accused links per visible person">
+              <span className="num hidden md:inline">avg {fmtNum(avgDegree, 1)} links</span>
+            </Tooltip>
             {districtName && <Badge tone="amber">{districtName}</Badge>}
             {communityId && <Badge tone="teal">isolated: group #{communityId}</Badge>}
             {filtered.capped && <Badge tone="slate">showing top {NODE_CAP} by degree</Badge>}
             {filtered.egoMissing && <Badge tone="slate">ego person not in current view</Badge>}
+            {showBridges && !bridgeIds.length && <Badge tone="slate">no bridge links in view</Badge>}
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2 min-w-0">
               <div className="relative">
                 <input
@@ -621,6 +726,7 @@ export default function Network() {
                   { value: 'fcose', label: 'Force' },
                   { value: 'concentric', label: 'Rings' },
                   { value: 'grid', label: 'Grid' },
+                  { value: 'breadthfirst', label: 'Tree' },
                 ]}
               />
               <Tooltip label="Zoom out (−)">
@@ -652,6 +758,16 @@ export default function Network() {
                   aria-pressed={neighborFocus}
                 >
                   Focus
+                </button>
+              </Tooltip>
+              <Tooltip label={showBridges ? 'Stop highlighting cross-community links' : 'Highlight the people and links that bridge different communities'}>
+                <button
+                  type="button"
+                  className={`${toolBtn} ${showBridges ? '!border-amber/60 text-amber' : ''}`}
+                  onClick={toggleBridges}
+                  aria-pressed={showBridges}
+                >
+                  Bridges
                 </button>
               </Tooltip>
               <Tooltip label="Download the graph as a PNG image">
@@ -723,6 +839,8 @@ export default function Network() {
               edges={filtered.edges}
               onPick={pickFromPanel}
               onClear={() => setCommunity('')}
+              profilesByKey={profilesByKey}
+              brokers={brokers}
             />
           )}
 
@@ -731,14 +849,29 @@ export default function Network() {
               <PersonSelect label="Person A" value={pathEnds.a} onChange={(v) => setPathEnds((p) => ({ ...p, a: v }))} options={personOptions} />
               <PersonSelect label="Person B" value={pathEnds.b} onChange={(v) => setPathEnds((p) => ({ ...p, b: v }))} options={personOptions} />
               {(pathEnds.a || pathEnds.b) && (
-                <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px]" onClick={() => setPathEnds({ a: '', b: '' })}>
-                  Clear path
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px]" onClick={() => setPathEnds({ a: '', b: '' })}>
+                    Clear path
+                  </button>
+                  <button
+                    type="button"
+                    className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px]"
+                    onClick={() => setPathEnds((p) => ({ a: p.b, b: p.a }))}
+                    title="Swap person A and person B"
+                  >
+                    ⇄ Swap
+                  </button>
+                </div>
               )}
               {pathEnds.a && pathEnds.b && (
                 path ? (
                   <div className="text-xs text-ink space-y-1">
-                    <Badge tone="teal">{path.length - 1} hop{path.length - 1 === 1 ? '' : 's'}</Badge>
+                    <span className="inline-flex flex-wrap gap-1.5">
+                      <Badge tone="teal">{path.length - 1} hop{path.length - 1 === 1 ? '' : 's'}</Badge>
+                      {pathStrength > 0 && (
+                        <Badge tone="amber">Σ {fmtInt(pathStrength)} shared FIR{pathStrength === 1 ? '' : 's'}</Badge>
+                      )}
+                    </span>
                     <p className="leading-5">
                       {path.map((id, i) => (
                         <span key={id}>
@@ -758,6 +891,8 @@ export default function Network() {
           </Card>
 
           <TopConnectors nodes={filtered.nodes} onPick={pickFromPanel} />
+
+          <WatchlistPanel nodesById={nodesById} onPick={pickFromPanel} />
 
           <Card
             title="Legend"
@@ -789,8 +924,13 @@ export default function Network() {
                   <li>Edge width = FIRs shared by the pair</li>
                   <li><span className="text-amber">Amber ring</span> = selected person / shortest path</li>
                   <li><span className="text-teal">Teal ring</span> = ego-focus person</li>
+                  <li><span className="text-amber">Dashed amber</span> = cross-community bridge (Bridges)</li>
+                  <li>◆ diamond = watchlisted person</li>
                   <li>Pinch or scroll to zoom · drag to pan · tap for details</li>
                 </ul>
+                <div className="border-t border-grid/60 pt-2.5">
+                  <DegreeHistogram nodes={filtered.nodes} />
+                </div>
                 <div className="border-t border-grid/60 pt-2.5">
                   <p className="text-[10px] uppercase tracking-wide mb-1.5">Keyboard</p>
                   <ul className="space-y-1">

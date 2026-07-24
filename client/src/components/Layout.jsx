@@ -9,17 +9,21 @@
 // across routes; the Alerts item shows a live count from /summary/kpis.
 // Global keyboard layer: Ctrl/Cmd-K palette · g,<letter> go-to · t theme ·
 // f zen mode · ? shortcuts sheet ('f' is skipped on /map where GeoIntel owns it).
+// The palette doubles as global search (saved views, live offender lookup,
+// FIR-number jump via remoteSearch) and its Recent section records every page
+// visit. Extras handled here: topbar active-filter pill, favicon alert badge,
+// PWA install hint toast + palette action, per-route shortcut sections.
 // The inner scroller is #main-scroll (ScrollTopButton targets it; reset to top
 // on every pathname change); #main-content is the skip-link target — handled
 // in JS because HashRouter would treat '#main-content' as a route.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient, useIsFetching } from '@tanstack/react-query';
-import { useHealthz, useKpis, useLookups } from '../lib/api.js';
-import { filterSearchString, FILTER_KEYS } from '../lib/filters.js';
+import { apiGet, useHealthz, useKpis, useLookups } from '../lib/api.js';
+import { filterSearchString, describeFilters, FILTER_KEYS } from '../lib/filters.js';
 import { useUiStore } from '../lib/store.js';
 import { useTheme } from './ThemeProvider.jsx';
-import CommandPalette from './CommandPalette.jsx';
+import CommandPalette, { recordRecentAction } from './CommandPalette.jsx';
 import DensityToggle from './DensityToggle.jsx';
 import OfflineBanner from './OfflineBanner.jsx';
 import PrintHeader from './PrintHeader.jsx';
@@ -58,7 +62,96 @@ const ICONS = {
   zenExit: <Svg size={16}><path d="M10 4v6H4M14 20v-6h6M4 10l6.5-6.5M20 14l-6.5 6.5" /></Svg>,
   keyboard: <Svg size={16}><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6" /></Svg>,
   motion: <Svg size={16}><circle cx="15" cy="12" r="5.5" /><path d="M3 8.5h6M2 12h5M3 15.5h6" /></Svg>,
+  print: <Svg size={16}><path d="M7 8V3.5h10V8" /><path d="M7 17H4.5a1 1 0 0 1-1-1V9.5a1.5 1.5 0 0 1 1.5-1.5h14a1.5 1.5 0 0 1 1.5 1.5V16a1 1 0 0 1-1 1H17" /><rect x="7" y="14" width="10" height="6.5" rx="0.5" /></Svg>,
+  bookmark: <Svg size={16}><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4-6.5 4v-16a1 1 0 0 1 1-1Z" /></Svg>,
+  install: <Svg size={16}><path d="M12 3v10m-4-4 4 4 4-4" /><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15" /></Svg>,
+  filter: <Svg size={13}><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" /></Svg>,
 };
+
+// Route-local keyboard shortcuts surfaced in the global shortcuts sheet as an
+// "On this view" section. These mirror the handlers each route actually binds
+// (useDashShortcuts, useAlertShortcuts, Cases/Network/Copilot/GeoIntel effects).
+const ROUTE_SHORTCUTS = [
+  {
+    match: (p) => p === '/',
+    name: 'Dashboard',
+    rows: [
+      [['r'], 'Refresh all panels'],
+      [['a'], 'Toggle auto-refresh'],
+      [['/'], 'Focus the Ask-DAPPA omnibox'],
+    ],
+  },
+  {
+    match: (p) => p === '/map',
+    name: 'GeoIntel',
+    rows: [
+      [['f'], 'Map fullscreen'],
+      [['Space'], 'Play / pause the month scrubber'],
+      [['←', '→'], 'Step months'],
+      [['/'], 'Focus locate search'],
+      [['?'], 'Map shortcuts overlay'],
+    ],
+  },
+  {
+    match: (p) => p === '/alerts',
+    name: 'Alerts',
+    rows: [
+      [['j', 'k'], 'Move through the feed'],
+      [['a'], 'Acknowledge the focused alert'],
+      [['m'], 'Mark read'],
+      [['s'], 'Snooze 24 h'],
+      [['c'], 'Copy as text'],
+      [['u'], 'Toggle unread-only'],
+      [['e'], 'Export CSV'],
+      [['1', '–', '4'], 'Severity filter (0 clears)'],
+      [['/'], 'Focus search'],
+    ],
+  },
+  {
+    match: (p) => p === '/cases',
+    name: 'Case explorer',
+    rows: [
+      [['/'], 'Focus search'],
+      [['e'], 'Export the current filter as CSV'],
+    ],
+  },
+  {
+    match: (p) => /^\/cases\/./.test(p),
+    name: 'FIR detail',
+    rows: [[['←', '→'], 'Previous / next case in the filter']],
+  },
+  {
+    match: (p) => p === '/network',
+    name: 'Network',
+    rows: [
+      [['/'], 'Find a node'],
+      [['0'], 'Fit the graph'],
+      [['+', '−'], 'Zoom'],
+      [['Esc'], 'Clear selection'],
+    ],
+  },
+  {
+    match: (p) => p === '/copilot',
+    name: 'Ask DAPPA',
+    rows: [
+      [['/'], 'Focus the question box'],
+      [['↑', '↓'], 'Recall input history'],
+      [['Esc'], 'Stop voice / blur'],
+    ],
+  },
+];
+
+// original favicon captured once so the alert badge can be removed again
+const faviconBase = { href: '', type: '' };
+
+function readSavedViews() {
+  try {
+    const v = JSON.parse(localStorage.getItem('dappa-saved-views'));
+    return Array.isArray(v) ? v.filter((x) => x && typeof x === 'object' && x.name) : [];
+  } catch {
+    return [];
+  }
+}
 
 const NAV_GROUPS = [
   {
@@ -252,10 +345,25 @@ function ShortcutRow({ keys, label }) {
   );
 }
 
-function GlobalShortcutsSheet({ open, onClose, isMac }) {
+function GlobalShortcutsSheet({ open, onClose, isMac, pathname = '/' }) {
+  const routeSection = ROUTE_SHORTCUTS.find((r) => r.match(pathname));
   return (
     <Sheet open={open} onClose={onClose} title="Keyboard shortcuts">
       <div className="space-y-4 px-1 pb-1">
+        {routeSection && (
+          <section>
+            <p className="eyebrow mb-1">On this view — {routeSection.name}</p>
+            <ul className="divide-y divide-grid/40">
+              {routeSection.rows.map(([keys, label]) => (
+                <ShortcutRow
+                  key={label}
+                  label={label}
+                  keys={keys.map((k) => <Key key={k}>{k}</Key>)}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
         <section>
           <p className="eyebrow mb-1">Everywhere</p>
           <ul className="divide-y divide-grid/40">
@@ -310,6 +418,7 @@ export default function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null);
 
   // close the More sheet whenever navigation happens from inside it, and reset
   // the inner scroller so every view starts at the top (search-param-only
@@ -318,6 +427,90 @@ export default function Layout() {
     setMoreOpen(false);
     document.getElementById('main-scroll')?.scrollTo({ top: 0 });
   }, [location.pathname]);
+
+  // record every page visit (sidebar, tabs, links — not just palette runs) so
+  // the palette's Recent section mirrors where the analyst actually went
+  useEffect(() => {
+    const hit = ALL_NAV.find((n) => (n.end
+      ? location.pathname === n.to
+      : location.pathname === n.to || location.pathname.startsWith(`${n.to}/`)));
+    if (hit) recordRecentAction(`nav-${hit.to}`);
+  }, [location.pathname]);
+
+  // favicon alert badge — a red dot on the crest while alerts are pending, so
+  // a backgrounded tab still signals. Canvas-drawn from the real favicon;
+  // restored untouched when the count drops to zero.
+  const hasAlerts = activeAlerts > 0;
+  useEffect(() => {
+    const link = document.querySelector('link[rel="icon"]');
+    if (!link) return undefined;
+    if (!faviconBase.href) {
+      faviconBase.href = link.getAttribute('href') || '';
+      faviconBase.type = link.getAttribute('type') || '';
+    }
+    if (!hasAlerts) {
+      if (faviconBase.href) link.setAttribute('href', faviconBase.href);
+      if (faviconBase.type) link.setAttribute('type', faviconBase.type);
+      return undefined;
+    }
+    try {
+      // redraw the crest with Path2D (same paths as favicon.svg / <Shield/>) —
+      // no async image load, works even where SVG-into-canvas is flaky
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 64;
+      const ctx = c.getContext('2d');
+      const crest = [
+        ['M32 3 57 12.4v17.1c0 15.1-10.6 28.1-25 31.5C17.6 57.6 7 44.6 7 29.5V12.4Z', '#0B1220'],
+        ['M32 7.4 53 15.3v14.2c0 12.9-8.9 23.9-21 26.9-12.1-3-21-14-21-26.9V15.3Z', '#5B9DFF'],
+        ['M32 13 47.5 18.8v10.7c0 9.6-6.6 17.9-15.5 20.2-8.9-2.3-15.5-10.6-15.5-20.2V18.8Z', '#0B1220'],
+        ['M32 21.5 40.5 24.7v6.1c0 5.4-3.5 10.2-8.5 11.7-5-1.5-8.5-6.3-8.5-11.7v-6.1Z', '#F5A623'],
+      ];
+      for (const [d, fill] of crest) {
+        ctx.fillStyle = fill;
+        ctx.fill(new Path2D(d));
+      }
+      ctx.beginPath();
+      ctx.arc(49, 15, 13, 0, Math.PI * 2);
+      ctx.fillStyle = '#E5484D';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0B1220';
+      ctx.stroke();
+      link.setAttribute('type', 'image/png');
+      link.setAttribute('href', c.toDataURL('image/png'));
+    } catch { /* canvas unavailable — keep the plain crest */ }
+    return undefined;
+  }, [hasAlerts]);
+
+  // PWA install: capture beforeinstallprompt for a one-time hint toast (with
+  // an Install action) and keep the deferred prompt for the palette action
+  useEffect(() => {
+    const onPrompt = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      let hinted = false;
+      try { hinted = localStorage.getItem('dappa-install-hint') === '1'; } catch { /* private mode */ }
+      const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches;
+      if (!hinted && !standalone) {
+        try { localStorage.setItem('dappa-install-hint', '1'); } catch { /* private mode */ }
+        toast.info('DAPPA can be installed as an app — a full-screen command center from your home screen or desktop.', {
+          duration: 12000,
+          action: { label: 'Install', onClick: () => e.prompt?.() },
+        });
+      }
+    };
+    const onInstalled = () => {
+      setInstallPrompt(null);
+      toast.success('DAPPA installed — launch it from your apps like any native tool.');
+    };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, [toast]);
 
   // document title tracks the view (+ pending alert count for the tab strip)
   useEffect(() => {
@@ -398,6 +591,79 @@ export default function Layout() {
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || '');
   const kbdHint = isMac ? '⌘K' : 'Ctrl K';
   const filtersActive = !!search;
+
+  const clearAllFilters = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const key of FILTER_KEYS) next.delete(key);
+      return next;
+    });
+  }, [setSearchParams]);
+
+  // apply a FilterBar-saved view from the palette (same URL semantics:
+  // explicit from/to beats the range preset)
+  const applySavedView = useCallback((v) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const key of FILTER_KEYS) next.delete(key);
+      if (v.districtId) next.set('districtId', v.districtId);
+      if (v.crimeHeadId) next.set('crimeHeadId', v.crimeHeadId);
+      if (v.from || v.to) {
+        if (v.from) next.set('from', v.from);
+        if (v.to) next.set('to', v.to);
+      } else if (v.range && v.range !== 'all') {
+        next.set('range', v.range);
+      }
+      return next;
+    });
+  }, [setSearchParams]);
+
+  // live lookups while typing in the palette: offenders by name/alias prefix
+  // (GET /offenders?q=) and direct FIR jumps for numeric queries
+  const remoteSearch = useCallback(async (q, signal) => {
+    const out = [];
+    if (/^\d{6,}$/.test(q)) {
+      // GET /cases/:id resolves by CaseMasterID; a miss lands on the detail
+      // route's own 404-aware error state, never a crash
+      out.push({
+        id: `fir-${q}`,
+        label: `Open case record ${q}`,
+        section: 'Cases',
+        icon: ICONS.cases,
+        hint: 'by case ID',
+        perform: () => navigate(`/cases/${encodeURIComponent(q)}`),
+      });
+    }
+    out.push({
+      // sanitized — this becomes a DOM id via aria-activedescendant
+      id: `case-search-${encodeURIComponent(q).replace(/%/g, '_')}`,
+      label: `Search case records for “${q}”`,
+      section: 'Cases',
+      icon: ICONS.search,
+      perform: () => navigate(`/cases?q=${encodeURIComponent(q)}`),
+    });
+    if (!/^\d+$/.test(q)) {
+      try {
+        const res = await apiGet('/offenders', { q, perPage: 5 }, { signal });
+        const rows = Array.isArray(res.data) ? res.data : (res.data?.rows || []);
+        for (const r of rows) {
+          if (!r?.personKey) continue;
+          out.push({
+            id: `person-${r.personKey}`,
+            label: String(r.canonicalName || r.personKey),
+            section: 'Offenders',
+            icon: ICONS.offenders,
+            hint: r.caseCount ? `${r.caseCount} cases` : undefined,
+            perform: () => navigate(`/offenders/${encodeURIComponent(r.personKey)}`),
+          });
+        }
+      } catch (err) {
+        if (err?.name === 'AbortError') throw err;
+        // API unreachable / static demo miss — the palette stays useful without people search
+      }
+    }
+    return out;
+  }, [navigate]);
 
   const paletteActions = useMemo(() => [
     ...ALL_NAV.map((item) => ({
@@ -482,19 +748,49 @@ export default function Layout() {
       keywords: 'keyboard shortcuts hotkeys help keys',
       perform: () => setShortcutsOpen(true),
     },
+    {
+      id: 'act-print',
+      label: 'Print this view',
+      section: 'Actions',
+      icon: ICONS.print,
+      keywords: 'print pdf paper export a4 hardcopy brief ctrl+p',
+      perform: () => window.print(),
+    },
+    {
+      id: 'act-print-brief',
+      label: 'Open the A4 print brief',
+      section: 'Actions',
+      icon: ICONS.reports,
+      keywords: 'print brief a4 pdf export weekly report briefing',
+      perform: () => navigate('/print/brief'),
+    },
+    ...(installPrompt ? [{
+      id: 'act-install',
+      label: 'Install DAPPA as an app',
+      section: 'Actions',
+      icon: ICONS.install,
+      keywords: 'install pwa app home screen desktop standalone',
+      perform: () => {
+        installPrompt.prompt?.();
+        setInstallPrompt(null);
+      },
+    }] : []),
     ...(filtersActive ? [{
       id: 'act-clear-filters',
       label: 'Clear all filters',
       section: 'Filters',
       keywords: 'clear reset filters district crime head period',
-      perform: () => {
-        setSearchParams((prev) => {
-          const next = new URLSearchParams(prev);
-          for (const key of FILTER_KEYS) next.delete(key);
-          return next;
-        });
-      },
+      perform: clearAllFilters,
     }] : []),
+    // saved FilterBar views — apply a named filter combo from anywhere
+    ...((paletteOpen ? readSavedViews() : []).map((v) => ({
+      id: `view-${v.id}`,
+      label: v.name,
+      section: 'Saved views',
+      icon: ICONS.bookmark,
+      keywords: 'saved view filters apply recall',
+      perform: () => applySavedView(v),
+    }))),
     // hidden until the user types — jump-filter to any district on the current view
     ...((lookups.data?.districts || []).map((d) => ({
       id: `filter-district-${d.districtId}`,
@@ -510,12 +806,40 @@ export default function Layout() {
         });
       },
     }))),
+    // hidden until typed — filter the current view to a crime head
+    ...((lookups.data?.crimeHeads || []).map((h) => ({
+      id: `filter-head-${h.crimeHeadId}`,
+      label: `Filter: ${h.headName}`,
+      section: 'Filters',
+      keywords: 'crime head category filter jump',
+      hidden: true,
+      perform: () => {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('crimeHeadId', h.crimeHeadId);
+          return next;
+        });
+      },
+    }))),
   ], [navigate, search, theme, pref, setTheme, toggleTheme, collapsed, toggleSidebar,
     zen, density, setStoreDensity, motionReduced, setMotionReduced, filtersActive,
-    lookups.data, qc, toast, setSearchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+    lookups.data, qc, toast, setSearchParams, installPrompt, paletteOpen,
+    clearAllFilters, applySavedView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const moreActive = MORE_ROUTES.some((r) => location.pathname === r.to || (r.to !== '/' && location.pathname.startsWith(`${r.to}/`)));
   const viewName = viewNameFor(location.pathname);
+
+  // topbar filter pill — how many of the shared filters are pinning this view
+  const rawRange = searchParams.get('range') || '';
+  const periodActive = !!(searchParams.get('from') || searchParams.get('to') || (rawRange && rawRange !== 'all'));
+  const activeFilterCount = ['districtId', 'crimeHeadId'].filter((k) => searchParams.get(k)).length + (periodActive ? 1 : 0);
+  const filterSummary = describeFilters({
+    districtId: searchParams.get('districtId') || '',
+    crimeHeadId: searchParams.get('crimeHeadId') || '',
+    range: rawRange,
+    from: searchParams.get('from') || '',
+    to: searchParams.get('to') || '',
+  }, lookups.data);
 
   return (
     <div className="flex h-full min-h-screen bg-base">
@@ -638,6 +962,22 @@ export default function Layout() {
 
             <div className="flex-1 sm:hidden" />
 
+            {activeFilterCount > 0 && (
+              <Tooltip label={filterSummary} position="bottom" className="hidden md:inline-flex">
+                <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 pl-2.5 pr-1 py-0.5 text-[11px] font-medium text-primary">
+                  {ICONS.filter}
+                  <span className="num">{activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}</span>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    aria-label={`Clear all filters (${filterSummary})`}
+                    className="flex h-6 w-6 items-center justify-center rounded-full text-primary/80 hover:text-signal hover:bg-grid/40 transition-colors"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+                  </button>
+                </span>
+              </Tooltip>
+            )}
             <SessionClock />
             <RefreshControl />
             <Tooltip label="Copy link to this view" position="bottom">
@@ -785,8 +1125,8 @@ export default function Layout() {
         </div>
       </Sheet>
 
-      <GlobalShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} isMac={isMac} />
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={paletteActions} />
+      <GlobalShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} isMac={isMac} pathname={location.pathname} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={paletteActions} remoteSearch={remoteSearch} />
       <ScrollTopButton targetId="main-scroll" />
     </div>
   );

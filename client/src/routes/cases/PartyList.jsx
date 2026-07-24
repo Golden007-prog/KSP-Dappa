@@ -38,12 +38,13 @@ function pick(obj, keys) {
   return undefined;
 }
 
-function PersonCard({ person, fields }) {
+function PersonCard({ person, fields, action = null }) {
   if (person === null || person === undefined) return null;
   if (typeof person !== 'object') {
     return (
       <div className="border border-grid rounded-lg p-3">
         <p className="text-sm font-medium text-ink break-words">{String(person)}</p>
+        {action && <div className="mt-2">{action}</div>}
       </div>
     );
   }
@@ -75,11 +76,14 @@ function PersonCard({ person, fields }) {
           ))}
         </dl>
       )}
+      {action && <div className="mt-2">{action}</div>}
     </div>
   );
 }
 
-export default function PartyList({ title, subtitle, people, tone = 'neutral', fields = PERSON_FIELDS, emptyMessage }) {
+// `personAction(person)` (optional) renders a per-person footer node — e.g.
+// the accused → offender-registry pivot on the case detail.
+export default function PartyList({ title, subtitle, people, tone = 'neutral', fields = PERSON_FIELDS, emptyMessage, personAction }) {
   const list = Array.isArray(people) ? people : [];
   return (
     <Card
@@ -92,7 +96,7 @@ export default function PartyList({ title, subtitle, people, tone = 'neutral', f
       ) : (
         <div className="space-y-2">
           {list.map((p, i) => (
-            <PersonCard key={i} person={p} fields={fields} />
+            <PersonCard key={i} person={p} fields={fields} action={personAction ? personAction(p) : null} />
           ))}
         </div>
       )}

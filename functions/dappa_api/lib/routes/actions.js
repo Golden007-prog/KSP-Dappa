@@ -1,14 +1,27 @@
 'use strict';
 // Action endpoints: predict, ai narrative, copilot, reports, notify, healthz.
 
-const { ok, fail, asyncH, requireAdmin, nocache, cacheKey } = require('../envelope');
+const { ok, fail, asyncH, requireAdmin, nocache, cacheKey, ttlFor } = require('../envelope');
 const { getLookups } = require('../lookups');
 const { anchorYm } = require('./read');
+const { EXPECTED_ROW_COUNTS } = require('../constants');
 const copilot = require('../copilot');
 const quickml = require('../quickml');
 const zia = require('../zia');
 const { getFallbackState, fixtureNetworkGraph } = require('../fixture');
 const { toNum, round, ymAdd, pctDelta, parseJsonSafe } = require('../util');
+
+// COUNT() column per completeness-tracked table (COUNT(*) is not portable ZCQL).
+const COMPLETENESS_COUNT_COLS = {
+  CaseMaster: 'COUNT(CaseMasterID)',
+  AggMonthly: 'COUNT(Ym)',
+  Victim: 'COUNT(VictimMasterID)',
+  Accused: 'COUNT(AccusedMasterID)',
+  NetworkEdge: 'COUNT(PersonKeyA)',
+  ForecastMonthly: 'COUNT(Ym)',
+  OffenderProfile: 'COUNT(PersonKey)',
+  District: 'COUNT(DistrictID)'
+};
 
 function register(router) {
   router.post('/predict/outcome', asyncH(async (req, res) => {
@@ -88,7 +101,8 @@ function register(router) {
   router.get('/reports/brief-data', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const window = String(req.query.window || 'last30');
-    const { value, cached } = await ctx.cache.wrap(cacheKey(req), 600, nocache(req), async () => {
+    const ttl = ttlFor(req);
+    const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
       const curYm = await anchorYm(ctx.ds, null);
       const prevYm = ymAdd(curYm, -1);
@@ -155,7 +169,7 @@ function register(router) {
         }))
       };
     });
-    ok(res, value, { cached });
+    ok(res, value, { cached, ttlSec: ttl });
   }));
 
   router.post('/reports/weekly-brief', asyncH(async (req, res) => {
@@ -236,6 +250,38 @@ function register(router) {
     } catch (e) {
       health.datastore.ok = false;
     }
+    // Data completeness: actual vs expected full-load counts per table, so a
+    // partial bulk load reads as a percentage instead of quiet under-counting.
+    // Advisory only — never degrades the health status. Cached 5 min.
+    try {
+      const { value: completeness } = await ctx.cache.wrap('v1:completeness', 300, nocache(req), async () => {
+        const entries = Object.entries(EXPECTED_ROW_COUNTS);
+        const dsForCounts = ctx.dsRaw || ctx.ds; // real Data Store, never fixture
+        const counts = await Promise.all(entries.map(([table]) => {
+          const expr = COMPLETENESS_COUNT_COLS[table];
+          return dsForCounts.query({ table, columns: [expr] })
+            .then((rows) => toNum(rows.length ? rows[0][expr] : 0))
+            .catch(() => null);
+        }));
+        const tables = {};
+        let gotSum = 0;
+        let expSum = 0;
+        entries.forEach(([table, expected], i) => {
+          const actual = counts[i];
+          tables[table] = {
+            expected,
+            actual,
+            pct: actual === null ? null : Math.min(100, round((actual / expected) * 100, 1))
+          };
+          if (actual !== null) {
+            gotSum += Math.min(actual, expected);
+            expSum += expected;
+          }
+        });
+        return { tables, overallPct: expSum > 0 ? Math.min(100, round((gotSum / expSum) * 100, 1)) : null };
+      });
+      health.datastore.completeness = completeness;
+    } catch (e) { /* completeness is advisory */ }
     // Honest reporting: if these very counts were answered from the bundled
     // fixture (PUBLIC_DEMO self-healing), say so instead of claiming degraded.
     if (health.datastore.ok && getFallbackState().queries > fixtureQueriesBefore) {

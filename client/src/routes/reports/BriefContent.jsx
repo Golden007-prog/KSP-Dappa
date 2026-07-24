@@ -6,13 +6,20 @@
 //   order      — section key order from the builder (?order= on /print/brief)
 //   density    — 'compact' adds the .brief-compact class (see briefStyles.jsx)
 //   preparedBy — officer name/designation stamped into the header
+//   execText   — officer-edited executive summary (absent → auto-composed)
+//   classification — 'unclassified'|'internal'|'confidential': header banner,
+//                repeating print footer text, and (confidential) a diagonal
+//                print watermark
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
 import { useLookups } from '../../lib/api.js';
 import {
   sevRank, selectOpenAlerts, selectTopHotspots, selectCommunities,
   selectForecastRows, selectRiskRows,
 } from './select.js';
-import { DEFAULT_ORDER, normalizeOrder } from './briefSections.js';
+import { DEFAULT_ORDER, normalizeOrder, SECTION_LABELS } from './briefSections.js';
+import { composeExecutiveSummary } from './exec.js';
+import { annexNotes } from './annex.js';
+import { CLASS_META, normalizeClass } from './classification.js';
 
 const INK = '#111827';
 const MUTED = '#6b7280';
@@ -84,9 +91,12 @@ function Delta({ cur, prev, goodDown = true }) {
   );
 }
 
-export default function BriefContent({ data, sections, style, order, density, preparedBy }) {
+export default function BriefContent({
+  data, sections, style, order, density, preparedBy, execText, classification,
+}) {
   const { win, kpis, prevKpis, alerts, hotspots, network, forecast, risk } = data;
   const lookups = useLookups();
+  const classMeta = CLASS_META[normalizeClass(classification)];
   // Section toggles from the /reports builder (and ?sections= on /print/brief).
   // Absent prop / absent key → section on, so existing callers are unchanged.
   const show = (k) => !sections || sections[k] !== false;
@@ -111,7 +121,58 @@ export default function BriefContent({ data, sections, style, order, density, pr
 
   const priorLabel = `vs prior ${win.days}d`;
 
+  // Coverage line: what this brief actually spans, computed from loaded data.
+  const coveredDistricts = new Set([
+    ...(alerts.data || []).map((a) => String(a.districtId || '')).filter(Boolean),
+    ...(hotspots.data || []).map((h) => String(h.districtId || '')).filter(Boolean),
+  ]).size;
+  const openAlertCount = selectOpenAlerts(data, Infinity).length;
+  const coverage = [
+    coveredDistricts ? `${fmtInt(coveredDistricts)} districts` : null,
+    alerts.data ? `${fmtInt(openAlertCount)} open alerts` : null,
+    hotspots.data ? `${fmtInt((hotspots.data || []).length)} hotspot clusters` : null,
+    risk.data ? `${fmtInt((risk.data || []).length)} stations scored` : null,
+  ].filter(Boolean);
+
+  const enabledLabels = (order ? normalizeOrder(order) : DEFAULT_ORDER)
+    .filter(show)
+    .map((key) => SECTION_LABELS[key])
+    .filter(Boolean);
+
   const SECTION_RENDERERS = {
+    exec: () => {
+      const text = (execText && String(execText).trim()) || composeExecutiveSummary(data);
+      return (
+        <Section title="Executive summary" key="exec">
+          {text ? (
+            <>
+              {text.split(/\n{2,}/).map((para, i) => (
+                // eslint-disable-next-line react/no-array-index-key
+                <p key={i} style={{ fontSize: 12.5, color: INK, lineHeight: 1.55, margin: '0 0 6px' }}>{para}</p>
+              ))}
+              <Note>
+                {execText && String(execText).trim()
+                  ? 'Edited by the preparing officer (auto-compose available in the Reports builder).'
+                  : 'Auto-composed from this window’s data — editable in the Reports builder.'}
+              </Note>
+            </>
+          ) : (
+            <Note>Not enough loaded data to compose a summary for this window.</Note>
+          )}
+        </Section>
+      );
+    },
+    annex: () => (
+      <Section title="Annex — methodology notes" key="annex">
+        <ol style={{ margin: 0, paddingLeft: 18 }}>
+          {annexNotes(data).map((n) => (
+            <li key={n.title} style={{ fontSize: 11.5, color: INK, margin: '0 0 5px', lineHeight: 1.5 }}>
+              <strong>{n.title}.</strong> <span style={{ color: '#374151' }}>{n.body}</span>
+            </li>
+          ))}
+        </ol>
+      </Section>
+    ),
     kpis: () => (
       <Section title="Headline indicators" key="kpis">
         <SectionBody query={kpis}>
@@ -267,7 +328,20 @@ export default function BriefContent({ data, sections, style, order, density, pr
 
   return (
     <div className={`print-page${density === 'compact' ? ' brief-compact' : ''}`} style={style}>
+      {normalizeClass(classification) === 'confidential' && (
+        <div className="brief-watermark" aria-hidden="true">CONFIDENTIAL</div>
+      )}
       <header>
+        {classMeta?.banner && (
+          <p style={{
+            textAlign: 'center', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
+            textTransform: 'uppercase', margin: '0 0 8px',
+            color: normalizeClass(classification) === 'confidential' ? RED : AMBER,
+          }}
+          >
+            {classMeta.banner}
+          </p>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#0b1220' }}>
@@ -287,6 +361,16 @@ export default function BriefContent({ data, sections, style, order, density, pr
         <p style={{ fontSize: 10, color: RED, marginTop: 6 }}>
           Synthetic demonstration data — KSP Datathon 2026 prototype. Not real crime records.
         </p>
+        {coverage.length > 0 && (
+          <p style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
+            Coverage: {coverage.join(' · ')}
+          </p>
+        )}
+        {enabledLabels.length > 1 && (
+          <p style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
+            Contents: {enabledLabels.join(' · ')}
+          </p>
+        )}
         <hr style={{ margin: '12px 0 0', border: 0, borderTop: `2px solid #0b1220` }} />
       </header>
 
@@ -300,6 +384,19 @@ export default function BriefContent({ data, sections, style, order, density, pr
         <span>Generated by DAPPA — Data Analytics &amp; Predictive Policing Assistant (Zoho Catalyst)</span>
         <span>All figures derive from synthetic data · caste/religion are never used in analytics</span>
       </footer>
+
+      {/* Repeats on every printed page (position:fixed in print — briefStyles.jsx). */}
+      <div className="brief-print-footer" aria-hidden="true">
+        <span style={{
+          fontWeight: 700,
+          color: normalizeClass(classification) === 'confidential' ? RED : MUTED,
+        }}
+        >
+          {classMeta?.footer || 'DAPPA Weekly Intelligence Brief'}
+        </span>
+        <span>Synthetic demo data — not real crime records</span>
+        <span>Generated {dateLabel(new Date().toISOString().slice(0, 10))}</span>
+      </div>
     </div>
   );
 }

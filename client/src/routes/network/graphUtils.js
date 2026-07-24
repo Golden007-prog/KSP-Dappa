@@ -1,5 +1,6 @@
 // Pure helpers for the Network Explorer — community palette, community stats,
-// BFS shortest path. No React in here so the logic stays trivially testable.
+// BFS shortest path, bridge/broker stats, articulation points, mutual
+// neighbors. No React in here so the logic stays trivially testable.
 import { DAPPA_CHART_COLORS } from '../../components/ChartPanel.jsx';
 
 const UNKNOWN_COMMUNITY = '#64748B';
@@ -128,6 +129,105 @@ export function countComponents(nodes = [], edges = []) {
     }
   }
   return components;
+}
+
+/**
+ * Per-node bridge stats — betweenness-ish proxy read off the community
+ * boundary instead of an O(V·E) exact computation. For every edge whose
+ * endpoints sit in different (known) communities, both endpoints count a
+ * cross-link and record the OTHER community reached.
+ * Returns Map(nodeId → {crossLinks, groups:Set<communityId>, score}) where
+ * score = crossLinks × degree (the brief's bridge heuristic).
+ */
+export function brokerStats(nodes = [], edges = []) {
+  const commOf = new Map();
+  const degOf = new Map();
+  for (const n of nodes) {
+    const id = String(n.id);
+    const cid = n?.communityId;
+    commOf.set(id, cid === null || cid === undefined || cid === '' ? '' : String(cid));
+    degOf.set(id, Number(n.degree) || 0);
+  }
+  const out = new Map();
+  const bump = (id, other) => {
+    if (!out.has(id)) out.set(id, { crossLinks: 0, groups: new Set(), score: 0 });
+    const s = out.get(id);
+    s.crossLinks += 1;
+    if (other !== '') s.groups.add(other);
+  };
+  for (const e of edges) {
+    const s = String(e.source); const t = String(e.target);
+    const cs = commOf.get(s); const ct = commOf.get(t);
+    if (cs === undefined || ct === undefined || cs === '' || ct === '' || cs === ct) continue;
+    bump(s, ct); bump(t, cs);
+  }
+  for (const [id, s] of out) s.score = s.crossLinks * Math.max(1, degOf.get(id) || 0);
+  return out;
+}
+
+/**
+ * Articulation points (cut vertices) — people whose removal disconnects their
+ * component. Iterative Tarjan low-link (no recursion, safe on capped graphs).
+ * Returns Set<nodeId>.
+ */
+export function articulationPoints(nodes = [], edges = []) {
+  const ids = nodes.map((n) => String(n.id));
+  const idSet = new Set(ids);
+  const adj = new Map();
+  const add = (x, y) => { if (!adj.has(x)) adj.set(x, []); adj.get(x).push(y); };
+  for (const e of edges) {
+    const s = String(e.source); const t = String(e.target);
+    if (s !== t && idSet.has(s) && idSet.has(t)) { add(s, t); add(t, s); }
+  }
+  const disc = new Map(); const low = new Map(); const parent = new Map();
+  const cuts = new Set();
+  let time = 0;
+  for (const root of ids) {
+    if (disc.has(root)) continue;
+    let rootChildren = 0;
+    parent.set(root, null);
+    disc.set(root, time); low.set(root, time); time += 1;
+    const stack = [[root, 0]]; // [nodeId, next-neighbor index]
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      const u = frame[0];
+      const nbrs = adj.get(u) || [];
+      if (frame[1] < nbrs.length) {
+        const v = nbrs[frame[1]];
+        frame[1] += 1;
+        if (!disc.has(v)) {
+          parent.set(v, u);
+          disc.set(v, time); low.set(v, time); time += 1;
+          if (u === root) rootChildren += 1;
+          stack.push([v, 0]);
+        } else if (v !== parent.get(u)) {
+          low.set(u, Math.min(low.get(u), disc.get(v)));
+        }
+      } else {
+        stack.pop();
+        const p = parent.get(u);
+        if (p !== null && p !== undefined) {
+          low.set(p, Math.min(low.get(p), low.get(u)));
+          if (p !== root && low.get(u) >= disc.get(p)) cuts.add(p);
+        }
+      }
+    }
+    if (rootChildren > 1) cuts.add(root);
+  }
+  return cuts;
+}
+
+/** Common co-accused of two persons over the given edges → [nodeId,…]. */
+export function mutualNeighbors(edges = [], a, b) {
+  const ka = String(a ?? ''); const kb = String(b ?? '');
+  if (!ka || !kb) return [];
+  const A = new Set(); const B = new Set();
+  for (const e of edges) {
+    const s = String(e.source); const t = String(e.target);
+    if (s === ka) A.add(t); else if (t === ka) A.add(s);
+    if (s === kb) B.add(t); else if (t === kb) B.add(s);
+  }
+  return [...A].filter((x) => B.has(x) && x !== ka && x !== kb);
 }
 
 /** Unweighted BFS shortest path over undirected edges → [nodeId,…] or null. */

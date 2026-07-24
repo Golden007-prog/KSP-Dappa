@@ -1,5 +1,6 @@
 // Dashboard-specific keyboard shortcuts (documented in ShortcutsSheet):
-//   r  refresh all panels · a  toggle auto-refresh · /  focus the Ask-DAPPA omnibox.
+//   r  refresh all panels · a  toggle auto-refresh · /  focus the Ask-DAPPA
+//   omnibox · v  saved views · b  print the situation brief.
 // '?' (global shortcuts sheet) and g-then-<letter> route jumps are owned by
 // Layout.jsx's global shortcut layer — never re-bind them here or they
 // double-fire. This hook still tracks a pending 'g' so a g-sequence key
@@ -28,9 +29,9 @@ function isTyping(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable;
 }
 
-export default function useDashShortcuts({ onRefresh, onToggleAuto, onFocusSearch }) {
+export default function useDashShortcuts({ onRefresh, onToggleAuto, onFocusSearch, onOpenViews, onPrint }) {
   const stateRef = useRef({});
-  stateRef.current = { onRefresh, onToggleAuto, onFocusSearch };
+  stateRef.current = { onRefresh, onToggleAuto, onFocusSearch, onOpenViews, onPrint };
 
   useEffect(() => {
     let armedAt = 0; // pending 'g' (Layout will navigate; we must stay silent)
@@ -43,6 +44,8 @@ export default function useDashShortcuts({ onRefresh, onToggleAuto, onFocusSearc
       if (k === 'g' || k === 'G') { armedAt = Date.now(); return; }
       if (k === 'r' || k === 'R') { e.preventDefault(); s.onRefresh?.(); }
       else if (k === 'a' || k === 'A') { e.preventDefault(); s.onToggleAuto?.(); }
+      else if (k === 'v' || k === 'V') { e.preventDefault(); s.onOpenViews?.(); }
+      else if (k === 'b' || k === 'B') { e.preventDefault(); s.onPrint?.(); }
       else if (k === '/') { e.preventDefault(); s.onFocusSearch?.(); }
     };
     window.addEventListener('keydown', onKey);

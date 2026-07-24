@@ -1,11 +1,13 @@
-// Route 6 /predict — 30-day station-risk league table + Karnataka risk map
-// with driver chips, live QuickML outcome panel (probability gauge + model
-// source badge + ROC-AUC), and the district × head forecast explorer with CI
-// band + backtest MAPE badge. See client/CONTRACT.md.
+// Route 6 /predict — 30-day station-risk league table (histogram, sparklines,
+// station dossier drawer) + Karnataka risk map with driver chips, live QuickML
+// outcome panel (probability gauge + sensitivity sweep + run history), the
+// district × head forecast explorer with CI band + backtest MAPE badge, the
+// client-side backtest scoreboard, the what-if scenario planner, and model
+// cards documenting every model's method and caveats. See client/CONTRACT.md.
 // The station-risk model has no crime-head dimension, so the FilterBar here
 // deliberately shows only the district select — a badge states the scope
 // instead of offering a select that silently does nothing.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useStationRisk, useLookups } from '../lib/api.js';
 import { useUrlFilters, filterSearchString } from '../lib/filters.js';
@@ -14,8 +16,12 @@ import FilterBar from '../components/FilterBar.jsx';
 import Badge from '../components/Badge.jsx';
 import RiskLeagueTable from './predict/RiskLeagueTable.jsx';
 import RiskMap from './predict/RiskMap.jsx';
+import RiskDrawer from './predict/RiskDrawer.jsx';
 import OutcomePanel from './predict/OutcomePanel.jsx';
 import ForecastExplorer from './predict/ForecastExplorer.jsx';
+import BacktestPanel from './predict/BacktestPanel.jsx';
+import ScenarioPanel from './predict/ScenarioPanel.jsx';
+import ModelCards from './predict/ModelCards.jsx';
 
 export default function Predict() {
   const navigate = useNavigate();
@@ -23,6 +29,7 @@ export default function Predict() {
   const { districtId, crimeHeadId, setFilter } = useUrlFilters();
   const lookups = useLookups();
   const risk = useStationRisk(); // horizon 30 by default (hook contract)
+  const [drawerRow, setDrawerRow] = useState(null);
 
   const districtNames = useMemo(() => {
     const m = new Map();
@@ -63,6 +70,7 @@ export default function Predict() {
           <h1 className="page-title">Predict</h1>
           <p className="page-subtitle">30-day station risk · live outcome scoring · district forecasts</p>
         </div>
+        <ModelCards />
       </div>
 
       <FilterBar show={['district']}>
@@ -77,6 +85,7 @@ export default function Predict() {
             error={risk.error}
             onRetry={() => risk.refetch()}
             onRowClick={openOnMap}
+            onDetails={setDrawerRow}
           />
         </div>
         <RiskMap
@@ -94,6 +103,19 @@ export default function Predict() {
       <OutcomePanel />
 
       <ForecastExplorer defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <BacktestPanel defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
+        <ScenarioPanel defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
+      </div>
+
+      <RiskDrawer
+        open={!!drawerRow}
+        row={drawerRow}
+        rows={rows}
+        onClose={() => setDrawerRow(null)}
+        onOpenMap={(r) => { setDrawerRow(null); openOnMap(r); }}
+      />
     </div>
   );
 }

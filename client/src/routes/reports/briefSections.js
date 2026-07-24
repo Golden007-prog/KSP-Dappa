@@ -1,15 +1,23 @@
 // /reports + /print/brief — Weekly Brief section registry and the helpers that
 // keep the builder toggles, the ?sections= URL param and localStorage in sync.
 // Keys match the query names in useBriefData; 'forecast' covers the combined
-// forecast + station-risk section in BriefContent.
+// forecast + station-risk section in BriefContent; 'exec' (auto-composed
+// executive summary) and 'annex' (methodology notes) are synthesized sections
+// with no query of their own. New keys default ON for stored prefs/URLs that
+// predate them (loadSections / sectionsFromParam treat absent as enabled).
 
 export const BRIEF_SECTIONS = [
+  { key: 'exec', label: 'Executive summary' },
   { key: 'kpis', label: 'Headline indicators' },
   { key: 'alerts', label: 'Anomaly alerts' },
   { key: 'hotspots', label: 'Top hotspots' },
   { key: 'network', label: 'Network changes' },
   { key: 'forecast', label: 'Forecast & risk' },
+  { key: 'annex', label: 'Methodology annex' },
 ];
+
+/** key → display label (used by the printed Contents line). */
+export const SECTION_LABELS = Object.fromEntries(BRIEF_SECTIONS.map((s) => [s.key, s.label]));
 
 const KEYS = BRIEF_SECTIONS.map((s) => s.key);
 const STORAGE_KEY = 'dappa-brief-sections';

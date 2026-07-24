@@ -7,8 +7,12 @@
 // Esc shortcuts, voice input via webkitSpeechRecognition (hidden when
 // unsupported), a dismissible disclaimer banner, engine + latency badges, a
 // print stylesheet for clean Ctrl+P output, and auto-send of the ?q= URL
-// param that the Dashboard omnibox passes in. See client/CONTRACT.md.
-import { useEffect, useRef, useState } from 'react';
+// param that the Dashboard omnibox passes in. Second pass adds the AI-story
+// storefront: per-answer provenance (confidence, intent, source-table
+// citations, "how answered" pipeline), contextual follow-up chips, a
+// searchable question-history panel, a two-answer compare split view,
+// read-aloud, session stats, and a capability guide. See client/CONTRACT.md.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useCopilotQuery } from '../lib/api.js';
@@ -18,10 +22,16 @@ import { useToast } from '../components/ToastProvider.jsx';
 import MessageBubble, { EngineBadge, TypingBubble } from './copilot/MessageBubble.jsx';
 import SuggestionCarousel from './copilot/SuggestionCarousel.jsx';
 import ExportMenu from './copilot/ExportMenu.jsx';
+import CapabilityGuide from './copilot/CapabilityGuide.jsx';
+import CompareSheet from './copilot/CompareSheet.jsx';
+import FollowUpChips from './copilot/FollowUpChips.jsx';
+import HistoryPanel from './copilot/HistoryPanel.jsx';
+import { followUpsFor } from './copilot/answerMeta.js';
 import { SUGGESTED_QUESTIONS } from './copilot/suggestions.js';
 import {
-  conversationToJson, conversationToMarkdown, conversationToText, downloadTextFile,
+  conversationToJson, conversationToMarkdown, conversationToText, downloadTextFile, latencyLabel,
 } from './copilot/transcript.js';
+import useReadAloud from './copilot/useReadAloud.js';
 import useSpeechInput from './copilot/useSpeechInput.js';
 
 const KEY_HISTORY = 'dappa-copilot-history';
@@ -74,6 +84,7 @@ const FINE_POINTER = typeof window !== 'undefined' && !!window.matchMedia?.('(po
 const PRINT_CSS = `
 @media print {
   .copilot-shell { height: auto !important; min-height: 0 !important; border: none !important; }
+  .copilot-scrollwrap, .copilot-scroll { height: auto !important; }
   .copilot-scroll { overflow: visible !important; }
   .copilot-shell .bg-panel, .copilot-shell .bg-amber\\/10, .copilot-shell .bg-base\\/60 {
     background: #ffffff !important; box-shadow: none !important;
@@ -95,10 +106,16 @@ export default function Copilot() {
   const [showDisclaimer, setShowDisclaimer] = useState(() => {
     try { return localStorage.getItem(KEY_DISCLAIMER) !== '1'; } catch { return true; }
   });
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [compare, setCompare] = useState([]); // message ids picked for compare (max 2)
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [showJump, setShowJump] = useState(false);
   const idRef = useRef(messages.reduce((a, m) => Math.max(a, m.id || 0), 0));
   const autoQRef = useRef('');
   const endRef = useRef(null);
+  const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const readAloud = useReadAloud();
   // Input history: list persists in localStorage; idx/draft track ↑/↓ recall.
   const histRef = useRef({ list: loadHistory(), idx: null, draft: '' });
   const nextId = () => ++idRef.current;
@@ -145,6 +162,8 @@ export default function Copilot() {
           chart: d.chart,
           zcql: d.zcql,
           engine: d.engine,
+          intent: d.intent,
+          suggestions: Array.isArray(d.suggestions) ? d.suggestions.map(String).slice(0, 4) : undefined,
           source: res?.meta?.source,
           question: q,
           latencyMs: Date.now() - startedAt,
@@ -231,6 +250,33 @@ export default function Copilot() {
     return () => window.removeEventListener('beforeprint', openAll);
   }, []);
 
+  // Compare picks must always point at live messages (regenerate/new-chat
+  // replace ids); prune stale ids and close the sheet if a pane vanished.
+  useEffect(() => {
+    setCompare((p) => {
+      const next = p.filter((id) => messages.some((m) => m.id === id));
+      return next.length === p.length ? p : next;
+    });
+  }, [messages]);
+  useEffect(() => {
+    if (compareOpen && compare.length < 2) setCompareOpen(false);
+  }, [compareOpen, compare]);
+
+  const toggleCompare = (id) => {
+    const p = compare;
+    const next = p.includes(id) ? p.filter((x) => x !== id) : p.length < 2 ? [...p, id] : [p[0], id];
+    setCompare(next);
+    if (!p.includes(id) && next.length === 2) setCompareOpen(true);
+  };
+
+  // jump-to-latest affordance appears once the reader scrolls up a screen
+  const onChatScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 280);
+  };
+  const jumpToLatest = () => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
   const submit = (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -279,6 +325,9 @@ export default function Copilot() {
 
   const newChat = () => {
     setMessages([]);
+    setCompare([]);
+    setCompareOpen(false);
+    readAloud.stop();
     autoQRef.current = '';
     // drop a stale ?q= so the queue effect can't re-ask it after the reset
     if (searchParams.get('q')) setSearchParams({}, { replace: true });
@@ -302,14 +351,43 @@ export default function Copilot() {
     toast.info('Question history cleared');
   };
 
+  const deleteHistoryItem = (q) => {
+    const h = histRef.current;
+    h.list = h.list.filter((x) => x !== q);
+    h.idx = null;
+    h.draft = '';
+    try {
+      if (h.list.length) localStorage.setItem(KEY_HISTORY, JSON.stringify(h.list));
+      else localStorage.removeItem(KEY_HISTORY);
+    } catch { /* private mode */ }
+    setHistVersion((v) => v + 1);
+  };
+
   const regenerate = (msg) => {
     if (msg?.question) send(msg.question, { silent: true, replaceId: msg.id });
   };
 
   const lastEngine = [...messages].reverse().find((m) => m.role === 'assistant' && m.engine)?.engine;
   const empty = messages.length === 0 && !copilot.isPending;
-  const recent = [...new Set([...histRef.current.list].reverse())].slice(0, 4);
+  const historyItems = [...new Set([...histRef.current.list].reverse())];
+  const recent = historyItems.slice(0, 4);
   const emptySuggestions = [...pinned, ...SUGGESTED_QUESTIONS.filter((q) => !pinned.includes(q))].slice(0, 8);
+
+  // session stats: questions asked, mean answer latency, engine mix (tooltip)
+  const asked = messages.filter((m) => m.role === 'user').length;
+  const timed = messages.filter((m) => m.role === 'assistant' && typeof m.latencyMs === 'number');
+  const avgMs = timed.length ? timed.reduce((a, m) => a + m.latencyMs, 0) / timed.length : null;
+  const engineMix = Object.entries(messages.reduce((acc, m) => {
+    if (m.role === 'assistant' && m.engine) acc[m.engine] = (acc[m.engine] || 0) + 1;
+    return acc;
+  }, {})).map(([k, v]) => `${k} ×${v}`).join(', ');
+
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && !m.error);
+  const followUps = useMemo(
+    () => (copilot.isPending ? [] : followUpsFor(lastAssistant)),
+    [lastAssistant, copilot.isPending],
+  );
+  const compareMsgs = compare.map((id) => messages.find((m) => m.id === id)).filter(Boolean);
 
   return (
     <div className="copilot-shell flex flex-col h-[calc(100dvh-10rem)] md:h-[calc(100dvh-7.5rem)] min-h-[420px] md:min-h-[480px] max-w-4xl mx-auto">
@@ -320,7 +398,22 @@ export default function Copilot() {
           <p className="page-subtitle hidden sm:block">Natural-language crime analytics — every answer shows its query and its engine</p>
         </div>
         <div className="no-print flex items-center gap-1.5">
+          {asked > 0 && (
+            <Tooltip label={`This session: ${asked} question${asked === 1 ? '' : 's'} asked${engineMix ? ` · engines: ${engineMix}` : ''}`}>
+              <span className="num hidden md:inline-flex items-center px-1 text-[10px] text-muted whitespace-nowrap">
+                {asked} Q{avgMs !== null ? ` · avg ${latencyLabel(avgMs)}` : ''}
+              </span>
+            </Tooltip>
+          )}
           <EngineBadge engine={lastEngine} />
+          <Tooltip label="Browse, re-ask, pin or prune every question you've asked">
+            <button type="button" className="btn-ghost !px-2 !text-xs min-h-[40px]" onClick={() => setHistoryOpen(true)} aria-label="Open question history">
+              <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /><path d="M12 7v5l3.5 2" />
+              </svg>
+              <span className="hidden sm:inline">History</span>
+            </button>
+          </Tooltip>
           {messages.length > 0 && (
             <>
               <ExportMenu onExport={exportConversation} />
@@ -358,7 +451,8 @@ export default function Copilot() {
 
       <section className="flex-1 min-h-0 flex flex-col bg-panel border border-grid rounded-xl overflow-hidden">
         {/* conversation */}
-        <div className="copilot-scroll flex-1 min-h-0 overflow-y-auto p-4">
+        <div className="copilot-scrollwrap relative flex-1 min-h-0">
+        <div ref={scrollRef} onScroll={onChatScroll} className="copilot-scroll h-full overflow-y-auto p-4">
           {empty ? (
             <div className="min-h-full flex flex-col items-center justify-center">
               <EmptyState
@@ -408,6 +502,7 @@ export default function Copilot() {
                   </div>
                 </div>
               )}
+              <CapabilityGuide onAsk={(q) => send(q)} disabled={copilot.isPending} />
             </div>
           ) : (
             <div
@@ -426,18 +521,51 @@ export default function Copilot() {
                   onRetry={(msg) => send(msg.retryText, { silent: true, replaceId: msg.id })}
                   onRegenerate={regenerate}
                   onTogglePin={togglePin}
+                  onAsk={(q) => send(q)}
+                  onToggleCompare={m.role === 'assistant' && !m.error ? toggleCompare : undefined}
+                  compareSelected={compare.includes(m.id)}
+                  readAloud={readAloud}
                 />
               ))}
+              {followUps.length > 0 && <FollowUpChips items={followUps} onPick={(q) => send(q)} disabled={copilot.isPending} />}
               {copilot.isPending && <TypingBubble />}
               <div ref={endRef} />
             </div>
           )}
+        </div>
+        {showJump && !empty && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            className="no-print absolute bottom-3 right-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-grid bg-panel/95 backdrop-blur-sm px-3 min-h-[40px] text-[11px] text-muted shadow-lift hover:text-ink hover:border-primary/60 transition-colors"
+            aria-label="Jump to the latest message"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="M12 5v14m0 0 5-5m-5 5-5-5" /></svg>
+            Latest
+          </button>
+        )}
         </div>
         {/* screen-reader announcement for the visual typing indicator */}
         <p className="sr-only" role="status">{copilot.isPending ? 'DAPPA is thinking' : ''}</p>
 
         {/* suggestions + input */}
         <div className="no-print border-t border-grid p-3 space-y-2">
+          {compare.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1 text-[11px] text-muted" role="status">
+              <span>{compare.length === 2 ? 'Two answers picked.' : 'Pick one more answer to compare.'}</span>
+              <button
+                type="button"
+                className="min-h-[40px] px-1.5 text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+                disabled={compare.length < 2}
+                onClick={() => setCompareOpen(true)}
+              >
+                Open side-by-side
+              </button>
+              <button type="button" className="min-h-[40px] px-1.5 hover:text-signal transition-colors" onClick={() => setCompare([])}>
+                Clear
+              </button>
+            </div>
+          )}
           {!empty && (
             <SuggestionCarousel
               questions={SUGGESTED_QUESTIONS}
@@ -493,6 +621,24 @@ export default function Copilot() {
           </p>
         </div>
       </section>
+
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        items={historyItems}
+        pinned={pinned}
+        onAsk={(q) => send(q)}
+        onTogglePin={togglePin}
+        onDelete={deleteHistoryItem}
+        onClearAll={clearHistory}
+      />
+      <CompareSheet
+        open={compareOpen && compareMsgs.length === 2}
+        onClose={() => setCompareOpen(false)}
+        left={compareMsgs[0]}
+        right={compareMsgs[1]}
+        onSwap={() => setCompare(([a, b]) => [b, a])}
+      />
     </div>
   );
 }

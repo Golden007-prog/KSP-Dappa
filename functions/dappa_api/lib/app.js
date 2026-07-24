@@ -7,12 +7,13 @@ const { createDatastore } = require('./datastore');
 const { createCache } = require('./cache');
 const { getFlags } = require('./flags');
 const { wrapClientWithFixtureFallback } = require('./fixture');
-const { requestLogger, fail } = require('./envelope');
+const { requestLogger, requestId, rateLimit, fail } = require('./envelope');
 
 const readRoutes = require('./routes/read');
 const insightRoutes = require('./routes/insight');
 const casesRoutes = require('./routes/cases');
 const actionsRoutes = require('./routes/actions');
+const extrasRoutes = require('./routes/extras');
 
 /**
  * @param {object} [options]
@@ -25,6 +26,10 @@ function createApp(options) {
   const o = options || {};
   const app = express();
   app.disable('x-powered-by');
+  // Correlation + throttling run before body parsing so even malformed
+  // requests carry X-Request-Id and rate-limit headers.
+  app.use(requestId());
+  app.use(rateLimit());
   app.use(express.json({ limit: '1mb' }));
   app.use(requestLogger());
 
@@ -32,15 +37,19 @@ function createApp(options) {
 
   app.use((req, res, next) => {
     const flags = o.flags || getFlags();
-    let client = o.clientFactory ? o.clientFactory(req) : {
+    const rawClient = o.clientFactory ? o.clientFactory(req) : {
       async execute() { throw new Error('datastore client not configured'); }
     };
     // PUBLIC_DEMO self-healing: if a real ZCQL call fails (e.g. Data Store
     // tables not created yet), the same query is answered from the bundled
     // fixture dataset so the live demo never breaks.
-    if (flags.publicDemo) client = wrapClientWithFixtureFallback(client);
+    const client = flags.publicDemo ? wrapClientWithFixtureFallback(rawClient) : rawClient;
     req.ctx = {
       ds: createDatastore(client),
+      // Unwrapped datastore for diagnostics (healthz completeness): reports the
+      // REAL Data Store state, never the fixture's — forced-fixture tables
+      // would otherwise masquerade fixture row counts as live data.
+      dsRaw: createDatastore(rawClient),
       cache,
       flags,
       services: o.servicesFactory ? (o.servicesFactory(req) || {}) : {}
@@ -50,6 +59,9 @@ function createApp(options) {
 
   const router = express.Router();
   readRoutes.register(router);
+  // extras before insight: /alerts/summary and /offenders/mo-patterns must
+  // match ahead of the /alerts/:id and /offenders/:personKey param routes.
+  extrasRoutes.register(router);
   insightRoutes.register(router);
   casesRoutes.register(router);
   actionsRoutes.register(router);

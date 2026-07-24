@@ -107,6 +107,20 @@ const districtById = new Map(DISTRICTS.map((d) => [d.id, d]));
 const headById = new Map(CRIME_HEADS.map((h) => [h.id, h]));
 const subHeadById = new Map(CRIME_SUBHEADS.map((s) => [s.id, s]));
 
+// Expected full-load row counts per Data Store table (pipeline output sizes).
+// healthz reports actual/expected as dataCompleteness so a partially-loaded
+// table is visible as a percentage instead of silently under-reporting.
+const EXPECTED_ROW_COUNTS = {
+  CaseMaster: 45000,
+  AggMonthly: 34021,
+  Victim: 53836,
+  Accused: 36093,
+  NetworkEdge: 23833,
+  ForecastMonthly: 8892,
+  OffenderProfile: 2048,
+  District: 38
+};
+
 module.exports = {
   DISTRICTS,
   CRIME_HEADS,
@@ -114,6 +128,7 @@ module.exports = {
   CASE_CATEGORIES,
   CASE_STATUSES,
   GRAVITIES,
+  EXPECTED_ROW_COUNTS,
   districtById,
   headById,
   subHeadById

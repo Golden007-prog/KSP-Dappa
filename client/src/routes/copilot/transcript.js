@@ -3,6 +3,7 @@
 // copyText lives in clipboard.js (shared with Reports) and is re-exported here
 // for the bubble components.
 import { format } from 'date-fns';
+import { confidenceFor, intentLabel, tablesFromZcql } from './answerMeta.js';
 
 export { copyText } from './clipboard.js';
 
@@ -43,10 +44,29 @@ export function latencyLabel(ms) {
 const answerMeta = (m) => {
   const parts = [];
   if (m.engine) parts.push(`engine: ${m.engine}`);
+  const conf = confidenceFor(m);
+  if (conf) parts.push(`confidence: ${conf.label}`);
+  const kind = intentLabel(m.intent);
+  if (kind) parts.push(`intent: ${kind}`);
+  const tables = tablesFromZcql(m.zcql);
+  if (tables.length) parts.push(`sources: ${tables.join(', ')}`);
   const lat = latencyLabel(m.latencyMs);
   if (lat) parts.push(`answered in ${lat}`);
   return parts.join(' · ');
 };
+
+/** One answer as Markdown (question, answer, provenance line, fenced ZCQL) —
+ * for the per-bubble "Copy as Markdown" action. */
+export function answerToMarkdown(m) {
+  const out = [];
+  if (m.question) out.push(`**Q:** ${m.question}`, '');
+  out.push(m.text || '', '');
+  const meta = answerMeta(m);
+  if (meta) out.push(`_${meta}_`, '');
+  if (m.chart?.title) out.push(`_Chart: ${m.chart.title}_`, '');
+  if (m.zcql) out.push('```sql', String(m.zcql).trim(), '```');
+  return `${out.join('\n').trim()}\n`;
+}
 
 /** Serialize the chat to a plain-text transcript (answers, ZCQL, engine, latency). */
 export function conversationToText(messages) {
@@ -107,15 +127,22 @@ export function conversationToJson(messages) {
       title: 'Ask DAPPA — conversation transcript',
       exportedAt: new Date().toISOString(),
       disclaimer: DISCLAIMER,
-      messages: messages.map((m) => ({
-        role: m.role,
-        ...(m.error ? { error: m.error } : { text: m.text }),
-        ts: m.ts ? new Date(m.ts).toISOString() : undefined,
-        engine: m.engine || undefined,
-        latencyMs: typeof m.latencyMs === 'number' ? m.latencyMs : undefined,
-        zcql: m.zcql || undefined,
-        chart: m.chart || undefined,
-      })),
+      messages: messages.map((m) => {
+        const conf = confidenceFor(m);
+        const tables = tablesFromZcql(m.zcql);
+        return {
+          role: m.role,
+          ...(m.error ? { error: m.error } : { text: m.text }),
+          ts: m.ts ? new Date(m.ts).toISOString() : undefined,
+          engine: m.engine || undefined,
+          intent: m.intent || undefined,
+          confidence: conf ? conf.label : undefined,
+          sources: tables.length ? tables : undefined,
+          latencyMs: typeof m.latencyMs === 'number' ? m.latencyMs : undefined,
+          zcql: m.zcql || undefined,
+          chart: m.chart || undefined,
+        };
+      }),
     },
     null,
     2,

@@ -23,17 +23,20 @@ import InsightStrip from './trends/InsightStrip.jsx';
 import StackedShare from './trends/StackedShare.jsx';
 import CompareGrid from './trends/CompareGrid.jsx';
 import PinnedViews from './trends/PinnedViews.jsx';
+import Decomposition from './trends/Decomposition.jsx';
+import SocioScatter from './trends/SocioScatter.jsx';
+import MixRadar from './trends/MixRadar.jsx';
 import {
-  usePalettePref, seriesColors, OTHER_COLOR, ANOMALY_COLOR, HEAT_RAMP, SURFACE,
+  usePalettePref, seriesColors, OTHER_COLOR, ANOMALY_COLOR, HEAT_RAMP, DIVERGING_RAMP, SURFACE,
 } from './trends/palettes.js';
 import {
   sumSeries, trimLeadingZeros, rollingMean, detectAnomalies, linearTrend,
-  recentDeltaPct, buildMonthYearMatrix, calendarMonthMeans, derivePopulations,
-  toPerLakh, MONTH_SHORT,
+  recentDeltaPct, buildMonthYearMatrix, buildYoyMatrix, calendarMonthMeans, derivePopulations,
+  toPerLakh, detectChangepoints, hourProfiles, seasonalityQuickStats, MONTH_SHORT,
 } from './trends/analysis.js';
 import {
   FESTIVAL_MONTHS, seasonalityInsight, monthlyInsight, shareInsight, districtInsight,
-  trendDirectionInsight, seasonalPeakInsight, anomalySummaryInsight,
+  trendDirectionInsight, seasonalPeakInsight, anomalySummaryInsight, changepointInsight,
 } from './trends/insights.js';
 import { downloadCsv, slug } from './trends/csv.js';
 import useMediaQuery from './trends/useMediaQuery.js';
@@ -89,15 +92,18 @@ export default function Trends() {
   const colors = seriesColors(paletteKey, theme);
   const surface = SURFACE[theme] || SURFACE.dark;
   const heatRamp = HEAT_RAMP[theme] || HEAT_RAMP.dark;
+  const divergingRamp = DIVERGING_RAMP[theme] || DIVERGING_RAMP.dark;
   const otherColor = OTHER_COLOR[theme] || OTHER_COLOR.dark;
   const anomalyColor = ANOMALY_COLOR[theme] || ANOMALY_COLOR.dark;
   const accent = colors[0];
 
   const [metric, setMetric] = useState('cases'); // district bars: cases | rate
-  const [monthlyMode, setMonthlyMode] = useState('lines'); // lines | calendar
+  const [monthlyMode, setMonthlyMode] = useState('lines'); // lines | calendar | yoy
   const [smooth3, setSmooth3] = useState(false);
   const [showAnomalies, setShowAnomalies] = useState(false);
+  const [showChangepoints, setShowChangepoints] = useState(false);
   const [perLakh, setPerLakh] = useState(false);
+  const [seasonView, setSeasonView] = useState('heat'); // heat | profile
 
   const seasonality = useSeasonality(apiParams);
   const monthly = useTrendsMonthly(apiParams);
@@ -163,7 +169,39 @@ export default function Trends() {
     };
   }, [seasonality.data, surface, heatRamp, isNarrow]);
 
-  // ---- 2. monthly trend (lines | calendar) --------------------------------
+  // ---- 1b. weekday vs weekend hourly profile + quick stats ----------------
+  const profileOption = useMemo(() => {
+    const s = seasonality.data;
+    if (!s || !s.max) return null;
+    const prof = hourProfiles(s);
+    if (!prof?.weekday) return null;
+    const hours = s.hours.map((h) => String(h).padStart(2, '0'));
+    const series = [
+      { name: 'Weekday avg', data: prof.weekday, color: accent },
+      ...(prof.weekend ? [{ name: 'Weekend avg', data: prof.weekend, color: colors[1] }] : []),
+    ];
+    return {
+      tooltip: { trigger: 'axis', valueFormatter: (v) => `${fmtNum(v, 1)} cases/hr` },
+      legend: { bottom: 0 },
+      grid: { left: 40, right: 12, top: 14, bottom: 40 },
+      xAxis: { type: 'category', boundaryGap: false, data: hours, axisLabel: { interval: isNarrow ? 3 : 2 } },
+      yAxis: { type: 'value' },
+      series: series.map((sr) => ({
+        name: sr.name,
+        type: 'line',
+        data: sr.data.map((v) => Number(v.toFixed(1))),
+        showSymbol: false,
+        smooth: 0.2,
+        lineStyle: { width: 2, color: sr.color },
+        itemStyle: { color: sr.color },
+        areaStyle: { color: sr.color, opacity: 0.08 },
+      })),
+    };
+  }, [seasonality.data, accent, colors, isNarrow]);
+
+  const quickStats = useMemo(() => seasonalityQuickStats(seasonality.data), [seasonality.data]);
+
+  // ---- 2. monthly trend (lines | calendar | yoy) --------------------------
   // Trim the API's zero-filled leading months FIRST (they flatten the chart
   // and skew the festival-vs-normal average), then cap at 24 months.
   const monthlyView = useMemo(() => {
@@ -206,6 +244,12 @@ export default function Trends() {
     [monthlyView],
   );
 
+  // Level shifts on the displayed 24-month window (binary segmentation).
+  const changepoints = useMemo(
+    () => (monthlyView ? detectChangepoints(monthlyView.totals) : []),
+    [monthlyView],
+  );
+
   const perLakhOn = perLakh && !!population;
 
   const monthlyOption = useMemo(() => {
@@ -221,6 +265,48 @@ export default function Trends() {
       emphasis: { iconStyle: { borderColor: surface.ink } },
       feature: { saveAsImage: { name: 'dappa-monthly-trend', backgroundColor: surface.panel, title: 'PNG' } },
     };
+
+    if (monthlyMode === 'yoy') {
+      // YoY % calendar: each cell vs the same month a year earlier, computed
+      // over the FULL trimmed history so the first displayed year resolves.
+      if (!monthlyView) return null;
+      const { years, matrix, maxAbs } = buildYoyMatrix(monthlyView.trimmedMonths, monthlyView.trimmedTotals);
+      const data = [];
+      matrix.forEach((row, yi) => row.forEach((v, mi) => {
+        if (v !== null) data.push([mi, yi, Number(v.toFixed(1))]);
+      }));
+      if (!data.length) return null;
+      const cap = Math.max(10, Math.min(75, Math.ceil(maxAbs)));
+      return {
+        tooltip: {
+          position: 'top',
+          formatter: (p) =>
+            `${MONTH_SHORT[p.value[0]]} ${years[p.value[1]]} — ${p.value[2] >= 0 ? '+' : '−'}${fmtNum(Math.abs(p.value[2]), 1)}% vs ${MONTH_SHORT[p.value[0]]} ${Number(years[p.value[1]]) - 1}`,
+        },
+        toolbox,
+        grid: { left: 48, right: 12, top: 28, bottom: 44 },
+        xAxis: { type: 'category', data: MONTH_SHORT, axisLabel: { interval: isNarrow ? 1 : 0, fontSize: 10 } },
+        yAxis: { type: 'category', data: years, inverse: true },
+        visualMap: {
+          min: -cap,
+          max: cap,
+          orient: 'horizontal',
+          right: 0,
+          bottom: 0,
+          itemWidth: 10,
+          itemHeight: 90,
+          text: ['rising', 'falling'],
+          textStyle: { color: surface.muted, fontSize: 10 },
+          inRange: { color: divergingRamp },
+        },
+        series: [{
+          type: 'heatmap',
+          data,
+          itemStyle: { borderColor: surface.panel, borderWidth: 2, borderRadius: 2 },
+          emphasis: { itemStyle: { borderColor: surface.ink, borderWidth: 1 } },
+        }],
+      };
+    }
 
     if (monthlyMode === 'calendar') {
       const display = perLakhOn ? toPerLakh(totals, population) : totals;
@@ -267,6 +353,30 @@ export default function Trends() {
       // fractional category indices → exact full-band shading for that month
       if (f) markAreaData.push([{ name: f, xAxis: i - 0.5 }, { xAxis: i + 0.5 }]);
     });
+    // Anomaly flags and level-shift markers share one markLine on series 0 —
+    // each datum carries its own style so the two annotation kinds coexist.
+    const markLineData = [];
+    if (showAnomalies) {
+      anomalies.forEach((a) => markLineData.push({
+        xAxis: a.index,
+        lineStyle: { color: anomalyColor, type: 'dashed', width: 1 },
+        label: { show: true, formatter: '⚑', color: anomalyColor, fontSize: 11 },
+      }));
+    }
+    if (showChangepoints) {
+      changepoints.forEach((c) => markLineData.push({
+        xAxis: c.index,
+        lineStyle: { color: colors[1], type: 'solid', width: 1.5 },
+        label: {
+          show: true,
+          formatter: Number.isFinite(c.shiftPct)
+            ? `${c.dir === 'up' ? '+' : '−'}${Math.round(Math.abs(c.shiftPct))}%`
+            : 'shift',
+          color: colors[1],
+          fontSize: 9,
+        },
+      }));
+    }
     const directLabels = shown.length <= 4 && !isNarrow;
     return {
       color: colors,
@@ -302,21 +412,20 @@ export default function Trends() {
               label: { show: true, position: 'insideTop', color: surface.muted, fontSize: 9 },
               data: markAreaData,
             },
-            ...(showAnomalies && anomalies.length ? {
+            ...(markLineData.length ? {
               markLine: {
                 silent: true,
                 symbol: 'none',
-                lineStyle: { color: anomalyColor, type: 'dashed', width: 1 },
-                label: { show: true, formatter: '⚑', color: anomalyColor, fontSize: 11 },
-                data: anomalies.map((a) => ({ xAxis: a.index })),
+                data: markLineData,
               },
             } : {}),
           } : {}),
         };
       }),
     };
-  }, [monthlyModel, monthlyMode, smooth3, showAnomalies, perLakhOn, population, anomalies,
-    colors, surface, heatRamp, otherColor, anomalyColor, accent, isNarrow]);
+  }, [monthlyModel, monthlyView, monthlyMode, smooth3, showAnomalies, showChangepoints,
+    perLakhOn, population, anomalies, changepoints,
+    colors, surface, heatRamp, divergingRamp, otherColor, anomalyColor, accent, isNarrow]);
 
   // ---- 3. category share donut --------------------------------------------
   const shareOption = useMemo(() => {
@@ -485,6 +594,10 @@ export default function Trends() {
   );
   const shareText = useMemo(() => shareInsight(share.data), [share.data]);
   const districtText = useMemo(() => districtInsight(geo.data, metric), [geo.data, metric]);
+  const changepointText = useMemo(
+    () => (monthlyView && showChangepoints ? changepointInsight(monthlyView.months, changepoints) : null),
+    [monthlyView, showChangepoints, changepoints],
+  );
 
   // YoY: latest month vs the same month a year earlier (raw counts).
   const yoyPct = useMemo(() => {
@@ -580,22 +693,45 @@ export default function Trends() {
         <div className="xl:col-span-2 space-y-2">
           <Card
             title="Seasonality — hour × weekday"
-            subtitle="Case registrations by incident hour and day of week"
+            subtitle={seasonView === 'heat'
+              ? 'Case registrations by incident hour and day of week'
+              : 'Average cases per hour — weekday vs weekend profiles'}
             actions={(
-              <div className="trends-no-print flex items-center gap-1.5">
+              <div className="trends-no-print flex flex-wrap items-center justify-end gap-1.5">
+                <SegmentedControl
+                  ariaLabel="Seasonality view"
+                  value={seasonView}
+                  onChange={setSeasonView}
+                  options={[{ value: 'heat', label: 'Heatmap' }, { value: 'profile', label: 'Profile' }]}
+                />
                 {retryBtn(seasonality)}
                 <CsvButton onClick={exportSeasonality} disabled={!seasonalityOption} tip="Download the hour × weekday matrix" />
               </div>
             )}
           >
             <ChartBody
-              option={seasonalityOption}
+              option={seasonView === 'profile' ? profileOption : seasonalityOption}
               height={320}
               loading={seasonality.isLoading}
               error={seasonality.error}
               onRetry={() => seasonality.refetch()}
               emptyMessage="No seasonality data for the current filters."
             />
+            {quickStats && !seasonality.isLoading && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2.5" aria-label="Seasonality quick stats">
+                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+                  Busiest day <span className="font-semibold text-ink">{quickStats.busiestDay}</span>
+                  <span className="num">({fmtNum(quickStats.busiestDayPct, 0)}%)</span>
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+                  Peak window <span className="font-semibold text-ink num">{String(quickStats.bandStart).padStart(2, '0')}:00–{String(quickStats.bandEnd).padStart(2, '0')}:00</span>
+                  <span className="num">({fmtNum(quickStats.bandPct, 0)}%)</span>
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+                  Weekend share <span className="font-semibold text-ink num">{fmtNum(quickStats.weekendPct, 0)}%</span>
+                </span>
+              </div>
+            )}
           </Card>
           <InsightLine text={seasonalityText} loading={seasonality.isLoading} />
         </div>
@@ -632,13 +768,19 @@ export default function Trends() {
           title="Monthly trend by crime head"
           subtitle={monthlyMode === 'lines'
             ? 'Amber bands mark festival windows — Ugadi · Dasara · Deepavali (top heads by volume; last 24 months)'
-            : 'Month × year calendar — all heads combined (last 24 months)'}
+            : monthlyMode === 'calendar'
+              ? 'Month × year calendar — all heads combined (last 24 months)'
+              : 'Month × year calendar — % change vs the same month a year earlier (teal falling · red rising)'}
           actions={(
             <SegmentedControl
               ariaLabel="Monthly chart view"
               value={monthlyMode}
               onChange={setMonthlyMode}
-              options={[{ value: 'lines', label: 'Lines' }, { value: 'calendar', label: 'Calendar' }]}
+              options={[
+                { value: 'lines', label: 'Lines' },
+                { value: 'calendar', label: 'Calendar' },
+                { value: 'yoy', label: 'YoY %' },
+              ]}
             />
           )}
         >
@@ -658,6 +800,14 @@ export default function Trends() {
               title="Flag months with |z| ≥ 2 vs the trailing year"
             >
               Anomalies
+            </ToggleChip>
+            <ToggleChip
+              on={showChangepoints}
+              onClick={() => setShowChangepoints((v) => !v)}
+              disabled={monthlyMode !== 'lines'}
+              title="Mark structural level shifts (binary segmentation on squared error)"
+            >
+              Level shifts
             </ToggleChip>
             <ToggleChip
               on={perLakhOn}
@@ -690,6 +840,7 @@ export default function Trends() {
           )}
         </div>
         {showAnomalies && <InsightLine text={anomalyText} />}
+        {showChangepoints && <InsightLine text={changepointText} />}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -758,6 +909,40 @@ export default function Trends() {
         anomalyColor={anomalyColor}
         defaultDistrictIds={topDistrictIds}
       />
+
+      <Decomposition
+        months={monthlyView?.trimmedMonths || []}
+        values={monthlyView?.trimmedTotals || []}
+        loading={monthly.isLoading}
+        error={monthly.error}
+        onRetry={() => monthly.refetch()}
+        scope={districtId || 'karnataka'}
+        colors={colors}
+        surface={surface}
+        anomalyColor={anomalyColor}
+        isNarrow={isNarrow}
+      />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <SocioScatter
+          geoRows={geo.data}
+          geoLoading={geo.isLoading}
+          geoError={geo.error}
+          onRetryGeo={() => geo.refetch()}
+          districtId={districtId}
+          setFilter={setFilter}
+          accent={accent}
+          surface={surface}
+          isNarrow={isNarrow}
+        />
+        <MixRadar
+          window={compareWindow}
+          districtId={districtId}
+          colors={colors}
+          otherColor={otherColor}
+          surface={surface}
+        />
+      </div>
     </div>
   );
 }

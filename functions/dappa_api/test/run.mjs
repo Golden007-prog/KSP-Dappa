@@ -122,7 +122,45 @@ const GET_CASES = [
   ['/cases?page=1&perPage=10', (d, meta) => Array.isArray(d) && d.length === 10 && hasKeys(d[0], ['caseMasterId', 'crimeNo', 'caseNo', 'registeredDate', 'districtName', 'unitName', 'headName', 'subHeadName', 'statusName', 'gravityName', 'anomalyFlag']) && meta.total === 40 && meta.page === 1 && meta.perPage === 10],
   ['/cases?districtId=0103&perPage=200', (d) => d.length === 8],
   ['/cases?perPage=500', (d, meta) => meta.perPage === 200],
-  ['/healthz', (d) => d.status === 'ok' && d.datastore.ok === true && d.cache.ok === true && d.datastore.rowCounts.CaseMaster === 40]
+  // --- second-pass endpoints -------------------------------------------------
+  ['/meta/challenge', (d) => Array.isArray(d.capabilities) && d.capabilities.length === 6
+    && d.capabilities.every((c) => hasKeys(c, ['id', 'key', 'title', 'status', 'summary', 'highlights', 'endpoints']) && c.status === 'covered' && c.endpoints.length > 0)
+    && d.counts && d.counts.capabilities === 6 && d.counts.covered === 6 && d.counts.distinctEndpoints > 20 && d.counts.copilotUtterances >= 18],
+  ['/insight/socio-correlation', (d) => hasKeys(d, ['fromYm', 'toYm', 'points', 'indicators']) && d.points.length === 5 && d.indicators.length === 5
+    && hasKeys(d.points[0], ['districtId', 'districtName', 'caseCount', 'ratePerLakh', 'population', 'urbanPct', 'literacyPct', 'densityPerKm2', 'perCapitaIncomeIdx'])
+    && typeof d.indicators.find((i) => i.key === 'population').r === 'number'
+    && d.indicators.find((i) => i.key === 'urbanPct').r === null
+    && d.indicators.find((i) => i.key === 'urbanPct').strength === 'n/a'
+    && d.indicators.every((i) => hasKeys(i, ['key', 'label', 'r', 'n', 'strength', 'direction', 'note']))],
+  ['/insight/emerging', (d) => hasKeys(d, ['anchorYm', 'fromYm', 'rising', 'falling']) && Array.isArray(d.rising) && Array.isArray(d.falling)
+    && (d.rising.length + d.falling.length) > 0
+    && [...d.rising, ...d.falling].every((m) => hasKeys(m, ['subHeadId', 'subHeadName', 'headName', 'recentAvg', 'baselineAvg', 'growthPct', 'emerging', 'spark']) && m.spark.length === 12)],
+  ['/network/path?from=P001&to=P003', (d) => d.found === true && d.hops === 1 && d.path.length === 2
+    && d.path[0].personKey === 'P001' && d.path[1].personKey === 'P003'
+    && d.edges.length === 1 && d.totalWeight === 2 && d.weakestLink === 2
+    && Array.isArray(d.edges[0].caseIds) && d.edges[0].caseIds.length === 2],
+  ['/network/path?from=P001&to=P005', (d) => d.found === false && typeof d.reason === 'string' && d.path.length === 0],
+  ['/network/communities', (d) => Array.isArray(d) && d.length === 2 && d[0].memberCount === 3 && d[0].density === 1
+    && hasKeys(d[0], ['communityId', 'memberCount', 'edgeCount', 'linkedCases', 'districts', 'districtNames', 'topMoTags', 'avgRisk', 'keyPerson', 'density', 'members'])
+    && d[0].keyPerson.personKey === 'P001' && d[0].linkedCases === 4],
+  ['/offenders/mo-patterns', (d) => Array.isArray(d) && d.length > 0
+    && hasKeys(d[0], ['tag', 'offenders', 'totalCases', 'districts', 'districtNames', 'crossJurisdiction', 'avgRisk', 'topOffenders'])
+    && (() => { const v = d.find((t) => t.tag === 'vehicle-theft'); return v && v.offenders === 2 && v.totalCases === 8 && v.crossJurisdiction === true; })()],
+  ['/alerts/summary', (d) => d.total === 4 && d.byStatus.OPEN === 3 && d.byStatus.ACK === 1
+    && d.bySeverity['3'] === 1 && Array.isArray(d.topDistricts) && d.topDistricts.length === 3
+    && hasKeys(d.topDistricts[0], ['districtId', 'districtName', 'openCount']) && typeof d.latestCreatedAt === 'string'],
+  // Completeness reads the RAW datastore (ctx.dsRaw) — with the stub it sees
+  // the canned counts; in fixture-fallback mode (real store down) the honest
+  // answer is actual=null/pct=null, never fixture rows masquerading as real.
+  ['/healthz', (d) => d.status === 'ok' && d.datastore.ok === true && d.cache.ok === true && d.datastore.rowCounts.CaseMaster === 40
+    && d.datastore.completeness && d.datastore.completeness.tables.CaseMaster.expected === 45000
+    && (d.datastore.completeness.tables.CaseMaster.actual === null
+      ? (d.datastore.completeness.tables.CaseMaster.pct === null && d.datastore.completeness.overallPct === null)
+      : (d.datastore.completeness.tables.CaseMaster.actual === 40
+        && d.datastore.completeness.tables.CaseMaster.pct === 0.1
+        && d.datastore.completeness.tables.District.pct === 100
+        && typeof d.datastore.completeness.overallPct === 'number'
+        && d.datastore.completeness.overallPct > 0 && d.datastore.completeness.overallPct < 100))]
 ];
 
 for (const [path, validator] of GET_CASES) {
@@ -183,6 +221,69 @@ for (const utterance of CANNED_UTTERANCES) {
   check('copilot unknown -> graceful suggestions', unknown.status === 200 && unknown.json.data.intent === 'unknown'
     && Array.isArray(unknown.json.data.suggestions) && unknown.json.data.suggestions.length === 3
     && unknown.json.data.answer.includes('Try'), JSON.stringify(unknown.json.data).slice(0, 200));
+}
+
+// --- copilot: second-pass grammar (compare districts / why rising / hour bands)
+
+{
+  const cd = parse('compare Bengaluru City and Mysuru City last 6 months');
+  check('copilot parses two districts', cd.kind === 'compareDistricts' && cd.districtId === '0101' && cd.districtId2 === '0103', JSON.stringify(cd));
+  check('copilot single district keeps compareYears', parse('compare cheating 2025 vs 2026 in Bengaluru City').kind === 'compareYears');
+  check('copilot hyphenated district is one match', parse('robbery trend in Hubballi-Dharwad City last 6 months').districtId2 === null);
+  const why = parse('why is chain snatching rising in Mysuru City');
+  check('copilot why-rising intent', why.kind === 'whyRising' && why.districtId === '0103' && why.subHeadId === 307, JSON.stringify(why));
+  const hb = parse('hotspots at night in Bengaluru City');
+  check('copilot hotspot hour band', hb.kind === 'hotspots' && hb.hourBand && hb.hourBand.start === 21 && hb.hourBand.end === 5, JSON.stringify(hb.hourBand));
+
+  const cdr = await post('/copilot/query', { q: 'compare Bengaluru City and Mysuru City last 6 months' });
+  check('compare-districts names both sides', cdr.status === 200 && cdr.json.data.intent === 'compareDistricts'
+    && cdr.json.data.answer.includes('Bengaluru City') && cdr.json.data.answer.includes('Mysuru City'), JSON.stringify(cdr.json.data).slice(0, 250));
+  check('compare-districts dual-series chart', cdr.json.data.chart && cdr.json.data.chart.series.length === 2
+    && cdr.json.data.chart.categories.length === 6
+    && cdr.json.data.chart.series.every((s) => s.data.length === 6));
+  const whyr = await post('/copilot/query', { q: 'why is chain snatching rising in Mysuru City' });
+  check('why-rising diagnostic answer', whyr.status === 200 && whyr.json.data.intent === 'whyRising'
+    && whyr.json.data.answer.includes('%'), JSON.stringify(whyr.json.data).slice(0, 250));
+  check('why-rising cites live signals', /alert|hotspot|contributor|variation/i.test(whyr.json.data.answer), whyr.json.data.answer);
+  const night = await post('/copilot/query', { q: 'hotspots at night in Bengaluru City' });
+  check('night hotspots filtered answer', night.status === 200 && night.json.data.intent === 'hotspots'
+    && night.json.data.answer.toLowerCase().includes('night'), night.json.data.answer);
+  check('suggestions include second-pass utterances', CANNED_UTTERANCES.length >= 18
+    && CANNED_UTTERANCES.includes('hotspots at night in Bengaluru City')
+    && CANNED_UTTERANCES.includes('why is chain snatching rising in Mysuru City'));
+}
+
+// --- offenders watchlist validation ------------------------------------------
+
+{
+  const w = await post('/offenders/watch', { personKeys: ['P001', 'P004', 'ZZZ'] });
+  const d = (w.json && w.json.data) || {};
+  check('watch -> 200 ok', w.status === 200 && w.json.ok === true);
+  check('watch profiles found + risk-sorted', Array.isArray(d.profiles) && d.profiles.length === 2 && d.profiles[0].riskScore >= d.profiles[1].riskScore);
+  check('watch notFound listed', Array.isArray(d.notFound) && d.notFound.length === 1 && d.notFound[0] === 'ZZZ' && d.requested === 3);
+  const p1 = d.profiles.find((p) => p.personKey === 'P001');
+  const p4 = d.profiles.find((p) => p.personKey === 'P004');
+  check('watch enrichment shape', p1 && hasKeys(p1, ['personKey', 'canonicalName', 'aliases', 'caseCount', 'districts', 'districtNames', 'firstSeen', 'lastSeen', 'daysSinceLastSeen', 'moTags', 'communityId', 'riskScore', 'associates', 'openAlertsInDistricts']));
+  check('watch associates counted', p1 && p4 && p1.associates === 2 && p4.associates === 1, JSON.stringify([p1 && p1.associates, p4 && p4.associates]));
+  check('watch links open alerts to districts', p1 && p4 && p1.openAlertsInDistricts === 2 && p4.openAlertsInDistricts === 0, JSON.stringify([p1 && p1.openAlertsInDistricts, p4 && p4.openAlertsInDistricts]));
+  check('watch recency computed', p1 && typeof p1.daysSinceLastSeen === 'number' && p1.daysSinceLastSeen >= 0);
+  const bad = await post('/offenders/watch', {});
+  check('watch without keys -> 400', bad.status === 400 && bad.json.ok === false);
+  const empty = await post('/offenders/watch', { personKeys: [] });
+  check('watch empty list -> 400', empty.status === 400);
+  const huge = await post('/offenders/watch', { personKeys: Array.from({ length: 51 }, (_, i) => `X${i}`) });
+  check('watch >50 keys -> 400', huge.status === 400);
+}
+
+// --- network path validation --------------------------------------------------
+
+{
+  const noParams = await get('/network/path');
+  check('path without params -> 400', noParams.status === 400 && noParams.json.error.code === 'BAD_REQUEST');
+  const same = await get('/network/path?from=P001&to=P001');
+  check('path same person -> 400', same.status === 400);
+  const unknown = await get('/network/path?from=P001&to=NOPE');
+  check('path unknown person -> found:false', unknown.status === 200 && unknown.json.data.found === false && unknown.json.data.reason.includes('NOPE'));
 }
 
 // --- predict/outcome fallback ----------------------------------------------
@@ -287,6 +388,58 @@ for (const utterance of CANNED_UTTERANCES) {
   check('offenders.csv joins arrays', offCsv.text.includes('two-wheeler|gold-chain|night'));
 }
 
+// --- HTTP hardening: ETag/304, request-id, rate-limit headers, TTL policy ----
+
+{
+  const r1 = await fetch(`${BASE}/meta/lookups`);
+  await r1.json();
+  const etag = r1.headers.get('etag');
+  check('GET responses carry a weak ETag', Boolean(etag) && etag.startsWith('W/"'), String(etag));
+  check('GET responses ask for revalidation', (r1.headers.get('cache-control') || '').includes('no-cache'));
+  const r2 = await fetch(`${BASE}/meta/lookups`, { headers: { 'If-None-Match': etag } });
+  check('If-None-Match revalidates as 304', r2.status === 304, String(r2.status));
+  const r3 = await fetch(`${BASE}/healthz`, { headers: { 'X-Request-Id': 'corr-abc-123' } });
+  await r3.json();
+  check('client request id echoed', r3.headers.get('x-request-id') === 'corr-abc-123');
+  const r4 = await fetch(`${BASE}/healthz`);
+  await r4.json();
+  check('request id generated when absent', /^req-/.test(r4.headers.get('x-request-id') || ''), String(r4.headers.get('x-request-id')));
+  check('rate limit headers surfaced', Number(r4.headers.get('x-ratelimit-limit')) > 0
+    && r4.headers.get('x-ratelimit-remaining') !== null
+    && Number(r4.headers.get('x-ratelimit-remaining')) < Number(r4.headers.get('x-ratelimit-limit'))
+    && Number(r4.headers.get('x-ratelimit-reset')) > 0);
+  check('response time header present', /^\d+ms$/.test(r4.headers.get('x-response-time') || ''), String(r4.headers.get('x-response-time')));
+  const r5 = await fetch(`${BASE}/summary/kpis`);
+  const j5 = await r5.json();
+  check('per-endpoint ttl surfaced (kpis 300s)', j5.meta.ttlSec === 300, String(j5.meta.ttlSec));
+  const r6 = await fetch(`${BASE}/meta/refresh`);
+  const j6 = await r6.json();
+  check('per-endpoint ttl tuned (refresh 120s)', j6.meta.ttlSec === 120, String(j6.meta.ttlSec));
+  const r7 = await fetch(`${BASE}/geo/incidents?limit=5`);
+  const j7 = await r7.json();
+  check('per-endpoint ttl tuned (incidents 180s)', j7.meta.ttlSec === 180, String(j7.meta.ttlSec));
+}
+
+// --- rate limiting enforces 429 past the env-tuned budget --------------------
+
+{
+  process.env.RATE_LIMIT_PER_MIN = '3';
+  const rlApp = createApp({ clientFactory: () => stub });
+  const rlServer = rlApp.listen(0);
+  await new Promise((r) => rlServer.once('listening', r));
+  const RL = `http://127.0.0.1:${rlServer.address().port}/api/v1`;
+  let last = null;
+  let lastJson = null;
+  for (let i = 0; i < 4; i += 1) {
+    last = await fetch(`${RL}/meta/challenge`);
+    lastJson = await last.json();
+  }
+  check('rate limit enforces 429', last.status === 429 && lastJson.ok === false && lastJson.error.code === 'RATE_LIMITED', `status ${last.status}`);
+  check('429 carries Retry-After', Number(last.headers.get('retry-after')) >= 1, String(last.headers.get('retry-after')));
+  delete process.env.RATE_LIMIT_PER_MIN;
+  rlServer.close();
+}
+
 // --- reports fallback + cache bypass ---------------------------------------
 
 {
@@ -368,6 +521,12 @@ server.close();
   check('FIXTURE status write succeeds', dismiss.status === 200 && dismiss.json.data.status === 'DISMISSED');
   const dismissed = await get('/alerts?status=DISMISSED', DOWN);
   check('FIXTURE dismissal persists', dismissed.json.data.length === 1 && dismissed.json.data[0].alertId === 'AL-002');
+
+  // Second-pass POST endpoint answers from the fixture too.
+  const watch = await post('/offenders/watch', { personKeys: ['P001', 'P004'] }, null, DOWN);
+  check('FIXTURE watchlist validation works', watch.status === 200 && watch.json.ok === true
+    && watch.json.data.profiles.length === 2 && watch.json.data.notFound.length === 0);
+
   const refresh = await get('/meta/refresh?nocache=1', DOWN);
   check('FIXTURE meta/refresh honest mode', refresh.status === 200 && refresh.json.data.mode === 'fixture-demo' && refresh.json.data.nightly && refresh.json.data.nightly.refreshedAt);
 

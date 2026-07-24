@@ -1,12 +1,14 @@
 // Seasonality mini heatmap — day × hour incidence matrix (useSeasonality)
 // as a 7×24 CSS grid with an amber intensity ramp (theme-aware via the
-// --t-amber token) and a peak-window callout. Horizontally scrollable on
-// small screens so the page never scrolls sideways.
+// --t-amber token), a peak-window callout plus night-share and
+// weekend-vs-weekday split chips. Horizontally scrollable on small screens
+// so the page never scrolls sideways.
 import { Fragment, useMemo } from 'react';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
-import { fmtInt } from '../../lib/format.js';
+import { fmtInt, fmtPct } from '../../lib/format.js';
+import { seasonalitySplits } from './insights.js';
 
 const hh = (h) => String(h).padStart(2, '0');
 
@@ -21,6 +23,8 @@ export default function SeasonalityPanel({ query }) {
     }
     return null;
   }, [s]);
+
+  const splits = useMemo(() => seasonalitySplits(s), [s]);
 
   if (query.isLoading) return <LoadingSkeleton height={190} />;
   if (query.error) {
@@ -46,6 +50,20 @@ export default function SeasonalityPanel({ query }) {
             {peak.day} {hh(peak.hour)}:00–{hh((peak.hour + 1) % 24)}:00 ·{' '}
             <span className="num text-ink">{fmtInt(peak.value)}</span> incidents
           </span>
+        </div>
+      )}
+      {splits && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {splits.nightPct !== null && (
+            <Badge tone={splits.nightPct >= 40 ? 'red' : 'neutral'}>
+              Night 22–05 · {fmtPct(splits.nightPct, { digits: 0 })}
+            </Badge>
+          )}
+          {splits.weekendDeltaPct !== null && (
+            <Badge tone={splits.weekendDeltaPct > 0 ? 'amber' : 'teal'}>
+              Weekend {fmtPct(splits.weekendDeltaPct, { sign: true, digits: 0 })} vs weekdays
+            </Badge>
+          )}
         </div>
       )}
       <div className="overflow-x-auto no-scrollbar -mx-1 px-1">

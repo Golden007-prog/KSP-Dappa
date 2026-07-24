@@ -1,0 +1,235 @@
+// Trends — socio-economic correlation scatter: case rate per lakh (y, from
+// /geo/districts under the current period + crime-head filters) against a
+// switchable district indicator from /meta/socio (urbanization, literacy,
+// density, income index). Bubble area encodes population; an OLS fit line and
+// Pearson-r badge quantify the association, median split lines cut the plane
+// into labeled quadrants, and clicking a bubble focuses that district in the
+// shared filters. The "why behind the where" — with the causation caveat stated.
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '../../lib/api.js';
+import Card from '../../components/Card.jsx';
+import Badge from '../../components/Badge.jsx';
+import Tooltip from '../../components/Tooltip.jsx';
+import { useToast } from '../../components/ToastProvider.jsx';
+import ChartBody from './ChartBody.jsx';
+import InsightLine from './InsightLine.jsx';
+import { olsFit } from './analysis.js';
+import { socioInsight } from './insights.js';
+import { downloadCsv, slug } from './csv.js';
+import { fmtCompact, fmtNum } from '../../lib/format.js';
+
+const METRICS = [
+  { key: 'urbanPct', label: 'Urbanization %', short: 'urban %' },
+  { key: 'literacyPct', label: 'Literacy %', short: 'literacy %' },
+  { key: 'densityPerKm2', label: 'Density /km²', short: 'density' },
+  { key: 'perCapitaIncomeIdx', label: 'Income index', short: 'income idx' },
+];
+
+const median = (xs) => {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+};
+
+function corrWord(r) {
+  const a = Math.abs(r);
+  return a >= 0.7 ? 'strong' : a >= 0.4 ? 'moderate' : a >= 0.2 ? 'weak' : 'none';
+}
+
+export default function SocioScatter({
+  geoRows, geoLoading, geoError, onRetryGeo, districtId, setFilter, accent, surface, isNarrow,
+}) {
+  const toast = useToast();
+  const [metricKey, setMetricKey] = useState('urbanPct');
+  const metric = METRICS.find((m) => m.key === metricKey) || METRICS[0];
+
+  const socio = useQuery({
+    queryKey: ['meta-socio'],
+    queryFn: ({ signal }) => apiGet('/meta/socio', {}, { signal })
+      .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const points = useMemo(() => {
+    const byId = new Map((socio.data || []).map((s) => [String(s.districtId), s]));
+    return (geoRows || []).map((r) => {
+      const s = byId.get(String(r.districtId));
+      const x = Number(s?.[metricKey]);
+      const y = Number(r.ratePerLakh);
+      if (!s || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return {
+        districtId: String(r.districtId),
+        name: r.districtName,
+        x,
+        y,
+        pop: Number(s.population) || 0,
+        socio: s,
+        caseCount: Number(r.caseCount) || 0,
+      };
+    }).filter(Boolean);
+  }, [geoRows, socio.data, metricKey]);
+
+  const fit = useMemo(() => olsFit(points), [points]);
+
+  const option = useMemo(() => {
+    if (points.length < 3) return null;
+    const maxPop = Math.max(1, ...points.map((p) => p.pop));
+    const mx = median(points.map((p) => p.x));
+    const my = median(points.map((p) => p.y));
+    const xs = points.map((p) => p.x);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const byKey = new Map(points.map((p) => [`${p.x}|${p.y}`, p]));
+    const quadLabel = (text, left, top, align) => ({
+      type: 'text',
+      left,
+      top,
+      style: { text, fill: surface.muted, fontSize: 9, opacity: 0.85, textAlign: align },
+      silent: true,
+    });
+    return {
+      tooltip: {
+        formatter: (p) => {
+          if (p.seriesType !== 'scatter') return '';
+          const d = byKey.get(`${p.value[0]}|${p.value[1]}`);
+          if (!d) return '';
+          return `<b>${d.name}</b><br/>${fmtNum(d.y, 1)} cases per lakh · ${metric.short} ${fmtNum(d.x, 1)}`
+            + `<br/>population ${fmtCompact(d.pop)} — click to focus`;
+        },
+      },
+      grid: { left: 44, right: 16, top: 26, bottom: 40 },
+      xAxis: {
+        type: 'value',
+        name: metric.label,
+        nameLocation: 'middle',
+        nameGap: 26,
+        nameTextStyle: { color: surface.muted, fontSize: 10 },
+        scale: true,
+      },
+      yAxis: {
+        type: 'value',
+        name: 'cases / lakh',
+        nameTextStyle: { color: surface.muted, fontSize: 10, align: 'left' },
+        scale: true,
+      },
+      graphic: isNarrow ? undefined : [
+        quadLabel('high rate · low ' + metric.short, 48, 30, 'left'),
+        quadLabel('high rate · high ' + metric.short, '78%', 30, 'left'),
+        quadLabel('low rate · low ' + metric.short, 48, '78%', 'left'),
+        quadLabel('low rate · high ' + metric.short, '78%', '78%', 'left'),
+      ],
+      series: [
+        {
+          type: 'scatter',
+          data: points.map((p) => ({
+            value: [p.x, p.y],
+            symbolSize: 8 + Math.sqrt(p.pop / maxPop) * (isNarrow ? 14 : 20),
+            itemStyle: {
+              color: accent,
+              opacity: !districtId || districtId === p.districtId ? 0.9 : 0.35,
+              borderColor: districtId === p.districtId ? surface.ink : 'transparent',
+              borderWidth: districtId === p.districtId ? 2 : 0,
+            },
+          })),
+          // median split lines → quadrants
+          markLine: {
+            silent: true,
+            symbol: 'none',
+            lineStyle: { color: surface.grid, type: 'dashed', width: 1 },
+            label: { show: false },
+            data: [{ xAxis: mx }, { yAxis: my }],
+          },
+          z: 3,
+        },
+        ...(fit ? [{
+          name: 'OLS fit',
+          type: 'line',
+          data: [
+            [xMin, fit.slope * xMin + fit.intercept],
+            [xMax, fit.slope * xMax + fit.intercept],
+          ],
+          showSymbol: false,
+          lineStyle: { color: surface.muted, width: 1.5, type: 'dashed', opacity: 0.9 },
+          tooltip: { show: false },
+          silent: true,
+          z: 2,
+        }] : []),
+      ],
+    };
+  }, [points, fit, metric, districtId, accent, surface, isNarrow]);
+
+  const onEvents = useMemo(() => ({
+    click: (p) => {
+      if (p?.seriesType !== 'scatter' || !Array.isArray(p.value)) return;
+      const d = points.find((x) => x.x === p.value[0] && x.y === p.value[1]);
+      if (!d) return;
+      setFilter('districtId', d.districtId === districtId ? '' : d.districtId);
+    },
+  }), [points, districtId, setFilter]);
+
+  const insight = useMemo(() => socioInsight(points, metric.short, fit), [points, metric, fit]);
+
+  const exportCsv = () => {
+    if (!points.length) return;
+    downloadCsv(
+      `dappa-socio-scatter_${slug(metric.short)}`,
+      ['district', 'cases', 'rate_per_lakh', 'urban_pct', 'literacy_pct', 'density_per_km2', 'income_idx', 'population'],
+      points.map((p) => [
+        p.name, p.caseCount, fmtNum(p.y, 1),
+        p.socio.urbanPct ?? '', p.socio.literacyPct ?? '', p.socio.densityPerKm2 ?? '',
+        p.socio.perCapitaIncomeIdx ?? '', p.pop || '',
+      ]),
+    );
+    toast.success('Socio-economic join exported');
+  };
+
+  const loading = geoLoading || socio.isLoading;
+  const error = geoError || socio.error;
+
+  return (
+    <div className="space-y-2">
+      <Card
+        title="Socio-economic correlation"
+        subtitle="Case rate per lakh vs district indicators — bubble size is population; current period + crime-head filters apply"
+        actions={(
+          <div className="trends-no-print flex flex-wrap items-center justify-end gap-1.5">
+            {fit && (
+              <Tooltip label={`Pearson correlation across ${fit.n} districts — ${corrWord(fit.r)}`}>
+                <span><Badge tone={Math.abs(fit.r) >= 0.4 ? 'teal' : 'slate'}>r = {fmtNum(fit.r, 2)}</Badge></span>
+              </Tooltip>
+            )}
+            <select
+              className="input-dark !py-2 !px-2 text-xs max-w-[9.5rem] min-h-[40px]"
+              value={metricKey}
+              onChange={(e) => setMetricKey(e.target.value)}
+              aria-label="Socio-economic indicator on the x-axis"
+            >
+              {METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+            <Tooltip label="Download the district × indicator join">
+              <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!points.length}>CSV</button>
+            </Tooltip>
+          </div>
+        )}
+      >
+        <ChartBody
+          option={option}
+          height={330}
+          loading={loading}
+          error={error}
+          onRetry={() => { if (geoError) onRetryGeo?.(); if (socio.error) socio.refetch(); }}
+          emptyMessage="No districts have both a case rate and this indicator."
+          onEvents={onEvents}
+        />
+        <p className="text-[11px] text-muted mt-2">
+          Correlation, not causation: indicators are district-level averages and the fit ignores
+          confounders (reporting practices, station density, migration). Use it to pick where to
+          ask questions — not as evidence on its own.
+        </p>
+      </Card>
+      <InsightLine text={insight} loading={loading} />
+    </div>
+  );
+}

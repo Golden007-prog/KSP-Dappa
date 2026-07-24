@@ -1,11 +1,13 @@
 // /reports — Weekly Intelligence Brief builder: window picker (presets +
 // custom from/to), section toggles AND ordering (persisted, carried to
 // /print/brief via ?sections= / ?order=), an optional "Prepared by" stamp,
+// a classification stamp (?class= → banner/footer/watermark), an editable
+// auto-composed executive summary (?exec= override), live section row counts,
 // KPI deltas vs the prior window, a live print-styled preview, [Generate PDF]
 // via POST /reports/weekly-brief (SmartBrowz when the flag is on; print-CSS
 // fallback opens /print/brief and window.print()), copy-to-clipboard share
-// summary, Markdown download, per-section CSV downloads, and the flag-gated
-// [Email digest] (Catalyst Mail).
+// summary, copy-print-link, Markdown download, per-section CSV downloads, the
+// flag-gated [Email digest] (Catalyst Mail), and a visual-only scheduling card.
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
@@ -17,6 +19,7 @@ import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import BriefContent from './reports/BriefContent.jsx';
 import BriefPrintStyles from './reports/briefStyles.jsx';
+import ScheduleCard from './reports/ScheduleCard.jsx';
 import {
   useBriefData, WINDOWS, DEFAULT_WINDOW, CUSTOM_WINDOW, isValidCustomRange,
 } from './reports/useBriefData.js';
@@ -27,6 +30,11 @@ import {
 import { buildShareSummary } from './reports/summary.js';
 import { buildBriefMarkdown } from './reports/markdown.js';
 import { exportSectionCsv } from './reports/exports.js';
+import { selectOpenAlerts } from './reports/select.js';
+import {
+  composeExecutiveSummary, loadExecOverride, saveExecOverride, wordCount,
+} from './reports/exec.js';
+import { CLASS_LEVELS, CLASS_META, loadClassification, saveClassification } from './reports/classification.js';
 import { downloadBlob } from './alerts/csv.js';
 import { copyText } from './copilot/clipboard.js';
 import { fmtInt } from '../lib/format.js';
@@ -54,6 +62,10 @@ export default function Reports() {
   const [sections, setSections] = useState(loadSections);
   const [order, setOrder] = useState(loadOrder);
   const [preparedBy, setPreparedBy] = useState(loadPreparedBy);
+  const [classification, setClassification] = useState(loadClassification);
+  const [execDraft, setExecDraft] = useState(loadExecOverride);
+  const [execCustom, setExecCustom] = useState(() => !!loadExecOverride());
+  const [execOpen, setExecOpen] = useState(false);
   const isCustom = windowKey === CUSTOM_WINDOW;
   const custom = isCustom ? { from: customFrom, to: customTo } : undefined;
   const customOk = !isCustom || isValidCustomRange(custom);
@@ -78,13 +90,27 @@ export default function Reports() {
   const enabledKeys = order.filter((k) => sections[k] !== false);
   const sectionsParam = sectionsToParam(sections);
   const orderParam = orderToParam(order);
+  // The composed summary tracks live data; a hand-edited override wins and is
+  // persisted + carried to the print view (?exec=) so PDFs match the preview.
+  const composedExec = brief.ready ? composeExecutiveSummary(brief) : '';
+  const execText = execCustom ? execDraft : composedExec;
   const printQs = new URLSearchParams();
   printQs.set('window', windowKey);
   if (isCustom && customOk) { printQs.set('from', customFrom); printQs.set('to', customTo); }
   if (sectionsParam) printQs.set('sections', sectionsParam);
   if (orderParam) printQs.set('order', orderParam);
   if (preparedBy.trim()) printQs.set('by', preparedBy.trim());
+  if (classification !== 'unclassified') printQs.set('class', classification);
+  if (execCustom && execDraft.trim()) printQs.set('exec', execDraft.trim().slice(0, 1600));
   const printSearch = `?${printQs.toString()}`;
+
+  // Live row counts shown on the section chips once the data settles.
+  const chipCounts = brief.ready ? {
+    alerts: selectOpenAlerts(brief, Infinity).length,
+    hotspots: (brief.hotspots.data || []).length,
+    network: new Set((brief.network.data?.nodes || []).map((n) => n.communityId ?? '—')).size,
+    forecast: (brief.risk.data || []).length,
+  } : {};
 
   const toggleSection = (key) => {
     setSections((prev) => {
@@ -109,6 +135,31 @@ export default function Reports() {
   const changePreparedBy = (v) => {
     setPreparedBy(v);
     savePreparedBy(v);
+  };
+
+  const changeClassification = (v) => {
+    setClassification(v);
+    saveClassification(v);
+  };
+
+  const editExec = (v) => {
+    setExecDraft(v);
+    setExecCustom(true);
+    saveExecOverride(v);
+  };
+
+  const resetExec = () => {
+    setExecDraft('');
+    setExecCustom(false);
+    saveExecOverride(null);
+    toast.info('Executive summary reset — it now auto-composes from the window data.');
+  };
+
+  const copyPrintLink = async () => {
+    const url = `${window.location.origin}${window.location.pathname}#/print/brief${printSearch}`;
+    const ok = await copyText(url);
+    if (ok) toast.success('Print-view link copied — paste it anywhere (opens the exact PDF markup).');
+    else toast.error('Copy failed in this browser.');
   };
 
   const generatePdf = async () => {
@@ -147,13 +198,21 @@ export default function Reports() {
   };
 
   const copySummary = async () => {
-    const ok = await copyText(buildShareSummary(brief, sections));
+    const ok = await copyText(buildShareSummary(brief, sections, {
+      execText: execCustom ? execDraft : undefined,
+      classification,
+    }));
     if (ok) toast.success('Share summary copied — paste it into e-mail or WhatsApp.');
     else toast.error('Copy failed in this browser.');
   };
 
   const exportMarkdown = () => {
-    const md = buildBriefMarkdown(brief, sections, { order, preparedBy: preparedBy.trim() });
+    const md = buildBriefMarkdown(brief, sections, {
+      order,
+      preparedBy: preparedBy.trim(),
+      execText: execCustom ? execDraft : undefined,
+      classification,
+    });
     downloadBlob(
       `dappa-weekly-brief-${new Date().toISOString().slice(0, 10)}.md`,
       md,
@@ -235,6 +294,21 @@ export default function Reports() {
             />
           </label>
 
+          <label className="flex items-center gap-2 text-xs text-muted">
+            Classification
+            <select
+              className="input-dark !py-1.5 pr-7"
+              value={classification}
+              onChange={(e) => changeClassification(e.target.value)}
+              aria-label="Classification stamp (header banner, print footer, watermark)"
+              title="Stamped into the header, every printed page's footer, and (Confidential) a diagonal watermark"
+            >
+              {CLASS_LEVELS.map((c) => (
+                <option key={c} value={c}>{CLASS_META[c].label}</option>
+              ))}
+            </select>
+          </label>
+
           <div className="ml-auto flex items-center gap-2">
             {weeklySource && (
               weeklySource === 'fallback-local'
@@ -290,6 +364,12 @@ export default function Reports() {
           <Link to={`/print/brief${printSearch}`} className="btn min-h-[44px] sm:min-h-0" title="The SmartBrowz PDF target route">
             Open print view →
           </Link>
+
+          <Tooltip label="Copy the absolute print-view URL — what SmartBrowz captures, sharable as-is">
+            <button type="button" className="btn min-h-[44px] sm:min-h-0" onClick={copyPrintLink}>
+              Copy print link
+            </button>
+          </Tooltip>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Brief sections (toggle and reorder)">
@@ -312,6 +392,9 @@ export default function Reports() {
                   className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 min-h-[44px] sm:min-h-[26px]"
                 >
                   <span aria-hidden="true">{on ? '✓' : '·'}</span> {s.label}
+                  {chipCounts[key] !== undefined && (
+                    <span className="num text-muted">{fmtInt(chipCounts[key])}</span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -336,6 +419,48 @@ export default function Reports() {
           })}
           {enabledKeys.length === 0 && (
             <span className="text-[11px] text-signal">Enable at least one section to generate the brief.</span>
+          )}
+        </div>
+
+        <div className="mt-3 border-t border-grid/60 pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-expanded={execOpen}
+              onClick={() => setExecOpen((v) => !v)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-ink min-h-[44px] sm:min-h-0 hover:text-primary transition-colors"
+            >
+              <svg
+                width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                className={`transition-transform ${execOpen ? 'rotate-90' : ''}`}
+              >
+                <path d="m9 6 6 6-6 6" />
+              </svg>
+              Executive summary text
+            </button>
+            <Badge tone={execCustom ? 'amber' : 'slate'}>{execCustom ? 'custom' : 'auto-composed'}</Badge>
+            <span className="num text-[11px] text-muted">{fmtInt(wordCount(execText))} words</span>
+          </div>
+          {execOpen && (
+            <div className="mt-2 space-y-2">
+              <textarea
+                className="input-dark w-full !text-xs leading-relaxed"
+                rows={5}
+                value={execText}
+                onChange={(e) => editExec(e.target.value)}
+                placeholder={brief.ready ? 'The auto-composed summary appears here — edit freely.' : 'Waiting for the window data to load…'}
+                aria-label="Executive summary text (stamped into the brief, PDF and exports)"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className={SMALL_BTN} disabled={!execCustom} onClick={resetExec}>
+                  Reset to auto-compose
+                </button>
+                <p className="text-[11px] text-muted">
+                  Edits carry into the print view, PDF, Markdown export and share summary.
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
@@ -371,6 +496,8 @@ export default function Reports() {
         )}
       </Card>
 
+      <ScheduleCard onTest={() => digest.mutate()} testing={digest.isPending} />
+
       <div className="brief-scroll rounded-xl border border-grid shadow-2xl bg-white">
         <div className="brief-a4">
           <BriefContent
@@ -378,6 +505,8 @@ export default function Reports() {
             sections={sections}
             order={order}
             preparedBy={preparedBy.trim()}
+            execText={execCustom ? execDraft : undefined}
+            classification={classification}
             style={{ minHeight: 0 }}
           />
         </div>

@@ -14,8 +14,11 @@ import { differenceInCalendarDays, isValid, parse } from 'date-fns';
 /** Every explorer-managed key — shared trio + extended set (used by presets/clear). */
 export const EXPLORER_KEYS = [
   'districtId', 'unitId', 'crimeHeadId', 'crimeSubHeadId', 'gravityId',
-  'status', 'range', 'from', 'to', 'q', 'anomaly', 'starred',
+  'status', 'range', 'from', 'to', 'q', 'anomaly', 'starred', 'minAge',
 ];
+
+/** Pending-age refinement steps offered by the filter sheet (days). */
+export const MIN_AGE_OPTIONS = [30, 90, 180];
 
 /** Keys the server actually filters on (safe to send as query params). */
 export const SERVER_KEYS = ['districtId', 'unitId', 'crimeHeadId', 'crimeSubHeadId', 'gravityId', 'from', 'to'];
@@ -67,7 +70,8 @@ export function useExplorerParams() {
       const next = new URLSearchParams(prev);
       for (const [key, value] of Object.entries(patch)) {
         const empty = value === undefined || value === null || value === ''
-          || (key === 'range' && value === 'all') || ((key === 'anomaly' || key === 'starred') && !value);
+          || (key === 'range' && value === 'all')
+          || ((key === 'anomaly' || key === 'starred' || key === 'minAge') && !value);
         if (empty) next.delete(key); else next.set(key, String(value));
         if (key === 'range') { next.delete('from'); next.delete('to'); }
         if ((key === 'from' || key === 'to') && !empty) next.delete('range');
@@ -101,6 +105,8 @@ export function useExplorerParams() {
     q: searchParams.get('q') || '',
     anomalyOnly: searchParams.get('anomaly') === '1',
     starredOnly: searchParams.get('starred') === '1',
+    // Client-side pending-age refinement (days since registration).
+    minAgeDays: Math.max(0, Math.round(Number(searchParams.get('minAge')) || 0)),
     setMany,
     applyParams,
     clearAll,

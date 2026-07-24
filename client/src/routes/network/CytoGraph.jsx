@@ -3,11 +3,16 @@
 //   elements      — cytoscape element list ({data:{…}} nodes + edges); node data
 //                   must carry color/size, edge data width (precomputed by caller);
 //                   node data.isEgo === 1 gets the teal ego ring
-//   layout        — 'fcose' (default) | 'concentric' | 'grid'
+//   layout        — 'fcose' (default) | 'concentric' | 'grid' | 'breadthfirst'
+//                   (breadthfirst roots each component at its top-degree node
+//                   for an org-chart style tier view)
 //   selectedId    — element id to mark with the amber selection ring (nodes AND
 //                   edges get a visible highlight)
 //   pathIds       — element ids (nodes + edges) of the highlighted shortest path;
 //                   everything else dims while a path is shown
+//   highlightIds? — element ids to emphasize with a dashed amber style while
+//                   everything else dims (path highlight wins when both given);
+//                   node data.watch === 1 renders as a diamond (watchlist)
 //   showLabels?   — default true; false hides node labels (selected/path nodes
 //                   keep theirs so a tapped node is always identifiable)
 //   neighborFocus?— default false; true dims everything except the selected
@@ -75,12 +80,20 @@ function buildStyle(t, showLabels) {
         opacity: 0.75,
       },
     },
+    // Watchlisted people render as diamonds (shape survives all ring states).
+    { selector: 'node[watch = 1]', style: { shape: 'diamond' } },
     // Ego focus ring (teal) — under the amber selected/path rings in priority.
     {
       selector: 'node[isEgo = 1]',
       style: { 'border-width': 3, 'border-color': t.teal, color: t.ink, 'text-opacity': 1 },
     },
     { selector: '.dimmed', style: { opacity: 0.12, 'text-opacity': 0.1 } },
+    // Bridge/broker highlight — dashed amber, defined after .dimmed so it wins.
+    {
+      selector: 'node.hl',
+      style: { 'border-width': 3, 'border-color': t.amber, 'border-style': 'dashed', color: t.ink, opacity: 1, 'text-opacity': 1 },
+    },
+    { selector: 'edge.hl', style: { 'line-color': t.amber, 'line-style': 'dashed', opacity: 0.9 } },
     {
       selector: 'node.selected',
       style: { 'border-width': 3, 'border-color': t.amber, color: t.ink, 'font-size': 10, opacity: 1, 'text-opacity': 1 },
@@ -123,6 +136,16 @@ const LAYOUTS = {
     avoidOverlap: true,
     condense: true,
   },
+  breadthfirst: {
+    name: 'breadthfirst',
+    animate: true,
+    animationDuration: 450,
+    padding: 24,
+    directed: false,
+    spacingFactor: 1.15,
+    avoidOverlap: true,
+    grid: false,
+  },
 };
 
 /** Panel background for PNG export — resolved from the live theme tokens. */
@@ -135,7 +158,7 @@ function panelBg() {
 }
 
 export default function CytoGraph({
-  elements = [], layout = 'fcose', selectedId = '', pathIds = [],
+  elements = [], layout = 'fcose', selectedId = '', pathIds = [], highlightIds = [],
   showLabels = true, neighborFocus = false, ariaLabel,
   onNodeTap, onEdgeTap, onBackgroundTap, onLayoutStop, apiRef,
   height = 560, className = '',
@@ -155,7 +178,19 @@ export default function CytoGraph({
   const runLayout = () => {
     const cy = cyRef.current;
     if (!cy || !cy.elements().length) return;
-    const l = cy.layout(LAYOUTS[layoutRef.current] || LAYOUTS.fcose);
+    const opts = { ...(LAYOUTS[layoutRef.current] || LAYOUTS.fcose) };
+    if (opts.name === 'breadthfirst') {
+      // Root each component at its highest-degree node → org-chart tiers with
+      // the key connector on top, instead of cytoscape's arbitrary default.
+      const roots = [];
+      for (const comp of cy.elements().components()) {
+        let best = null;
+        comp.nodes().forEach((n) => { if (!best || n.degree(false) > best.degree(false)) best = n; });
+        if (best) roots.push(best.id());
+      }
+      if (roots.length) opts.roots = roots;
+    }
+    const l = cy.layout(opts);
     l.one('layoutstop', () => handlersRef.current.onLayoutStop?.());
     l.run();
   };
@@ -236,24 +271,32 @@ export default function CytoGraph({
   }, [layout]);
 
   const pathKey = pathIds.join('|');
+  const hlKey = highlightIds.join('|');
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
     cy.batch(() => {
-      cy.elements().removeClass('selected onpath dimmed');
+      cy.elements().removeClass('selected onpath dimmed hl');
       if (pathIds.length) {
         cy.elements().addClass('dimmed');
         for (const id of pathIds) {
           const el = cy.getElementById(String(id));
           if (el && el.length) el.removeClass('dimmed').addClass('onpath');
         }
+      } else if (highlightIds.length) {
+        // Bridge/broker emphasis — dashed amber over a dimmed graph.
+        cy.elements().addClass('dimmed');
+        for (const id of highlightIds) {
+          const el = cy.getElementById(String(id));
+          if (el && el.length) el.removeClass('dimmed').addClass('hl');
+        }
       }
       if (selectedId) {
         const el = cy.getElementById(String(selectedId));
         if (el && el.length) {
           // Neighbor-focus: dim everything except the selection's closed
-          // neighborhood (path highlight wins when both are active).
-          if (neighborFocus && !pathIds.length) {
+          // neighborhood (path/bridge highlights win when active).
+          if (neighborFocus && !pathIds.length && !highlightIds.length) {
             cy.elements().addClass('dimmed');
             if (el.isNode()) el.closedNeighborhood().removeClass('dimmed');
             else el.union(el.connectedNodes()).removeClass('dimmed');
@@ -263,7 +306,7 @@ export default function CytoGraph({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements, selectedId, pathKey, neighborFocus]);
+  }, [elements, selectedId, pathKey, hlKey, neighborFocus]);
 
   return (
     <div

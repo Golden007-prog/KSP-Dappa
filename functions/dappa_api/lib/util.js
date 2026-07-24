@@ -80,6 +80,31 @@ function parseJsonSafe(raw, dflt) {
   }
 }
 
+/** Pearson correlation of two equal-length numeric arrays.
+ * Returns null when n < 3 or either side has zero variance (an r of 0 would
+ * misread "not computable" as "no relationship"). */
+function pearson(xs, ys) {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 3) return null;
+  let sx = 0;
+  let sy = 0;
+  for (let i = 0; i < n; i += 1) { sx += toNum(xs[i]); sy += toNum(ys[i]); }
+  const mx = sx / n;
+  const my = sy / n;
+  let num = 0;
+  let dx = 0;
+  let dy = 0;
+  for (let i = 0; i < n; i += 1) {
+    const a = toNum(xs[i]) - mx;
+    const b = toNum(ys[i]) - my;
+    num += a * b;
+    dx += a * a;
+    dy += b * b;
+  }
+  if (dx === 0 || dy === 0) return null;
+  return num / Math.sqrt(dx * dy);
+}
+
 function logJson(level, evt, extra) {
   const rec = Object.assign({ ts: new Date().toISOString(), level, evt }, extra || {});
   // Structured single-line logs for Catalyst function log viewer.
@@ -99,4 +124,4 @@ function toCsv(rows, columns) {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-module.exports = { pad2, ymOf, ymAdd, ymRange, toNum, round, pctDelta, fmtInt, hash32, parseJsonSafe, logJson, toCsv };
+module.exports = { pad2, ymOf, ymAdd, ymRange, toNum, round, pctDelta, fmtInt, hash32, pearson, parseJsonSafe, logJson, toCsv };

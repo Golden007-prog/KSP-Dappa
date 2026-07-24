@@ -1,9 +1,13 @@
 // Toast notifications — ToastProvider mounts once in App.jsx; routes call:
 //   const toast = useToast();
 //   toast.success('Alert acknowledged');  toast.error('Save failed');  toast.info('…');
-// Each takes (message, {duration?}) — errors default to a longer 6.5s stay.
+// Each takes (message, {duration?, action?}) — errors default to a longer 6.5s
+// stay; action is {label, onClick} and renders as an inline button (onClick
+// runs, then the toast dismisses itself). Auto-dismiss pauses while the
+// pointer or keyboard focus is on a toast so actions can't vanish mid-reach.
 // The viewport is aria-live (polite; errors are role="alert") and sits above
-// the mobile tab bar. Dependency-free; portal to <body>.
+// the mobile tab bar; a Dismiss-all control appears once 3+ toasts stack.
+// Dependency-free; portal to <body>.
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -29,30 +33,67 @@ function ToneIcon({ tone }) {
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
+  // per-toast {timer, expiresAt, remaining} so hover-pause can resume with the
+  // time that was actually left rather than restarting the full duration
   const timersRef = useRef(new Map());
 
   const dismiss = useCallback((id) => {
     const t = timersRef.current.get(id);
-    if (t) { clearTimeout(t); timersRef.current.delete(id); }
+    if (t) { clearTimeout(t.timer); timersRef.current.delete(id); }
     setToasts((list) => list.filter((x) => x.id !== id));
   }, []);
 
-  const push = useCallback((tone, message, { duration } = {}) => {
+  const dismissAll = useCallback(() => {
+    for (const t of timersRef.current.values()) clearTimeout(t.timer);
+    timersRef.current.clear();
+    setToasts([]);
+  }, []);
+
+  const arm = useCallback((id, ms) => {
+    timersRef.current.set(id, {
+      timer: setTimeout(() => dismiss(id), ms),
+      expiresAt: Date.now() + ms,
+      remaining: 0,
+    });
+  }, [dismiss]);
+
+  const pause = useCallback((id) => {
+    const t = timersRef.current.get(id);
+    if (!t || t.remaining) return;
+    clearTimeout(t.timer);
+    t.remaining = Math.max(1200, t.expiresAt - Date.now());
+  }, []);
+
+  const resume = useCallback((id) => {
+    const t = timersRef.current.get(id);
+    if (!t || !t.remaining) return;
+    const ms = t.remaining;
+    timersRef.current.set(id, {
+      timer: setTimeout(() => dismiss(id), ms),
+      expiresAt: Date.now() + ms,
+      remaining: 0,
+    });
+  }, [dismiss]);
+
+  const push = useCallback((tone, message, { duration, action } = {}) => {
     const id = ++toastSeq;
     const stay = duration ?? (tone === 'error' ? 6500 : 4000);
+    const safeAction = action && typeof action.onClick === 'function' && action.label
+      ? { label: String(action.label), onClick: action.onClick }
+      : null;
     setToasts((list) => {
-      const next = [...list, { id, tone, message }];
+      const next = [...list, { id, tone, message, action: safeAction }];
       // max 4 on screen — clear the timers of anything we evict so a busy
       // screen doesn't leak orphaned timeouts
       for (const evicted of next.slice(0, Math.max(0, next.length - 4))) {
         const timer = timersRef.current.get(evicted.id);
-        if (timer) { clearTimeout(timer); timersRef.current.delete(evicted.id); }
+        if (timer) { clearTimeout(timer.timer); timersRef.current.delete(evicted.id); }
       }
       return next.slice(-4);
     });
-    timersRef.current.set(id, setTimeout(() => dismiss(id), stay));
+    arm(id, stay);
     return id;
-  }, [dismiss]);
+  }, [arm]);
 
   const api = useMemo(() => ({
     success: (msg, opts) => push('success', msg, opts),
@@ -70,17 +111,45 @@ export function ToastProvider({ children }) {
           aria-label="Notifications"
           className="no-print fixed z-80 bottom-20 md:bottom-6 right-3 left-3 md:left-auto md:right-6 md:w-96 flex flex-col gap-2 pointer-events-none mb-safe"
         >
+          {toasts.length >= 3 && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={dismissAll}
+                className="pointer-events-auto rounded-full border border-grid bg-panel px-3 py-1 text-[11px] text-muted hover:text-ink shadow-card transition-colors"
+              >
+                Dismiss all ({toasts.length})
+              </button>
+            </div>
+          )}
           {toasts.map((t) => {
             const tone = TONE[t.tone] || TONE.info;
             return (
               <div
                 key={t.id}
                 role={t.tone === 'error' ? 'alert' : 'status'}
+                onMouseEnter={() => pause(t.id)}
+                onMouseLeave={() => resume(t.id)}
+                onFocus={() => pause(t.id)}
+                onBlur={() => resume(t.id)}
                 className="pointer-events-auto flex items-stretch overflow-hidden rounded-xl border border-grid bg-panel shadow-lift animate-fade-up"
               >
                 <div className={`w-1 shrink-0 ${tone.bar}`} aria-hidden="true" />
                 <div className={`flex items-center pl-3 ${tone.text}`}><ToneIcon tone={t.tone} /></div>
-                <p className="flex-1 px-3 py-3 text-sm text-ink leading-snug">{t.message}</p>
+                <div className="flex-1 min-w-0 px-3 py-3">
+                  <p className="text-sm text-ink leading-snug">{t.message}</p>
+                  {t.action && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try { t.action.onClick(); } finally { dismiss(t.id); }
+                      }}
+                      className="mt-1.5 inline-flex min-h-[32px] items-center rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                    >
+                      {t.action.label}
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => dismiss(t.id)}

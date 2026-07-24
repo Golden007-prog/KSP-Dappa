@@ -35,6 +35,54 @@ const BARE_ALIASES = [
 for (const [phrase, id] of BARE_ALIASES) DISTRICT_PHRASES.push({ phrase, id });
 DISTRICT_PHRASES.sort((a, b) => b.phrase.length - a.phrase.length);
 
+/** All district mentions in text order, longest phrase wins overlapping spans
+ * (so "hubballi-dharwad city" never double-counts as Dharwad District too). */
+function findDistricts(t) {
+  const spans = [];
+  const found = [];
+  for (const d of DISTRICT_PHRASES) {
+    let idx = t.indexOf(d.phrase);
+    while (idx !== -1) {
+      const end = idx + d.phrase.length;
+      if (!spans.some(([s, e]) => idx < e && end > s)) {
+        spans.push([idx, end]);
+        found.push({ id: d.id, at: idx });
+      }
+      idx = t.indexOf(d.phrase, idx + 1);
+    }
+  }
+  found.sort((a, b) => a.at - b.at);
+  const ids = [];
+  for (const f of found) if (!ids.includes(f.id)) ids.push(f.id);
+  return ids;
+}
+
+// Time-of-day bands for hotspot questions ("hotspots at night").
+const HOUR_BANDS = [
+  [/\bnight-?time\b|\bnight\b/, { start: 21, end: 5, label: 'night (21:00–05:00)' }],
+  [/\bevening\b/, { start: 17, end: 21, label: 'evening (17:00–21:00)' }],
+  [/\bmorning\b/, { start: 5, end: 12, label: 'morning (05:00–12:00)' }],
+  [/\bafternoon\b/, { start: 12, end: 17, label: 'afternoon (12:00–17:00)' }]
+];
+
+function hoursIn(start, end) {
+  const out = new Set();
+  let h = ((start % 24) + 24) % 24;
+  const stop = ((end % 24) + 24) % 24;
+  out.add(h);
+  while (h !== stop) {
+    h = (h + 1) % 24;
+    out.add(h);
+  }
+  return out;
+}
+
+function hourBandsOverlap(aStart, aEnd, bStart, bEnd) {
+  const a = hoursIn(aStart, aEnd);
+  for (const h of hoursIn(bStart, bEnd)) if (a.has(h)) return true;
+  return false;
+}
+
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const MONTH_LOOKUP = {
@@ -68,7 +116,8 @@ function parse(text, now) {
   const nowYm = ymOf(now);
   const t = ` ${String(text || '').toLowerCase().replace(/[?.!,;:]/g, ' ').replace(/\s+/g, ' ').trim()} `;
   const intent = {
-    kind: null, n: 5, districtId: null, headId: null, subHeadId: null,
+    kind: null, n: 5, districtId: null, districtId2: null, headId: null, subHeadId: null,
+    hourBand: null,
     fromYm: ymAdd(nowYm, -11), toYm: nowYm, years: null, rangeText: 'last 12 months'
   };
 
@@ -81,8 +130,11 @@ function parse(text, now) {
       break;
     }
   }
-  for (const d of DISTRICT_PHRASES) {
-    if (t.includes(d.phrase)) { intent.districtId = d.id; break; }
+  const districtIds = findDistricts(t);
+  intent.districtId = districtIds[0] || null;
+  intent.districtId2 = districtIds[1] || null;
+  for (const [re, band] of HOUR_BANDS) {
+    if (re.test(t)) { intent.hourBand = band; break; }
   }
 
   let timeHit = true;
@@ -114,6 +166,7 @@ function parse(text, now) {
   }
 
   const top = t.match(/top\s+(\d+)?\s*(districts?|stations?|crime heads?|heads?|sub ?heads?|repeat offenders?|offenders?)/);
+  const whyAsk = /\bwhy\b/.test(t) && /\b(rising|increasing|surging|spiking|going up|shot up|rises|rise)\b/.test(t);
   if (top) {
     intent.n = top[1] ? Math.max(1, Math.min(20, Number(top[1]))) : 5;
     const target = top[2];
@@ -121,7 +174,9 @@ function parse(text, now) {
     else if (target.startsWith('station')) intent.kind = 'risk';
     else if (target.includes('head')) intent.kind = 'topHeads';
     else intent.kind = 'offenders';
-  } else if (intent.years || t.includes('compare')) intent.kind = 'compareYears';
+  } else if (whyAsk) intent.kind = 'whyRising';
+  else if (!intent.years && intent.districtId2 && (t.includes('compare') || /\bvs\b/.test(t) || t.includes('versus'))) intent.kind = 'compareDistricts';
+  else if (intent.years || t.includes('compare')) intent.kind = 'compareYears';
   else if (t.includes('heinous')) intent.kind = 'heinousShare';
   else if (t.includes('per lakh') || t.includes('crime rate')) intent.kind = 'ratePerLakh';
   else if (t.includes('risk')) intent.kind = 'risk';
@@ -415,14 +470,129 @@ async function runHotspots(intent, deps) {
   const { ds, lk } = deps;
   const where = intent.districtId ? [{ col: 'DistrictID', op: '=', val: intent.districtId }] : [];
   const q = {
-    table: 'HotspotCluster', columns: ['ClusterID', 'Label', 'Intensity', 'CaseCount', 'DistrictID'],
-    where, orderBy: { col: 'Intensity', desc: true }, limit: { count: intent.n }
+    table: 'HotspotCluster', columns: ['ClusterID', 'Label', 'Intensity', 'CaseCount', 'DistrictID', 'HourBandStart', 'HourBandEnd'],
+    where, orderBy: { col: 'Intensity', desc: true }, limit: { count: 100 }
   };
-  const rows = await ds.query(q);
+  let rows = await ds.query(q);
+  let when = '';
+  if (intent.hourBand) {
+    rows = rows.filter((r) => hourBandsOverlap(toNum(r.HourBandStart), toNum(r.HourBandEnd), intent.hourBand.start, intent.hourBand.end));
+    when = ` active during ${intent.hourBand.label}`;
+  }
+  rows = rows.slice(0, intent.n);
   const answer = rows.length
-    ? `Top hotspot${rows.length > 1 ? 's' : ''} in ${placeLabel(intent, lk)}: ${rows.map((r) => `${r.Label} (intensity ${round(toNum(r.Intensity), 0)}, ${fmtInt(r.CaseCount)} cases)`).join('; ')}.`
-    : `No active hotspot clusters in ${placeLabel(intent, lk)} for the trailing window.`;
+    ? `Top hotspot${rows.length > 1 ? 's' : ''} in ${placeLabel(intent, lk)}${when}: ${rows.map((r) => `${r.Label} (intensity ${round(toNum(r.Intensity), 0)}, ${fmtInt(r.CaseCount)} cases)`).join('; ')}.`
+    : `No active hotspot clusters in ${placeLabel(intent, lk)}${when} for the trailing window.`;
   return { answer, zcql: ds.buildZCQL(q) };
+}
+
+async function runCompareDistricts(intent, deps) {
+  const { ds, lk } = deps;
+  const months = ymRange(intent.fromYm, intent.toYm);
+  const sides = [];
+  let lastSql = '';
+  for (const id of [intent.districtId, intent.districtId2]) {
+    const q = {
+      table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)'],
+      where: [{ col: 'Ym', op: '>=', val: intent.fromYm }, { col: 'Ym', op: '<=', val: intent.toYm }]
+        .concat(intent.subHeadId ? [{ col: 'CrimeSubHeadID', op: '=', val: intent.subHeadId }]
+          : intent.headId ? [{ col: 'CrimeHeadID', op: '=', val: intent.headId }] : [])
+        .concat([{ col: 'DistrictID', op: '=', val: id }]),
+      groupBy: ['Ym'], orderBy: { col: 'Ym' }
+    };
+    lastSql = ds.buildZCQL(q);
+    const rows = await ds.query(q);
+    const byYm = new Map(rows.map((r) => [r.Ym, toNum(r['SUM(CaseCount)'])]));
+    const data = months.map((m) => byYm.get(m) || 0);
+    sides.push({ name: lk.districtName(id), data, total: data.reduce((s, n) => s + n, 0) });
+  }
+  const label = crimeLabel(intent, lk);
+  const [a, b] = sides;
+  const d = pctDelta(a.total, b.total);
+  const rel = a.total === b.total ? 'level with' : a.total > b.total ? `${Math.abs(d)}% higher than` : `${Math.abs(d)}% lower than`;
+  const answer = `${label}, ${intent.rangeText}: ${a.name} registered ${fmtInt(a.total)} cases vs ${fmtInt(b.total)} in ${b.name} — ${a.name} is ${rel} ${b.name}.`;
+  return {
+    answer,
+    chart: {
+      type: 'line', title: `${label} — ${a.name} vs ${b.name} (${intent.rangeText})`,
+      categories: months, series: sides.map((s) => ({ name: s.name, data: s.data }))
+    },
+    zcql: lastSql
+  };
+}
+
+/** "Why is X rising": trend verdict from AggMonthly (last 3 months vs prior
+ * baseline) plus corroborating insights — biggest contributing sub-pattern,
+ * matching open anomaly alert, and the strongest overlapping hotspot. */
+async function runWhyRising(intent, deps) {
+  const { ds, lk } = deps;
+  const label = crimeLabel(intent, lk);
+  const place = placeLabel(intent, lk);
+  const months = ymRange(intent.fromYm, intent.toYm);
+  const q = { table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)'], where: crimeWhere(intent), groupBy: ['Ym'], orderBy: { col: 'Ym' } };
+  const rows = await ds.query(q);
+  const byYm = new Map(rows.map((r) => [r.Ym, toNum(r['SUM(CaseCount)'])]));
+  const data = months.map((m) => byYm.get(m) || 0);
+  const split = Math.max(1, data.length - 3);
+  const mean = (a) => (a.length ? a.reduce((s, n) => s + n, 0) / a.length : 0);
+  const recentAvg = mean(data.slice(split));
+  const baseAvg = mean(data.slice(0, split));
+  const growth = pctDelta(recentAvg, baseAvg);
+  let verdict;
+  if (growth > 5) verdict = `is up ${growth}% — the last ${data.length - split} months averaged ${round(recentAvg, 1)} cases/month vs ${round(baseAvg, 1)} over the prior ${split}`;
+  else if (growth < -5) verdict = `is actually DOWN ${Math.abs(growth)}% (${round(recentAvg, 1)}/month recently vs ${round(baseAvg, 1)} before)`;
+  else verdict = `is broadly flat (${round(recentAvg, 1)}/month recently vs ${round(baseAvg, 1)} before, ${growth >= 0 ? '+' : ''}${growth}%)`;
+  const causes = [];
+  if (!intent.subHeadId) {
+    try {
+      const subRows = await ds.query({
+        table: 'AggMonthly', columns: ['CrimeSubHeadID', 'Ym', 'SUM(CaseCount)'],
+        where: crimeWhere(intent), groupBy: ['CrimeSubHeadID', 'Ym']
+      });
+      const recentSet = new Set(months.slice(split));
+      const per = new Map();
+      for (const r of subRows) {
+        const id = toNum(r.CrimeSubHeadID);
+        if (!per.has(id)) per.set(id, { recent: 0, base: 0 });
+        if (recentSet.has(r.Ym)) per.get(id).recent += toNum(r['SUM(CaseCount)']);
+        else per.get(id).base += toNum(r['SUM(CaseCount)']);
+      }
+      let best = null;
+      for (const [id, v] of per) {
+        const rAvg = v.recent / Math.max(1, data.length - split);
+        const bAvg = v.base / Math.max(1, split);
+        const g = pctDelta(rAvg, bAvg);
+        if (rAvg >= 2 && (!best || g > best.g)) best = { id, g };
+      }
+      if (best && best.g > 0) causes.push(`the biggest contributor is ${lk.subHeadName(best.id)} (+${best.g}% vs baseline)`);
+    } catch (e) { /* contributor analysis is optional */ }
+  }
+  try {
+    const aw = [{ col: 'Status', op: '=', val: 'OPEN' }];
+    if (intent.headId) aw.push({ col: 'CrimeHeadID', op: '=', val: intent.headId });
+    if (intent.districtId) aw.push({ col: 'DistrictID', op: '=', val: intent.districtId });
+    const alerts = await ds.query({ table: 'AnomalyAlert', columns: ['Narrative', 'ZScore'], where: aw, orderBy: { col: 'ZScore', desc: true }, limit: { count: 1 } });
+    if (alerts.length) causes.push(`an open anomaly alert flags this pattern ("${alerts[0].Narrative}", z=${round(toNum(alerts[0].ZScore), 1)})`);
+  } catch (e) { /* alerts are optional */ }
+  try {
+    const hw = [];
+    if (intent.headId) hw.push({ col: 'CrimeHeadID', op: '=', val: intent.headId });
+    if (intent.districtId) hw.push({ col: 'DistrictID', op: '=', val: intent.districtId });
+    const hs = await ds.query({ table: 'HotspotCluster', columns: ['Label', 'Intensity'], where: hw, orderBy: { col: 'Intensity', desc: true }, limit: { count: 1 } });
+    if (hs.length) causes.push(`activity concentrates in the "${hs[0].Label}" hotspot`);
+  } catch (e) { /* hotspots are optional */ }
+  let answer = `${label} in ${place} ${verdict} (window: ${intent.rangeText}).`;
+  answer += causes.length
+    ? ` ${growth > 5 ? 'Why' : 'Context'}: ${causes.join('; ')}.`
+    : ' No open anomaly alert or active hotspot currently corroborates a structural shift — the movement is within normal variation.';
+  return {
+    answer,
+    chart: {
+      type: 'line', title: `${label} — ${place} (${intent.rangeText})`,
+      categories: months, series: [{ name: label, data }]
+    },
+    zcql: ds.buildZCQL(q)
+  };
 }
 
 async function runOffenders(intent, deps) {
@@ -507,6 +677,8 @@ const RUNNERS = {
   topDistricts: runTopDistricts,
   topHeads: runTopHeads,
   compareYears: runCompareYears,
+  compareDistricts: runCompareDistricts,
+  whyRising: runWhyRising,
   risk: runRisk,
   detectionRate: runDetectionRate,
   heinousShare: runHeinousShare,
@@ -550,7 +722,10 @@ const CANNED_UTTERANCES = [
   'seasonality of house burglary',
   'compare cheating 2025 vs 2026 in Bengaluru City',
   'crime rate per lakh in Bengaluru City',
-  'heinous share this year'
+  'heinous share this year',
+  'compare Bengaluru City and Mysuru City last 6 months',
+  'why is chain snatching rising in Mysuru City',
+  'hotspots at night in Bengaluru City'
 ];
 
 module.exports = { parse, answer, CANNED_UTTERANCES };

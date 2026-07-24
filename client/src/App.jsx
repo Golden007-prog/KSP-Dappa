@@ -28,8 +28,78 @@ const Reports = lazy(() => import('./routes/Reports.jsx'));
 const PrintBrief = lazy(() => import('./routes/PrintBrief.jsx'));
 const About = lazy(() => import('./routes/About.jsx'));
 
-/** Page-shaped skeleton shown while a route chunk downloads. */
-function RouteFallback() {
+/** Which skeleton shape fits the destination while its chunk downloads. */
+function fallbackKindFor(pathname) {
+  if (pathname === '/map') return 'map';
+  if (pathname === '/copilot') return 'chat';
+  if (pathname === '/cases' || pathname === '/offenders' || pathname === '/alerts') return 'table';
+  if (/^\/(cases|offenders)\/./.test(pathname)) return 'detail';
+  return 'page';
+}
+
+/** Route-shaped skeleton shown while a route chunk downloads — the placeholder
+ * mirrors the destination's real footprint (map canvas, table rows, chat
+ * bubbles…) so the swap to live content doesn't jump the layout. */
+function RouteFallback({ kind = 'page' }) {
+  if (kind === 'map') {
+    return (
+      <div className="space-y-3" aria-busy="true" aria-label="Loading map view">
+        <div className="flex gap-2 overflow-hidden">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <LoadingSkeleton key={i} height={36} className="max-w-[8rem]" />
+          ))}
+        </div>
+        <LoadingSkeleton height="min(62vh, 560px)" className="rounded-xl" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <LoadingSkeleton key={i} height={64} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (kind === 'table') {
+    return (
+      <div className="space-y-3" aria-busy="true" aria-label="Loading records">
+        <LoadingSkeleton height={24} className="max-w-[16rem]" />
+        <LoadingSkeleton height={52} className="rounded-xl" />
+        <div className="space-y-2">
+          <LoadingSkeleton height={30} />
+          {Array.from({ length: 8 }).map((_, i) => (
+            <LoadingSkeleton key={i} height={38} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (kind === 'chat') {
+    return (
+      <div className="space-y-3" aria-busy="true" aria-label="Loading Ask DAPPA">
+        <LoadingSkeleton height={24} className="max-w-[16rem]" />
+        <LoadingSkeleton height={72} className="max-w-[75%] rounded-2xl" />
+        <div className="flex justify-end">
+          <LoadingSkeleton height={48} className="max-w-[60%] rounded-2xl" />
+        </div>
+        <LoadingSkeleton height={110} className="max-w-[75%] rounded-2xl" />
+        <LoadingSkeleton height={52} className="rounded-xl" />
+      </div>
+    );
+  }
+  if (kind === 'detail') {
+    return (
+      <div className="space-y-4" aria-busy="true" aria-label="Loading record detail">
+        <div className="space-y-2">
+          <LoadingSkeleton height={14} className="max-w-[10rem]" />
+          <LoadingSkeleton height={26} className="max-w-[22rem]" />
+        </div>
+        <div className="grid lg:grid-cols-3 gap-4">
+          <LoadingSkeleton height={220} className="lg:col-span-2" />
+          <LoadingSkeleton height={220} />
+        </div>
+        <LoadingSkeleton height={180} />
+      </div>
+    );
+  }
   return (
     <div className="space-y-4" aria-busy="true" aria-label="Loading view">
       <div className="space-y-2">
@@ -53,7 +123,7 @@ function Boundary({ label, children }) {
   const location = useLocation();
   return (
     <ErrorBoundary key={location.pathname} label={label}>
-      <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+      <Suspense fallback={<RouteFallback kind={fallbackKindFor(location.pathname)} />}>{children}</Suspense>
     </ErrorBoundary>
   );
 }

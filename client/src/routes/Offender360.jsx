@@ -1,8 +1,10 @@
 // Offender 360 — identity card with risk gauge + percentile + activity
-// sparkline, alias chips, Karnataka mini-map with district hops, mini ego
-// graph, filterable case timeline (year-grouped), MO signature chips,
-// add-to-compare, printable dossier, community link back to the Network
-// Explorer. Spec: master prompt §7 route 5.
+// sparkline, alias chips with resolution-confidence badges, Karnataka mini-map
+// with district hops, behavioral tempo + case-mix analytics, mini ego graph,
+// associates with risk-at-a-glance, filterable case timeline (year-grouped,
+// dormancy gaps flagged), MO signature chips, watchlist star, copy-link,
+// prev/next risk-rank navigation, add-to-compare, printable dossier, community
+// link back to the Network Explorer. Spec: master prompt §7 route 5.
 import { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useOffender, useOffenders } from '../lib/api.js';
@@ -15,12 +17,17 @@ import MiniChoropleth from '../components/MiniChoropleth.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt, dateLabel } from '../lib/format.js';
 import { communityColor } from './network/graphUtils.js';
+import { copyText } from './network/clipboard.js';
 import RiskGauge from './offenders/RiskGauge.jsx';
 import MiniEgoGraph from './offenders/MiniEgoGraph.jsx';
 import YearSparkline from './offenders/YearSparkline.jsx';
 import OffenderTimeline from './offenders/Timeline.jsx';
+import { TempoCard, CaseMixCard } from './offenders/BehaviorCards.jsx';
+import { RiskBadge } from './offenders/common.jsx';
+import { aliasConfidence, confidenceBand } from './offenders/identity.js';
 import { addToCompare, COMPARE_MAX } from './offenders/compareStore.js';
 import { pushRecent } from './offenders/recentStore.js';
+import { useWatchlist, WATCH_MAX } from './offenders/watchlistStore.js';
 import './offenders/offender360-print.css';
 
 /** CrimeNo = [cat 1][district 4][unit 4][year 4][serial 5] → district unit code. */
@@ -59,6 +66,29 @@ export default function Offender360() {
     for (const r of registry.data?.rows || []) m.set(String(r.personKey), r.canonicalName);
     return m;
   }, [registry.data]);
+
+  // Full registry rows by key — risk badges for associate rows.
+  const profileByKey = useMemo(() => {
+    const m = new Map();
+    for (const r of registry.data?.rows || []) m.set(String(r.personKey), r);
+    return m;
+  }, [registry.data]);
+
+  const { keys: watchKeys, toggle: toggleWatchKey } = useWatchlist();
+  const watched = watchKeys.has(String(p.personKey || personKey));
+
+  // Prev/next navigation through the loaded registry in risk order — walk the
+  // slice the way the registry table ranks it (top FETCH_CAP by risk).
+  const riskRank = useMemo(() => {
+    const rows = [...(registry.data?.rows || [])]
+      .sort((a, b) => (Number(b.riskScore) || 0) - (Number(a.riskScore) || 0));
+    const i = rows.findIndex((r) => String(r.personKey) === String(p.personKey || personKey));
+    return { rows, i };
+  }, [registry.data, p.personKey, personKey]);
+  const prevOff = riskRank.i > 0 ? riskRank.rows[riskRank.i - 1] : null;
+  const nextOff = riskRank.i >= 0 && riskRank.i < riskRank.rows.length - 1
+    ? riskRank.rows[riskRank.i + 1]
+    : null;
 
   // Risk percentile against the loaded registry slice (top 200 by risk) —
   // computed client-side, so it is a relative position, not a global rank.
@@ -128,6 +158,19 @@ export default function Offender360() {
     else toast.info(`Compare holds up to ${COMPARE_MAX} offenders — remove one in the registry first.`);
   };
 
+  const toggleWatch = () => {
+    const r = toggleWatchKey(p.personKey || personKey, p.canonicalName);
+    if (r.status === 'added') toast.success('Added to the watchlist — starred across Offenders and Network.');
+    else if (r.status === 'removed') toast.info('Removed from the watchlist.');
+    else toast.info(`Watchlist holds up to ${WATCH_MAX} people — remove one first.`);
+  };
+
+  const copyLink = async () => {
+    const ok = await copyText(window.location.href);
+    if (ok) toast.success('Profile link copied.');
+    else toast.error('Could not copy the link in this browser.');
+  };
+
   if (off.isLoading) {
     return (
       <div className="space-y-4">
@@ -174,8 +217,53 @@ export default function Offender360() {
           <Link to="/offenders" className="no-print inline-flex items-center min-h-[36px] text-xs text-muted hover:text-amber transition-colors">← Offenders</Link>
           <h1 className="page-title mt-0.5">{p.canonicalName || personKey}</h1>
           <p className="page-subtitle num">{p.personKey || personKey}</p>
+          {(watched || (p.districts || []).length >= 2) && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              {watched && <Badge tone="amber">★ watchlisted</Badge>}
+              {(p.districts || []).length >= 2 && (
+                <Badge tone="teal" className="cursor-help" title={(p.districts || []).join(', ')}>
+                  cross-jurisdiction · {fmtInt((p.districts || []).length)} districts
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
+          {prevOff && (
+            <Link
+              to={`/offenders/${encodeURIComponent(prevOff.personKey)}`}
+              className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
+              title={`Next higher risk: ${prevOff.canonicalName || prevOff.personKey} (#${riskRank.i} of ${riskRank.rows.length} by risk)`}
+            >
+              ← Higher risk
+            </Link>
+          )}
+          {nextOff && (
+            <Link
+              to={`/offenders/${encodeURIComponent(nextOff.personKey)}`}
+              className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
+              title={`Next lower risk: ${nextOff.canonicalName || nextOff.personKey} (#${riskRank.i + 2} of ${riskRank.rows.length} by risk)`}
+            >
+              Lower risk →
+            </Link>
+          )}
+          <button
+            type="button"
+            className={`btn !py-1.5 !px-2.5 text-xs min-h-[40px] ${watched ? '!border-amber/60 text-amber' : ''}`}
+            onClick={toggleWatch}
+            aria-pressed={watched}
+            title={watched ? 'Remove from the shared watchlist' : 'Star this person across Offenders and Network'}
+          >
+            {watched ? '★ Watching' : '☆ Watch'}
+          </button>
+          <button
+            type="button"
+            className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
+            onClick={copyLink}
+            title="Copy a direct link to this profile"
+          >
+            Link
+          </button>
           <button
             type="button"
             className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
@@ -228,7 +316,20 @@ export default function Offender360() {
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">Known aliases</p>
           {(p.aliases || []).length ? (
             <div className="flex flex-wrap gap-1.5">
-              {(p.aliases || []).map((a) => <span key={a} className="chip">{a}</span>)}
+              {(p.aliases || []).map((a) => {
+                const conf = aliasConfidence(a, p.canonicalName);
+                const band = confidenceBand(conf);
+                return (
+                  <span
+                    key={a}
+                    className="chip cursor-help"
+                    title={`match confidence ${Math.round(conf * 100)}% (${band.label}) — heuristic name-similarity vs the canonical spelling`}
+                  >
+                    {a}
+                    <span className={`num text-[9px] ${band.text}`}>{Math.round(conf * 100)}%</span>
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <p className="text-xs text-muted">No alternate spellings on file.</p>
@@ -236,6 +337,7 @@ export default function Offender360() {
           <p className="text-[11px] text-muted mt-2">
             <Badge tone="teal" className="mr-1.5">identity-resolution</Badge>
             Aliases linked by fuzzy name + shared phone/address signals (~0.9 precision on the synthetic ground truth).
+            Percentages are heuristic name-similarity to the canonical spelling.
           </p>
         </div>
       </Card>
@@ -258,6 +360,10 @@ export default function Offender360() {
               </div>
             )}
           </Card>
+
+          <TempoCard timeline={timeline} lastSeen={p.lastSeen} />
+
+          <CaseMixCard timeline={timeline} />
 
           <Card title="MO signature" subtitle="Recurring modus-operandi tags across this person's cases">
             {(p.moTags || []).length ? (
@@ -288,16 +394,23 @@ export default function Offender360() {
                   {[...(p.associates || [])]
                     .sort((a, b) => (b.sharedCases || 0) - (a.sharedCases || 0))
                     .slice(0, 8)
-                    .map((a) => (
-                      <li key={a.personKey} className="py-1.5 first:pt-0 last:pb-0">
-                        <Link to={`/offenders/${encodeURIComponent(a.personKey)}`} className="flex items-center gap-2 min-h-[36px] group">
-                          <span className="text-xs text-ink truncate flex-1 group-hover:text-amber transition-colors">
-                            {nameByKey.get(String(a.personKey)) || a.personKey}
-                          </span>
-                          <Badge tone="slate">{fmtInt(a.sharedCases)} shared</Badge>
-                        </Link>
-                      </li>
-                    ))}
+                    .map((a) => {
+                      const reg = profileByKey.get(String(a.personKey));
+                      return (
+                        <li key={a.personKey} className="py-1.5 first:pt-0 last:pb-0">
+                          <Link to={`/offenders/${encodeURIComponent(a.personKey)}`} className="flex items-center gap-2 min-h-[36px] group">
+                            {watchKeys.has(String(a.personKey)) && (
+                              <span className="text-amber text-[11px] shrink-0" title="On the watchlist" aria-label="On the watchlist">★</span>
+                            )}
+                            <span className="text-xs text-ink truncate flex-1 group-hover:text-amber transition-colors">
+                              {nameByKey.get(String(a.personKey)) || a.personKey}
+                            </span>
+                            {reg && <RiskBadge score={reg.riskScore} />}
+                            <Badge tone="slate">{fmtInt(a.sharedCases)} shared</Badge>
+                          </Link>
+                        </li>
+                      );
+                    })}
                 </ul>
               </>
             ) : (

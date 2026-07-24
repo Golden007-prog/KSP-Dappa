@@ -7,6 +7,7 @@ import { useLookups } from '../../lib/api.js';
 import { DATE_RANGES } from '../../lib/filters.js';
 import Sheet from '../../components/Sheet.jsx';
 import Badge from '../../components/Badge.jsx';
+import { MIN_AGE_OPTIONS } from './explorerState.js';
 
 function Field({ label, hint, children }) {
   return (
@@ -115,6 +116,16 @@ export default function FilterSheet({ open, onClose, values, setMany, onClearAll
               options={gravities}
               placeholder="Any gravity"
               disabled={loading}
+            />
+          </Field>
+          <Field label="Pending age" hint="client-side refine">
+            <Select
+              ariaLabel="Minimum case age in days"
+              value={values.minAgeDays ? String(values.minAgeDays) : ''}
+              onChange={(v) => setMany({ minAge: v })}
+              options={MIN_AGE_OPTIONS.map((d) => ({ value: String(d), label: `Older than ${d} days` }))}
+              placeholder="Any age"
+              disabled={false}
             />
           </Field>
         </div>

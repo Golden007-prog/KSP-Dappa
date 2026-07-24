@@ -1,9 +1,14 @@
 // About — project story, quick links (live demo / static demo / source, each
-// with a copy-link button), sticky in-page anchor nav, architecture diagram
-// (pure CSS/SVG), filterable Catalyst services matrix (live count computed
-// from the data), synthetic-data + ethics statement, tech stack and team
-// credits (degrades to a single "Team Rainfall" card until names are added).
-import { useState } from 'react';
+// with a copy-link button), sticky in-page anchor nav with scroll-spy
+// highlighting, datathon challenge-coverage matrix (6 scored capabilities →
+// in-app routes), architecture diagram (pure CSS/SVG), data-lineage strip
+// (generate.py → Data Store → API → UI), AI degradation-design explainer,
+// filterable Catalyst services matrix (live count computed from the data),
+// synthetic-data + ethics statement, accessibility statement, embedded
+// keyboard-shortcut reference, layered tech stack and team credits (degrades
+// to a single "Team Rainfall" card until names are added).
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Card from '../components/Card.jsx';
 import Badge from '../components/Badge.jsx';
 import Tooltip from '../components/Tooltip.jsx';
@@ -37,9 +42,21 @@ const SERVICES = [
   { n: 18, name: 'ConvoKraft', use: 'Alternate copilot chip if LLM serving unavailable', stretch: true },
 ];
 
-const STACK = [
-  'React 18', 'Vite 5', 'Tailwind CSS', 'React Router 6', 'TanStack Query 5', 'Zustand',
-  'ECharts', 'Leaflet + heat', 'Cytoscape (fcose)', 'Node 20 + Express', 'Python (pandas · scikit-learn · networkx · statsmodels)',
+// Layered tech stack (replaces the old flat chip list; grouping only — no
+// item was removed).
+const STACK_GROUPS = [
+  {
+    label: 'Frontend',
+    items: ['React 18', 'Vite 5', 'Tailwind CSS', 'React Router 6', 'TanStack Query 5', 'Zustand', 'ECharts', 'Leaflet + heat', 'Cytoscape (fcose)'],
+  },
+  {
+    label: 'API & data',
+    items: ['Node 20 + Express', 'Catalyst Data Store + ZCQL', 'Cache', 'NoSQL', 'Stratus'],
+  },
+  {
+    label: 'Analytics & ML',
+    items: ['Python', 'pandas', 'scikit-learn', 'networkx', 'statsmodels'],
+  },
 ];
 
 // Fill in before the demo: { name: 'A. Person', role: 'Data & pipeline' }.
@@ -54,12 +71,127 @@ const FLOW = [
   ['Decide', 'An officer sees maps, trends, alerts, forecasts and briefs — with provenance badges on every AI-touched number, and stays in the loop.'],
 ];
 
+// The 6 scored capability areas of the KSP Datathon challenge, mapped to the
+// app routes where each one is demonstrated.
+const CHALLENGE = [
+  {
+    n: 1,
+    name: 'Advanced Visualization',
+    desc: 'Interactive dashboards and geospatial maps; district → police-station drill-down; spatiotemporal clusters layering time-of-day with location; red-zone pulsing when a category spikes vs its historical average.',
+    areas: [['Dashboard', '/'], ['GeoIntel', '/map'], ['Trends', '/trends'], ['Alerts', '/alerts']],
+  },
+  {
+    n: 2,
+    name: 'Criminological Network & Link Analysis',
+    desc: 'Relationship mapping across suspects, victims and recurring locations; repeat-offender tracking with modus operandi across jurisdictions; hidden-association detection.',
+    areas: [['Network', '/network'], ['Offenders', '/offenders'], ['Cases', '/cases']],
+  },
+  {
+    n: 3,
+    name: 'Sociological & AI-Driven Predictive Dashboards',
+    desc: 'Socio-economic correlation overlays — the “why” behind the “where”; predictive risk scoring for high-risk areas; anomaly call-outs linking complex cases.',
+    areas: [['Predict', '/predict'], ['GeoIntel', '/map'], ['Alerts', '/alerts']],
+  },
+  {
+    n: 4,
+    name: 'Pattern & Trend Discovery',
+    desc: 'Statistical spatial and temporal hotspots — seasonality, day × hour heatmaps and DBSCAN clusters — aimed at resource deployment.',
+    areas: [['Trends', '/trends'], ['GeoIntel', '/map'], ['Reports', '/reports']],
+  },
+  {
+    n: 5,
+    name: 'Network & Behavioral Analysis',
+    desc: 'Co-offender communities and organized-crime clusters from the identity-resolved graph; recurring MO signatures per offender.',
+    areas: [['Network', '/network'], ['Offenders', '/offenders']],
+  },
+  {
+    n: 6,
+    name: 'AI/ML-Driven Intelligence',
+    desc: 'ML for hidden correlations, anomaly detection and emerging-risk prediction — plus a natural-language copilot whose every answer shows its query, sources and confidence.',
+    areas: [['Ask DAPPA', '/copilot'], ['Predict', '/predict'], ['Alerts', '/alerts']],
+  },
+];
+
+// generate.py → Data Store → API → UI provenance pipeline (pure CSS).
+const LINEAGE = [
+  ['pipeline/generate.py', 'Seeded synthetic engine writes the 24-table official ER schema — 45k FIRs, deterministic and fully fictional.'],
+  ['scripts/bulk_load.js', 'Bulk-loads the generated CSVs into console-created Catalyst Data Store tables.'],
+  ['pipeline/analytics.py', 'Nightly distillation into 8 analytics tables: aggregates, hotspots, forecasts, anomaly z-scores, offender network.'],
+  ['functions/dappa_api', 'Express REST over ZCQL with a fixture fallback — every endpoint stays alive even with the Data Store unreachable.'],
+  ['client (React SPA)', 'Dashboards, maps, networks and the copilot — provenance badges on every AI-touched number.'],
+];
+
+// "Demo never dies": each AI feature's live path and its deterministic fallback.
+const AI_DESIGN = [
+  {
+    feature: 'Ask DAPPA copilot',
+    live: 'QuickML LLM Serving + RAG grounded on Data Store context',
+    fallback: 'Deterministic intent grammar → ZCQL → templated answer; the suggested questions always answer',
+  },
+  {
+    feature: 'Outcome prediction',
+    live: 'QuickML tabular classifier scoring case features',
+    fallback: 'Calibrated scorecard from historical outcome rates',
+  },
+  {
+    feature: 'Case narrative & MO tags',
+    live: 'Zia Text Analytics NER/keywords over BriefFacts',
+    fallback: 'Keyword/regex extraction with the same output shape',
+  },
+  {
+    feature: 'Weekly intelligence brief',
+    live: 'SmartBrowz renders the PDF server-side',
+    fallback: 'Print-optimised in-app brief route (Ctrl+P to PDF)',
+  },
+  {
+    feature: 'Forecasts & anomaly alerts',
+    live: 'Precomputed nightly (Holt-Winters + z-scores) — served as indexed reads',
+    fallback: 'Same tables from the bundled fixture snapshot',
+  },
+];
+
+const A11Y = [
+  ['Keyboard-first', 'Every control is reachable by Tab; tab lists and radio groups use roving arrow-key focus; press ? anywhere for the shortcut sheet.'],
+  ['Touch & small screens', 'Interactive targets are at least 40px and layouts are verified down to 360px-wide phones.'],
+  ['Screen readers', 'ARIA landmarks and labels throughout; the copilot chat is a polite live region; loading and status changes are announced via visually hidden text.'],
+  ['Charts have equals', 'Every chart offers an accessible data-table view and CSV export — no information is locked inside pixels.'],
+  ['Theme & contrast', 'Dark and light themes come from one contrast-checked token set; charts re-theme with the app.'],
+  ['Motion', 'prefers-reduced-motion is respected, with an additional manual motion toggle in the top bar; dialogs trap focus and restore it on close.'],
+];
+
+// Mirrors the global shortcut layer registered in Layout.jsx and the
+// copilot-local keys — keep in sync when either changes.
+const SHORTCUTS = [
+  {
+    group: 'Anywhere', keys: [
+      ['Ctrl/⌘ K', 'Command palette — jump to any screen or action'],
+      ['g then d · m · t · a · c · n · o · p · r', 'Go to Dashboard, Map, Trends, Alerts, Cases, Network, Offenders, Predict, Reports'],
+      ['t', 'Toggle dark / light theme'],
+      ['f', 'Zen mode (on GeoIntel: map fullscreen)'],
+      ['?', 'Open the shortcut sheet'],
+      ['Esc', 'Close a dialog or sheet'],
+    ],
+  },
+  {
+    group: 'Ask DAPPA', keys: [
+      ['/', 'Focus the question input'],
+      ['↑ ↓', 'Recall question history (shell-style)'],
+      ['Esc', 'Stop voice capture / blur the input'],
+    ],
+  },
+];
+
 const SECTIONS = [
   { id: 'story', label: 'Story' },
   { id: 'links', label: 'Links' },
+  { id: 'challenge', label: 'Challenge' },
   { id: 'architecture', label: 'Architecture' },
+  { id: 'lineage', label: 'Lineage' },
+  { id: 'ai', label: 'AI design' },
   { id: 'services', label: 'Services' },
   { id: 'ethics', label: 'Ethics' },
+  { id: 'access', label: 'Accessibility' },
+  { id: 'shortcuts', label: 'Shortcuts' },
   { id: 'team', label: 'Team' },
 ];
 
@@ -73,27 +205,55 @@ function Stat({ value, label }) {
 }
 
 // Buttons (not <a href="#…">): in-page hash anchors would collide with
-// HashRouter's route fragment, so we scroll programmatically instead.
+// HashRouter's route fragment, so we scroll programmatically instead. A
+// viewport IntersectionObserver highlights the section currently in view.
 function AnchorNav() {
+  const [active, setActive] = useState(SECTIONS[0].id);
+
+  useEffect(() => {
+    const els = SECTIONS
+      .map((s) => document.getElementById(`about-${s.id}`))
+      .filter(Boolean);
+    if (!els.length || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((e) => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (visible[0]) setActive(visible[0].target.id.replace('about-', ''));
+    }, { rootMargin: '-15% 0px -65% 0px' });
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
   const go = (id) => {
     const el = document.getElementById(`about-${id}`);
     if (!el) return;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    setActive(id);
   };
+
   return (
     <nav aria-label="On this page" className="no-print sticky top-14 z-30 -mx-4 px-4 md:-mx-6 md:px-6 bg-base/85 backdrop-blur-md">
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-2">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => go(s.id)}
-            className="shrink-0 min-h-[40px] rounded-full border border-grid bg-panel px-3.5 text-xs text-muted hover:text-ink hover:border-primary/60 transition-colors"
-          >
-            {s.label}
-          </button>
-        ))}
+        {SECTIONS.map((s) => {
+          const on = active === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => go(s.id)}
+              aria-current={on ? 'true' : undefined}
+              className={`shrink-0 min-h-[40px] rounded-full border px-3.5 text-xs transition-colors ${
+                on
+                  ? 'border-amber/60 bg-amber/10 text-amber'
+                  : 'border-grid bg-panel text-muted hover:text-ink hover:border-primary/60'
+              }`}
+            >
+              {s.label}
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
@@ -263,6 +423,47 @@ export default function About() {
         </div>
       </div>
 
+      <div id="about-challenge" className="scroll-mt-32">
+        <Card
+          title="Datathon challenge coverage"
+          subtitle="The 6 scored capability areas, and where each one lives in the app"
+          actions={<Badge tone="teal">6 / 6 covered</Badge>}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {CHALLENGE.map((c) => (
+              <div key={c.n} className="rounded-lg border border-grid bg-base/40 p-3">
+                <div className="flex items-start gap-2.5">
+                  <span className="num shrink-0 grid place-items-center h-6 w-6 rounded-full border border-amber/40 text-amber text-[11px] font-bold">{c.n}</span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-xs font-semibold text-ink">{c.name}</p>
+                      <Badge tone="teal" className="!text-[10px]">live</Badge>
+                    </div>
+                    <p className="text-[11px] text-muted mt-1 leading-relaxed">{c.desc}</p>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {c.areas.map(([label, to]) => (
+                        <Link
+                          key={`${c.n}-${to}-${label}`}
+                          to={to}
+                          className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-2.5 min-h-[32px] text-[11px] text-primary hover:border-primary hover:bg-primary/10 transition-colors"
+                        >
+                          {label}
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" /></svg>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted mt-3 leading-relaxed">
+            Every capability is reachable in at most two clicks from the dashboard — the chips above deep-link
+            straight into the relevant screen.
+          </p>
+        </Card>
+      </div>
+
       <div id="about-architecture" className="scroll-mt-32">
         <Card title="Architecture" subtitle="Everything runs inside one Catalyst project (Project-Rainfall) — no external AI, hosting, database, or auth services">
           <div className="space-y-1">
@@ -298,6 +499,65 @@ export default function About() {
             z-scores, offender identity resolution and co-accused network communities into Data Store tables, so every
             click in the demo is a fast indexed read. Live AI calls (QuickML scoring, Zia NER, the copilot) are
             on-demand and degrade gracefully to deterministic local fallbacks with a visible source badge.
+          </p>
+        </Card>
+      </div>
+
+      <div id="about-lineage" className="scroll-mt-32">
+        <Card title="Data lineage" subtitle="From seed to screen — the provenance of every number on every page">
+          <ol className="flex flex-col md:flex-row md:items-stretch gap-1 list-none">
+            {LINEAGE.map(([stage, desc], i) => (
+              <li key={stage} className="flex flex-col md:flex-row md:items-stretch md:flex-1 min-w-0 gap-1">
+                <div className="flex-1 min-w-0 rounded-lg border border-grid bg-base/40 p-2.5">
+                  <p className="text-[11px] font-mono font-semibold text-teal break-words">{stage}</p>
+                  <p className="text-[10px] text-muted mt-1 leading-relaxed">{desc}</p>
+                </div>
+                {i < LINEAGE.length - 1 && (
+                  <span className="self-center shrink-0 text-muted px-0.5 rotate-90 md:rotate-0" aria-hidden="true">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14m0 0-5-5m5 5-5 5" /></svg>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+          <p className="text-[11px] text-muted mt-3 leading-relaxed">
+            The whole chain is reproducible from one seed: re-running <span className="font-mono">generate.py</span> and
+            the analytics pass rebuilds byte-identical tables, which is why every copilot answer can cite the exact
+            ZCQL and source table it came from.
+          </p>
+        </Card>
+      </div>
+
+      <div id="about-ai" className="scroll-mt-32">
+        <Card
+          title="AI degradation design"
+          subtitle="“The demo never dies” — every AI feature is flagged, falls back deterministically, and badges its source"
+        >
+          <div className="space-y-2">
+            <div className="hidden md:grid grid-cols-[1.1fr_1.4fr_1.4fr] gap-2 px-3">
+              <p className="eyebrow">Feature</p>
+              <p className="eyebrow">Live path (flag on)</p>
+              <p className="eyebrow">Fallback (flag off / service down)</p>
+            </div>
+            {AI_DESIGN.map((row) => (
+              <div key={row.feature} className="grid grid-cols-1 md:grid-cols-[1.1fr_1.4fr_1.4fr] gap-1.5 md:gap-2 rounded-lg border border-grid bg-base/40 p-3">
+                <p className="text-xs font-semibold text-ink">{row.feature}</p>
+                <p className="text-[11px] text-muted leading-relaxed">
+                  <span className="md:hidden text-[9px] uppercase tracking-wider text-amber mr-1.5">Live</span>
+                  {row.live}
+                </p>
+                <p className="text-[11px] text-muted leading-relaxed">
+                  <span className="md:hidden text-[9px] uppercase tracking-wider text-teal mr-1.5">Fallback</span>
+                  {row.fallback}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted mt-3 leading-relaxed">
+            The UI always tells you which path answered: engine and source badges on copilot answers, provenance chips
+            on predictions, and a fixture banner when the API is serving from its bundled snapshot. Ask DAPPA goes one
+            step further — each answer carries a confidence label, the parsed intent, and citation chips for the exact
+            Data Store tables its ZCQL read.
           </p>
         </Card>
       </div>
@@ -370,6 +630,51 @@ export default function About() {
           </Card>
         </div>
 
+        <div id="about-access" className="scroll-mt-32">
+          <Card title="Accessibility" subtitle="Built to be operable by every officer, on every device" className="h-full">
+            <ul className="space-y-2 text-xs text-muted leading-relaxed">
+              {A11Y.map(([t, d]) => (
+                <li key={t} className="flex gap-2">
+                  <span className="text-teal shrink-0">•</span>
+                  <span><strong className="text-ink">{t}.</strong> {d}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-muted mt-3 leading-relaxed">
+              Accessibility is a moving target — issues found during judging are welcome on the GitHub repository.
+            </p>
+          </Card>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div id="about-shortcuts" className="scroll-mt-32">
+          <Card title="Keyboard shortcuts" subtitle="Also available anywhere by pressing ?" className="h-full">
+            <div className="space-y-3">
+              {SHORTCUTS.map((sec) => (
+                <section key={sec.group}>
+                  <p className="eyebrow mb-1">{sec.group}</p>
+                  <ul className="divide-y divide-grid/40">
+                    {sec.keys.map(([keys, desc]) => (
+                      <li key={`${sec.group}-${keys}`} className="flex items-start justify-between gap-3 py-1.5">
+                        <span className="text-xs text-muted leading-relaxed">{desc}</span>
+                        <span className="shrink-0 flex flex-wrap justify-end gap-1">
+                          {keys.split(' · ').map((k) => (
+                            <kbd key={k} className="num rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-ink whitespace-nowrap">{k}</kbd>
+                          ))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+              <p className="text-[11px] text-muted leading-relaxed">
+                Shortcuts pause while you type in any input, and never hijack a key inside an open dialog.
+              </p>
+            </div>
+          </Card>
+        </div>
+
         <div id="about-team" className="scroll-mt-32">
           <Card title="Team & credits" subtitle="KSP Datathon 2026 · project “Rainfall”" className="h-full">
             <div className="space-y-3">
@@ -396,13 +701,17 @@ export default function About() {
                   </div>
                 </div>
               )}
-              <div>
-                <p className="eyebrow mb-1.5">Built with</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {STACK.map((t) => (
-                    <span key={t} className="chip !py-0.5 !text-[11px] text-muted">{t}</span>
-                  ))}
-                </div>
+              <div className="space-y-2">
+                {STACK_GROUPS.map((g) => (
+                  <div key={g.label}>
+                    <p className="eyebrow mb-1.5">{g.label}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {g.items.map((t) => (
+                        <span key={t} className="chip !py-0.5 !text-[11px] text-muted">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
               <p className="text-[11px] text-muted leading-relaxed">
                 Built on the official KSP FIR ER schema (Data Store), a seeded synthetic data engine, and

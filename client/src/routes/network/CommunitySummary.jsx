@@ -1,14 +1,20 @@
 // Community detail panel — shown while a community is isolated. Aggregates the
 // FILTERED view (so edge-tier / degree filters are respected): member count,
-// distinct cases, districts, graph density, plus a fly-to member list.
+// distinct cases, districts, graph density, top MO tags (from the offender
+// registry), key connector (most cross-community links, from brokerStats over
+// the FULL graph), plus a fly-to member list.
 import { useMemo } from 'react';
 import Card from '../../components/Card.jsx';
 import { fmtInt, fmtPct } from '../../lib/format.js';
 import { communityColor } from './graphUtils.js';
 
 const MEMBER_CAP = 12;
+const MO_CAP = 5;
 
-export default function CommunitySummary({ communityId, community, nodes = [], edges = [], onPick, onClear }) {
+export default function CommunitySummary({
+  communityId, community, nodes = [], edges = [], onPick, onClear,
+  profilesByKey = new Map(), brokers = new Map(),
+}) {
   const stats = useMemo(() => {
     const n = nodes.length;
     const e = edges.length;
@@ -18,6 +24,25 @@ export default function CommunitySummary({ communityId, community, nodes = [], e
     );
     return { n, e, density, members };
   }, [nodes, edges]);
+
+  const topMo = useMemo(() => {
+    const freq = new Map();
+    for (const n of nodes) {
+      for (const t of profilesByKey.get(String(n.id))?.moTags || []) freq.set(t, (freq.get(t) || 0) + 1);
+    }
+    return [...freq.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, MO_CAP);
+  }, [nodes, profilesByKey]);
+
+  const keyConnector = useMemo(() => {
+    let best = null;
+    for (const n of nodes) {
+      const s = brokers.get(String(n.id));
+      if (s && s.crossLinks > 0 && (!best || s.score > best.stat.score)) best = { node: n, stat: s };
+    }
+    return best;
+  }, [nodes, brokers]);
 
   const cell = (label, value) => (
     <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5">
@@ -47,6 +72,35 @@ export default function CommunitySummary({ communityId, community, nodes = [], e
         {cell('Districts', fmtInt(community?.districts))}
         {cell('Density', stats.n > 1 ? fmtPct(stats.density * 100, { digits: 0, fraction: false }) : '—')}
       </div>
+      {topMo.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Top MO tags</p>
+          <div className="flex flex-wrap gap-1.5">
+            {topMo.map(([tag, count]) => (
+              <span key={tag} className="chip !py-0.5 text-[10px]">
+                {tag}
+                <span className="num text-muted">{fmtInt(count)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {keyConnector && (
+        <div className="mb-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Key connector</p>
+          <button
+            type="button"
+            className="w-full min-h-[40px] flex items-center gap-2 text-left hover:text-amber transition-colors"
+            onClick={() => onPick?.(keyConnector.node)}
+            title="Select and fly to this member"
+          >
+            <span className="text-xs text-ink truncate flex-1 min-w-0">{keyConnector.node.label || String(keyConnector.node.id)}</span>
+            <span className="num text-[11px] text-amber shrink-0">
+              bridges {fmtInt(keyConnector.stat.groups.size)} group{keyConnector.stat.groups.size === 1 ? '' : 's'}
+            </span>
+          </button>
+        </div>
+      )}
       {stats.members.length > 0 && (
         <div>
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Members (by degree)</p>

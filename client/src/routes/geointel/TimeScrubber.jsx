@@ -30,7 +30,7 @@ const LoopIcon = (
 
 export default function TimeScrubber({
   months, index, playing, loading, onIndexChange, onPlayToggle, speed = 1, onSpeedChange,
-  loop = true, onLoopToggle, compact = false,
+  loop = true, onLoopToggle, compact = false, totals = null,
 }) {
   const disabled = !months.length;
   const label = index > 0 && months[index - 1] ? monthLabel(months[index - 1]) : 'All months';
@@ -39,6 +39,8 @@ export default function TimeScrubber({
     const i = SCRUB_SPEEDS.indexOf(speed);
     onSpeedChange(SCRUB_SPEEDS[(i + 1) % SCRUB_SPEEDS.length]);
   };
+  const showHisto = !compact && Array.isArray(totals) && totals.length === months.length && months.length > 0;
+  const maxTotal = showHisto ? Math.max(1, ...totals) : 1;
   return (
     <div className={`flex items-center gap-2.5 ${compact
       ? ''
@@ -80,6 +82,23 @@ export default function TimeScrubber({
         </button>
       )}
       <div className="flex-1 min-w-[7rem]">
+        {showHisto && (
+          <div className="flex items-end gap-px h-3.5 mb-0.5" role="group" aria-label="Monthly case totals — click a bar to jump to that month">
+            {months.map((m, i) => (
+              <button
+                key={m}
+                type="button"
+                title={`${monthLabel(m)} — ${totals[i]} cases`}
+                aria-label={`Jump to ${monthLabel(m)} (${totals[i]} cases)`}
+                onClick={() => onIndexChange(i + 1)}
+                className={`flex-1 min-w-[2px] rounded-t-[1px] transition-colors ${
+                  index === i + 1 ? 'bg-amber' : 'bg-grid hover:bg-amber/60'
+                }`}
+                style={{ height: `${Math.max(15, Math.round((totals[i] / maxTotal) * 100))}%` }}
+              />
+            ))}
+          </div>
+        )}
         <input
           type="range"
           min={0}
