@@ -1,0 +1,19 @@
+{
+  "name": "KSP DAPPA — Karnataka Police Intelligence",
+  "short_name": "DAPPA",
+  "description": "Data Analytics & Predictive Policing Assistant for Karnataka State Police. Synthetic demonstration data — KSP Datathon 2026 prototype.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B1220",
+  "theme_color": "#0B1220",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

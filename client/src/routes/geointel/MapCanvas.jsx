@@ -5,13 +5,17 @@
 // through props; fly-to commands arrive as {seq, ...} objects so repeating the
 // same target still re-triggers the animation. All array/object props must be
 // memoized by the parent — effects key on reference identity.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet.heat'; // side-effect plugin: adds L.heatLayer
-import { fmtInt, fmtNum } from '../../lib/format.js';
+import { dateLabel, fmtInt, fmtNum } from '../../lib/format.js';
 import { esc, rampColor, risk01, riskColor, hourBand } from './utils.js';
 
 const KARNATAKA_CENTER = [14.9, 76.1];
+// Individual incident markers only render from this zoom in (below it the heat
+// layer tells the story and 2 000 markers would just melt into noise).
+const INCIDENT_MIN_ZOOM = 12;
+const INCIDENT_MARKER_CAP = 600;
 
 // Custom panes so layer stacking is deterministic: choropleth fill sits below
 // the heat canvas (overlayPane, z 400), vectors that must stay clickable above.
@@ -19,6 +23,7 @@ const PANES = [
   ['geointel-choro', 390],
   ['geointel-alert', 395],
   ['geointel-hotspots', 405],
+  ['geointel-incidents', 406],
   ['geointel-stations', 408],
   ['geointel-city', 409],
 ];
@@ -30,6 +35,8 @@ export default function MapCanvas({
   alertPolygons,
   cityMarkers,
   heatPoints,
+  incidentRows,
+  headNames,
   hotspots,
   stations,
   selectedUnitId,
@@ -43,6 +50,7 @@ export default function MapCanvas({
   const mapRef = useRef(null);
   const hotspotLayersRef = useRef({});
   const handlersRef = useRef({});
+  const [zoomedIn, setZoomedIn] = useState(false);
   handlersRef.current = { onPolygonClick, onStationClick, onCityClick, onHotspotClick };
 
   // Map creation — once per mount (StrictMode double-mount recreates cleanly).
@@ -66,6 +74,7 @@ export default function MapCanvas({
       maxZoom: 19,
     }).addTo(map);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
+    map.on('zoomend', () => setZoomedIn(map.getZoom() >= INCIDENT_MIN_ZOOM));
     mapRef.current = map;
     // Sidebar collapse / window resize both change the container box.
     const ro = new ResizeObserver(() => map.invalidateSize());
@@ -151,6 +160,45 @@ export default function MapCanvas({
       if (mapRef.current) mapRef.current.removeLayer(layer);
     };
   }, [heatPoints, layers.heat]);
+
+  // Individual incident markers with popup cards — only when the incidents
+  // layer is on AND the user has zoomed in past INCIDENT_MIN_ZOOM (capped so a
+  // 2 000-row window can't melt the DOM). Popup links deep into /cases/:id.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layers.incidents || !zoomedIn || !(incidentRows || []).length) return undefined;
+    const names = headNames || {};
+    const group = L.layerGroup();
+    for (const r of incidentRows.slice(0, INCIDENT_MARKER_CAP)) {
+      const lat = Number(r.lat);
+      const lng = Number(r.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const marker = L.circleMarker([lat, lng], {
+        pane: 'geointel-incidents',
+        radius: 4,
+        color: '#0B1220',
+        weight: 1,
+        fillColor: '#2DD4BF',
+        fillOpacity: 0.85,
+      });
+      const head = names[String(r.crimeHeadId)] || (r.crimeHeadId != null ? `Head ${r.crimeHeadId}` : 'Incident');
+      marker.bindPopup(
+        `<div class="text-xs leading-relaxed">`
+          + `<strong>${esc(head)}</strong><br/>`
+          + `Registered ${esc(dateLabel(r.registeredDate))}`
+          + (r.caseMasterId !== undefined && r.caseMasterId !== null
+            ? `<br/><a href="#/cases/${encodeURIComponent(String(r.caseMasterId))}">Open case →</a>`
+            : '')
+          + `</div>`,
+        { className: 'geointel-popup', closeButton: false, offset: [0, -4] },
+      );
+      group.addLayer(marker);
+    }
+    group.addTo(map);
+    return () => {
+      if (mapRef.current) mapRef.current.removeLayer(group);
+    };
+  }, [incidentRows, layers.incidents, zoomedIn, headNames]);
 
   // Hotspot clusters — circles sized by radiusM, popup carries the hour band.
   useEffect(() => {

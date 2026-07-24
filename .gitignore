@@ -25,3 +25,6 @@ client/CONTRACT.md
 *.pptx
 
 pipeline/.fixture/
+
+# generated static-demo API snapshot (rebuilt in CI by scripts/demo_snapshot.mjs)
+client/public/demo/

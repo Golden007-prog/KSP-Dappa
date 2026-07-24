@@ -3,8 +3,17 @@
 // Every hook's exact return shape is documented in client/CONTRACT.md — route
 // fillers code against that file, not against guesses.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { demoKey, demoFallbackKey, normalizeUtterance } from './demoKey.js';
 
 export const API_BASE = import.meta.env.VITE_API_BASE || '/server/dappa_api/api/v1';
+
+// Static demo (GitHub Pages): built with VITE_STATIC_DEMO=1 every request is
+// answered from pre-generated JSON under BASE_URL/demo/api/ (written by
+// scripts/demo_snapshot.mjs against the same fixture dataset the live
+// PUBLIC_DEMO fallback serves). The check is a build-time constant, so
+// Catalyst builds compile this whole branch away — zero behavior change.
+const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === '1';
+const DEMO_BASE = `${import.meta.env.BASE_URL}demo/api/`;
 
 export class ApiError extends Error {
   constructor(code, message, status = 0) {
@@ -34,7 +43,107 @@ function buildQuery(params) {
   return `?${qs.toString()}`;
 }
 
+// ---------------------------------------------------------------------------
+// static-demo request handlers (dead code unless VITE_STATIC_DEMO=1)
+// ---------------------------------------------------------------------------
+
+// GET misses fall back by stripping filter params in this order — a snapshot
+// exists for every terminal combination, so an un-snapshotted filter mix
+// degrades to broader data instead of erroring (e.g. an arbitrary date range
+// falls back to the endpoint's full window for the same district).
+const DEMO_STRIP_ORDER = [
+  ['from', 'to'], ['crimeSubHeadId'], ['crimeHeadId'], ['status'], ['bbox'],
+  ['communityId'], ['personKey', 'depth'], ['unitId'], ['district'],
+  ['districtId'], ['repeatOnly'],
+];
+
+async function fetchSnapshot(key, signal) {
+  let res;
+  try {
+    res = await fetch(`${DEMO_BASE}${key}.json`, { signal });
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw err;
+    return null;
+  }
+  if (!res.ok) return null;
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function unwrapSnapshot(json) {
+  if (json && json.ok === false) {
+    const e = json.error || {};
+    throw new ApiError(e.code || 'API_ERROR', e.message || 'The API reported an error.', 400);
+  }
+  if (json && json.ok === true) return { data: json.data, meta: { ...(json.meta || {}), demoStatic: true } };
+  return { data: json, meta: { demoStatic: true } };
+}
+
+async function demoGet(path, params, signal) {
+  const candidates = [prune(params || {})];
+  for (const keys of DEMO_STRIP_ORDER) {
+    const next = { ...candidates[candidates.length - 1] };
+    let changed = false;
+    for (const k of keys) if (k in next) { delete next[k]; changed = true; }
+    if (changed) candidates.push(next);
+  }
+  const tried = new Set();
+  for (const cand of candidates) {
+    const key = demoKey('GET', path, cand);
+    if (tried.has(key)) continue;
+    tried.add(key);
+    const json = await fetchSnapshot(key, signal);
+    if (json) return unwrapSnapshot(json);
+  }
+  throw new ApiError('DEMO_MISS', 'This view is not part of the static demo snapshot — reset the filters, or use the live Catalyst deployment.', 404);
+}
+
+async function demoPost(path, body, signal) {
+  if (path === '/copilot/query') {
+    const utterance = normalizeUtterance((body && (body.q || body.query)) || '');
+    if (utterance) {
+      const json = await fetchSnapshot(demoKey('POST', path, {}, { q: utterance }), signal);
+      if (json) return unwrapSnapshot(json);
+    }
+    return {
+      data: {
+        answer: 'This static demo answers a curated set of questions — try one of the suggested chips, e.g. "top 5 districts for vehicle theft this year" or "chain snatching in Mysuru City last 3 months". The live Catalyst deployment answers free-form questions.',
+        engine: 'demo-static',
+      },
+      meta: { source: 'demo-static', demoStatic: true },
+    };
+  }
+  const exact = await fetchSnapshot(demoKey('POST', path, {}, body || {}), signal);
+  if (exact) return unwrapSnapshot(exact);
+  const fallback = await fetchSnapshot(demoFallbackKey('POST', path), signal);
+  if (fallback) {
+    const r = unwrapSnapshot(fallback);
+    // Representative response: these exact inputs were outside the snapshot sweep.
+    r.meta.approximate = true;
+    return r;
+  }
+  if (path === '/notify/test-digest') {
+    throw new ApiError('FEATURE_DISABLED', 'Static demo: the e-mail digest needs the live Catalyst deployment (Catalyst Mail flag).', 403);
+  }
+  if (path === '/ai/narrative') {
+    throw new ApiError('DEMO_MISS', 'This case is outside the static demo snapshot.', 404);
+  }
+  const ack = path.match(/^\/alerts\/([^/]+)\/ack$/);
+  if (ack) {
+    // Simulated write — nothing persists in the static demo, so the alert
+    // reappears as OPEN after the invalidated queries refetch the snapshot.
+    return { data: { alertId: decodeURIComponent(ack[1]), status: 'ACK', demoStatic: true }, meta: { source: 'demo-static', demoStatic: true } };
+  }
+  return { data: { ok: true, demoStatic: true }, meta: { source: 'demo-static', demoStatic: true } };
+}
+
 async function request(path, { method = 'GET', params, body, signal } = {}) {
+  if (STATIC_DEMO) {
+    return method === 'GET' ? demoGet(path, params, signal) : demoPost(path, body, signal);
+  }
   const url = API_BASE + path + buildQuery(params);
   let res;
   try {

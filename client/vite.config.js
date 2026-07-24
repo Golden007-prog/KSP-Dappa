@@ -3,8 +3,10 @@ import react from '@vitejs/plugin-react';
 
 // base './' so the bundle works both at vite dev root and under Catalyst
 // web hosting's /app/index.html path without a hardcoded prefix.
+// VITE_BASE overrides it for the GitHub Pages static demo (/KSP-Dappa/);
+// unset (Catalyst builds) the existing relative base is untouched.
 export default defineConfig({
-  base: './',
+  base: process.env.VITE_BASE || './',
   plugins: [react()],
   server: {
     port: 5173,

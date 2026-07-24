@@ -1,10 +1,12 @@
 // Layer visibility chips — bound to the shared zustand store (useUiStore
 // .mapLayers) so the selection survives navigating away from /map and back.
+// GeoIntel additionally mirrors the selection to localStorage (prefs.js).
 import { useUiStore } from '../../lib/store.js';
 
 const LAYERS = [
   { key: 'choropleth', label: 'Choropleth' },
   { key: 'heat', label: 'Incident heat' },
+  { key: 'incidents', label: 'Incident points', hint: 'Individual incidents with popup cards — visible from zoom 12' },
   { key: 'hotspots', label: 'Hotspots' },
   { key: 'stations', label: 'Stations' },
   { key: 'alertPulse', label: 'Alert pulse' },
@@ -22,6 +24,7 @@ export default function LayerToggles() {
             key={l.key}
             type="button"
             aria-pressed={on}
+            title={l.hint}
             className={`chip shrink-0 transition-colors ${
               on ? '!border-amber/60 !text-amber !bg-amber/10' : 'text-muted hover:text-ink hover:border-grid'
             }`}

@@ -187,7 +187,7 @@ export default function NarrativePanel({ caseId, briefFacts }) {
           {sourceBadge}
           <button
             type="button"
-            className="btn !py-1 !px-2 text-xs"
+            className="btn !py-1 !px-2 text-xs no-print"
             disabled={narrative.isPending || !caseId}
             onClick={() => mutate({ caseId })}
           >

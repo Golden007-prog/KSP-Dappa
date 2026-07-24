@@ -4,16 +4,17 @@
 //   children? — route-specific extra controls appended on the right
 //   className?
 // Options come from useLookups(); while lookups load the selects render disabled
-// with a 'Loading…' option — never a crash.
+// with a 'Loading…' option — never a crash. On small screens the bar becomes a
+// horizontally scrollable chip row instead of wrapping.
 import { useLookups } from '../lib/api.js';
 import { useUrlFilters, DATE_RANGES } from '../lib/filters.js';
 
 function Select({ label, value, onChange, options, placeholder, disabled }) {
   return (
-    <label className="flex items-center gap-2 text-xs text-muted">
+    <label className="flex shrink-0 items-center gap-2 text-xs text-muted">
       <span className="hidden sm:inline">{label}</span>
       <select
-        className="input-dark !py-1.5 pr-7 min-w-[9rem] max-w-[14rem]"
+        className="input-dark !py-2 sm:!py-1.5 pr-7 min-w-[9rem] max-w-[14rem]"
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
@@ -37,7 +38,12 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
   const anyActive = districtId || crimeHeadId || (range && range !== 'all');
 
   return (
-    <div className={`flex flex-wrap items-center gap-3 bg-panel border border-grid rounded-xl px-3 py-2 ${className}`}>
+    <div
+      role="group"
+      aria-label="Filters"
+      className={`flex items-center gap-3 bg-panel border border-grid rounded-xl px-3 py-2 shadow-card
+        flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap sm:overflow-visible ${className}`}
+    >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted shrink-0" aria-hidden="true">
         <path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" strokeLinejoin="round" />
       </svg>
@@ -72,11 +78,15 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
         />
       )}
       {anyActive && (
-        <button type="button" className="text-xs text-muted hover:text-amber transition-colors" onClick={reset}>
+        <button
+          type="button"
+          className="shrink-0 rounded-lg px-2 py-1.5 min-h-[36px] text-xs text-muted hover:text-primary transition-colors"
+          onClick={reset}
+        >
           Clear
         </button>
       )}
-      {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
+      {children && <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>}
     </div>
   );
 }

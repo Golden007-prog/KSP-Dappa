@@ -6,191 +6,15 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { createApp } = require('../lib/app.js');
 const { createStubClient } = require('../lib/datastore.js');
-const constants = require('../lib/constants.js');
+const { buildFixtureTables, getFallbackState, resetFixtureFallback } = require('../lib/fixture.js');
 const { CANNED_UTTERANCES } = require('../lib/copilot.js');
-const { ymAdd, hash32 } = require('../lib/util.js');
 
 // ---------------------------------------------------------------------------
-// Canned tables (deterministic, ER-shaped)
+// Canned tables come from the shared fixture module — the same deterministic
+// dataset that backs the PUBLIC_DEMO self-healing fallback in production.
 // ---------------------------------------------------------------------------
 
-const NOW_YM = (() => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-})();
-// Data window ends at the current month so "this year"/"last N months" queries hit rows.
-const MONTHS = [];
-for (let i = 35; i >= 0; i -= 1) MONTHS.push(ymAdd(NOW_YM, -i));
-
-const STUB_DISTRICTS = ['0101', '0103', '0107', '0109', '0111'];
-const STUB_SUBHEADS = [101, 302, 303, 306, 307, 401, 501];
-
-// 4-digit unit ids: '1011','1012','1013' for 0101; '1031'.. for 0103; etc.
-function stationIds(districtId) {
-  const base = districtId.slice(1); // '101' for 0101
-  return [1, 2, 3].map((i) => `${base}${i}`);
-}
-
-const tables = {};
-
-tables.District = constants.DISTRICTS.map((d) => ({ DistrictID: d.id, DistrictName: d.name }));
-tables.CrimeHead = constants.CRIME_HEADS.map((h) => ({ CrimeHeadID: h.id, CrimeGroupName: h.name }));
-tables.CrimeSubHead = constants.CRIME_SUBHEADS.map((s) => ({ CrimeSubHeadID: s.id, CrimeHeadID: s.headId, CrimeHeadName: s.name }));
-tables.CaseCategory = constants.CASE_CATEGORIES.map((c) => ({ CaseCategoryID: c.id, LookupValue: c.name }));
-tables.CaseStatusMaster = constants.CASE_STATUSES.map((s) => ({ CaseStatusID: s.id, CaseStatusName: s.name }));
-tables.GravityOffence = constants.GRAVITIES.map((g) => ({ GravityOffenceID: g.id, LookupValue: g.name }));
-tables.SocioEconomic = constants.DISTRICTS.map((d) => ({
-  DistrictID: d.id, Population: d.id === '0101' ? 11000000 : 1500000,
-  UrbanPct: 40, LiteracyPct: 75, DensityPerKm2: 320, PerCapitaIncomeIdx: 100
-}));
-
-tables.Unit = [];
-for (const d of STUB_DISTRICTS) {
-  stationIds(d).forEach((uid, i) => {
-    tables.Unit.push({ UnitID: uid, UnitName: `${constants.districtById.get(d).name} PS-${i + 1}`, TypeID: 4, ParentUnit: d, DistrictID: d });
-  });
-}
-
-tables.AggMonthly = [];
-for (const d of STUB_DISTRICTS) {
-  for (const sh of STUB_SUBHEADS) {
-    const head = constants.subHeadById.get(sh).headId;
-    for (const ym of MONTHS) {
-      const count = 5 + (hash32(`${d}|${sh}|${ym}`) % 20);
-      tables.AggMonthly.push({
-        Ym: ym, DistrictID: d, UnitID: stationIds(d)[0], CrimeHeadID: head,
-        CrimeSubHeadID: sh, CaseCount: count, HeinousCount: sh === 101 ? count : 0
-      });
-    }
-  }
-}
-
-tables.ChargesheetDetails = [];
-for (let i = 1; i <= 30; i += 1) {
-  tables.ChargesheetDetails.push({
-    CSID: i, CaseMasterID: i, csdate: `2026-0${(i % 6) + 1}-10`,
-    cstype: i <= 12 ? 'A' : i <= 15 ? 'B' : 'C', PolicePersonID: 9001
-  });
-}
-
-tables.AnomalyAlert = [
-  { AlertID: 'AL-001', DistrictID: '0103', UnitID: '1031', CrimeHeadID: 3, PeriodStart: `${NOW_YM}-01`, PeriodEnd: `${NOW_YM}-28`, Observed: 42, Expected: 18.5, ZScore: 4.2, Severity: 3, Status: 'OPEN', Narrative: 'Chain snatching resurgence in Mysuru City', CreatedAt: `${NOW_YM}-15 08:00:00` },
-  { AlertID: 'AL-002', DistrictID: '0105', UnitID: null, CrimeHeadID: 5, PeriodStart: `${NOW_YM}-01`, PeriodEnd: `${NOW_YM}-28`, Observed: 66, Expected: 23.1, ZScore: 3.4, Severity: 2, Status: 'OPEN', Narrative: 'Cyber fraud spike in Mangaluru City', CreatedAt: `${NOW_YM}-14 08:00:00` },
-  { AlertID: 'AL-003', DistrictID: '0101', UnitID: '1011', CrimeHeadID: 3, PeriodStart: `${NOW_YM}-01`, PeriodEnd: `${NOW_YM}-28`, Observed: 30, Expected: 19.0, ZScore: 2.4, Severity: 1, Status: 'OPEN', Narrative: 'Night burglary uptick in Peenya belt', CreatedAt: `${NOW_YM}-13 08:00:00` },
-  { AlertID: 'AL-004', DistrictID: '0109', UnitID: '1091', CrimeHeadID: 1, PeriodStart: '2026-05-01', PeriodEnd: '2026-05-28', Observed: 12, Expected: 9.0, ZScore: 2.1, Severity: 1, Status: 'ACK', Narrative: 'Assault cluster acknowledged', CreatedAt: '2026-05-20 08:00:00' }
-];
-
-tables.HotspotCluster = [
-  { ClusterID: 'HS-01', CrimeHeadID: 3, CentroidLat: 13.028, CentroidLng: 77.518, RadiusM: 800, CaseCount: 34, HourBandStart: 23, HourBandEnd: 3, WindowStart: '2026-02-01', WindowEnd: NOW_YM + '-28', Intensity: 88, Label: 'HB Night cluster — Peenya, 23:00–03:00', DistrictID: '0101' },
-  { ClusterID: 'HS-02', CrimeHeadID: 3, CentroidLat: 12.969, CentroidLng: 77.75, RadiusM: 650, CaseCount: 27, HourBandStart: 21, HourBandEnd: 1, WindowStart: '2026-02-01', WindowEnd: NOW_YM + '-28', Intensity: 74, Label: 'Chain Snatching cluster — Whitefield, 21:00–01:00', DistrictID: '0101' },
-  { ClusterID: 'HS-03', CrimeHeadID: 3, CentroidLat: 12.31, CentroidLng: 76.65, RadiusM: 500, CaseCount: 19, HourBandStart: 20, HourBandEnd: 23, WindowStart: '2026-02-01', WindowEnd: NOW_YM + '-28', Intensity: 61, Label: 'Chain Snatching cluster — Devaraja, 20:00–23:00', DistrictID: '0103' }
-];
-
-tables.NetworkEdge = [
-  { PersonKeyA: 'P001', PersonKeyB: 'P002', Weight: 3, CaseIDsJson: '[1,2,3]', CommunityID: 1 },
-  { PersonKeyA: 'P001', PersonKeyB: 'P003', Weight: 2, CaseIDsJson: '[2,4]', CommunityID: 1 },
-  { PersonKeyA: 'P002', PersonKeyB: 'P003', Weight: 1, CaseIDsJson: '[2]', CommunityID: 1 },
-  { PersonKeyA: 'P004', PersonKeyB: 'P005', Weight: 2, CaseIDsJson: '[5,6]', CommunityID: 2 }
-];
-
-tables.OffenderProfile = [
-  { PersonKey: 'P001', CanonicalName: 'Ravi Kumar', AliasesJson: '["Ravi Kumar B","R Kumar"]', CaseCount: 6, DistrictsJson: '["0101","0103"]', FirstSeen: '2024-02-11', LastSeen: `${NOW_YM}-02`, MOTagsJson: '["two-wheeler","gold-chain","night"]', CommunityID: 1, DegreeCentrality: 0.42, RiskScore: 87.5 },
-  { PersonKey: 'P002', CanonicalName: 'Manjunath Shetty', AliasesJson: '["M Shetty"]', CaseCount: 4, DistrictsJson: '["0101"]', FirstSeen: '2024-06-01', LastSeen: '2026-05-11', MOTagsJson: '["lock-breaking","gas-cutter"]', CommunityID: 1, DegreeCentrality: 0.31, RiskScore: 72.3 },
-  { PersonKey: 'P003', CanonicalName: 'Nagaraj Gowda', AliasesJson: '[]', CaseCount: 3, DistrictsJson: '["0103"]', FirstSeen: '2025-01-15', LastSeen: '2026-04-20', MOTagsJson: '["otp-fraud"]', CommunityID: 1, DegreeCentrality: 0.2, RiskScore: 55.0 },
-  { PersonKey: 'P004', CanonicalName: 'Prakash Naik', AliasesJson: '["P Naik"]', CaseCount: 5, DistrictsJson: '["0109","0111"]', FirstSeen: '2024-03-02', LastSeen: '2026-06-13', MOTagsJson: '["vehicle-theft"]', CommunityID: 2, DegreeCentrality: 0.28, RiskScore: 64.9 },
-  { PersonKey: 'P005', CanonicalName: 'Shivakumar Hegde', AliasesJson: '[]', CaseCount: 3, DistrictsJson: '["0109"]', FirstSeen: '2025-05-19', LastSeen: '2026-06-30', MOTagsJson: '["vehicle-theft","country-made-pistol"]', CommunityID: 2, DegreeCentrality: 0.18, RiskScore: 51.2 },
-  { PersonKey: 'P006', CanonicalName: 'Lakshman Rao', AliasesJson: '[]', CaseCount: 1, DistrictsJson: '["0107"]', FirstSeen: '2026-01-05', LastSeen: '2026-01-05', MOTagsJson: '[]', CommunityID: null, DegreeCentrality: 0, RiskScore: 12.0 }
-];
-
-tables.ForecastMonthly = [];
-for (const d of ['0101', '0103']) {
-  for (let i = 11; i >= 0; i -= 1) {
-    const ym = ymAdd(NOW_YM, -i);
-    const actual = 40 + (hash32(`${d}|f|${ym}`) % 15);
-    const row = { DistrictID: d, CrimeHeadID: 3, Ym: ym, Actual: actual, Predicted: null, Lo: null, Hi: null, Model: 'holt-winters' };
-    if (i <= 5) { row.Predicted = actual + 3; row.Lo = actual - 5; row.Hi = actual + 11; } // backtest overlap
-    tables.ForecastMonthly.push(row);
-  }
-  for (let i = 1; i <= 3; i += 1) {
-    const ym = ymAdd(NOW_YM, i);
-    const p = 45 + (hash32(`${d}|p|${ym}`) % 10);
-    tables.ForecastMonthly.push({ DistrictID: d, CrimeHeadID: 3, Ym: ym, Actual: null, Predicted: p, Lo: p - 8, Hi: p + 8, Model: 'holt-winters' });
-  }
-}
-
-tables.StationRisk = tables.Unit.map((u, i) => ({
-  UnitID: u.UnitID, Horizon: 30, RiskScore: 90 - i * 4.5,
-  DriversJson: '["rising vehicle theft","active night-burglary hotspot 800 m","recent anomaly"]',
-  ComputedAt: `${NOW_YM}-01 02:00:00`
-}));
-
-tables.CaseMaster = [];
-const BRIEFS = [
-  'The complainant Lakshmamma Gowda reported that two unknown persons on a two-wheeler without plate snatched her gold mangalsutra near Devaraja Market at night. One accused brandished a knife and threatened her before fleeing. Property worth Rs. 45,000 was stolen.',
-  'Unknown persons committed house breaking by lock-breaking with a gas-cutter during the night and stole cash and jewellery from the house of Shivakumar Hegde.',
-  'The accused posing as fake police collected OTP from the victim and defrauded Rs. 1,20,000 through online transfer. The one-time password was obtained on the pretext of a KYC update.',
-  'The accused Prakash Naik assaulted the victim with a machete following a property dispute and fled on a motorcycle.'
-];
-for (let i = 1; i <= 40; i += 1) {
-  const d = STUB_DISTRICTS[i % STUB_DISTRICTS.length];
-  const unit = stationIds(d)[i % 3];
-  const sh = STUB_SUBHEADS[i % STUB_SUBHEADS.length];
-  const head = constants.subHeadById.get(sh).headId;
-  const centroid = constants.districtById.get(d);
-  const day = String((i % 27) + 1).padStart(2, '0');
-  const month = ymAdd(NOW_YM, -(i % 3));
-  const serial = String(i).padStart(5, '0');
-  const year = month.slice(0, 4);
-  tables.CaseMaster.push({
-    CaseMasterID: i,
-    CrimeNo: `1${d}${unit}${year}${serial}`,
-    CaseNo: `${year}${serial}`,
-    CrimeRegisteredDate: `${month}-${day}`,
-    PolicePersonID: 9001,
-    PoliceStationID: unit,
-    CaseCategoryID: 1,
-    GravityOffenceID: sh === 101 ? 1 : 2,
-    CrimeMajorHeadID: head,
-    CrimeMinorHeadID: sh,
-    CaseStatusID: (i % 4) + 1,
-    CourtID: 501,
-    IncidentFromDate: `${month}-${day} ${String((i * 7) % 24).padStart(2, '0')}:30:00`,
-    IncidentToDate: `${month}-${day} ${String((i * 7 + 1) % 24).padStart(2, '0')}:30:00`,
-    InfoReceivedPSDate: `${month}-${day} 10:00:00`,
-    latitude: centroid.lat + (i % 10) * 0.001,
-    longitude: centroid.lng + (i % 10) * 0.001,
-    BriefFacts: BRIEFS[i % BRIEFS.length]
-  });
-}
-
-// Children for case 1 (schema columns exist incl. sensitive ones; the API must not return them).
-tables.ComplainantDetails = [
-  { ComplainantID: 11, CaseMasterID: 1, ComplainantName: 'Lakshmamma Gowda', AgeYear: 52, OccupationID: 3, ReligionID: 1, CasteID: 4, GenderID: 2 }
-];
-tables.Victim = [
-  { VictimMasterID: 21, CaseMasterID: 1, VictimName: 'Lakshmamma Gowda', AgeYear: 52, GenderID: 2, VictimPolice: 0 }
-];
-tables.Accused = [
-  { AccusedMasterID: 31, CaseMasterID: 1, AccusedName: 'Ravi Kumar', AgeYear: 29, GenderID: 1, PersonID: 'A1' },
-  { AccusedMasterID: 32, CaseMasterID: 1, AccusedName: 'Manjunath Shetty', AgeYear: 33, GenderID: 1, PersonID: 'A2' }
-];
-tables.ActSectionAssociation = [
-  { CaseMasterID: 1, ActID: 'BNS', SectionID: '304', ActOrderID: 1, SectionOrderID: 1 },
-  { CaseMasterID: 1, ActID: 'BNS', SectionID: '351', ActOrderID: 1, SectionOrderID: 2 }
-];
-tables.Section = [
-  { ActCode: 'BNS', SectionCode: '304', SectionDescription: 'Snatching' },
-  { ActCode: 'BNS', SectionCode: '351', SectionDescription: 'Criminal intimidation' }
-];
-tables.ArrestSurrender = [
-  { ArrestSurrenderID: 41, CaseMasterID: 1, ArrestSurrenderTypeID: 1, ArrestSurrenderDate: '2026-06-20', ArrestSurrenderStateId: 1, ArrestSurrenderDistrictId: '0101', PoliceStationID: '1012', IOID: 9001, CourtID: 501, AccusedMasterID: 31, IsAccused: 1 }
-];
-tables.Employee = [
-  { EmployeeID: 9001, DistrictID: '0101', UnitID: '1011', RankID: 3, DesignationID: 2, KGID: 'KG12345', FirstName: 'Manjunath Hegde' }
-];
-tables.Rank = [{ RankID: 3, RankName: 'Inspector' }];
-tables.Court = [{ CourtID: 501, CourtName: 'City Civil & Sessions Court, Bengaluru', DistrictID: '0101' }];
-tables.CaseAnomaly = [{ CaseMasterID: 1, AnomalyFlag: 1, AnomalyScore: 0.91 }];
+const tables = buildFixtureTables();
 
 // ---------------------------------------------------------------------------
 // Boot app with the stub
@@ -218,15 +42,15 @@ const server = app.listen(0);
 await new Promise((r) => server.once('listening', r));
 const BASE = `http://127.0.0.1:${server.address().port}/api/v1`;
 
-async function get(path) {
-  const res = await fetch(BASE + path);
+async function get(path, base) {
+  const res = await fetch((base || BASE) + path);
   let json = null;
   try { json = await res.json(); } catch { /* ignore */ }
   return { status: res.status, json };
 }
 
-async function post(path, body, headers) {
-  const res = await fetch(BASE + path, {
+async function post(path, body, headers, base) {
+  const res = await fetch((base || BASE) + path, {
     method: 'POST',
     headers: Object.assign({ 'Content-Type': 'application/json' }, headers || {}),
     body: JSON.stringify(body || {})
@@ -371,6 +195,66 @@ for (const utterance of CANNED_UTTERANCES) {
 }
 
 server.close();
+
+// ---------------------------------------------------------------------------
+// PUBLIC_DEMO fixture fallback: a datastore client that ALWAYS throws (the
+// live no-tables scenario). Every main GET route must still serve 200 with
+// fixture-backed data, and healthz must report the honest fixture-demo mode.
+// ---------------------------------------------------------------------------
+
+{
+  resetFixtureFallback();
+  const downApp = createApp({
+    clientFactory: () => ({
+      async execute() { throw new Error('ZCQL QUERY EXECUTION ERROR: table does not exist'); }
+    })
+  });
+  const downServer = downApp.listen(0);
+  await new Promise((r) => downServer.once('listening', r));
+  const DOWN = `http://127.0.0.1:${downServer.address().port}/api/v1`;
+
+  // The entire GET contract suite must hold on fixture-served data.
+  for (const [path, validator] of GET_CASES) {
+    const { status, json } = await get(path, DOWN);
+    check(`FIXTURE GET ${path} -> 200`, status === 200, `got ${status}: ${JSON.stringify(json && json.error)}`);
+    check(`FIXTURE GET ${path} ok:true`, json && json.ok === true);
+    if (json && json.ok) {
+      check(`FIXTURE GET ${path} shape`, Boolean(validator(json.data, json.meta || {})), JSON.stringify(json.data).slice(0, 300));
+    }
+  }
+
+  // Case detail with full ER joins works off the fixture too.
+  const detail = await get('/cases/1', DOWN);
+  check('FIXTURE case detail joins', detail.status === 200 && detail.json.ok === true
+    && detail.json.data.accused.length === 2 && detail.json.data.sections.length === 2
+    && detail.json.data.chargesheet && detail.json.data.chargesheet.type === 'A');
+
+  // Copilot answers from the fixture.
+  const cop = await post('/copilot/query', { q: 'top 5 districts for vehicle theft this year' }, null, DOWN);
+  check('FIXTURE copilot answers', cop.status === 200 && cop.json.ok === true
+    && typeof cop.json.data.answer === 'string' && cop.json.data.answer.trim().length > 10);
+
+  // A raw write during fallback is recorded and returns the success shape.
+  const ack = await post('/alerts/AL-001/ack', {}, { Authorization: 'Bearer demo-admin' }, DOWN);
+  check('FIXTURE ack write succeeds', ack.status === 200 && ack.json.ok === true && ack.json.data.status === 'ACK');
+
+  // healthz: honest but healthy — fixture-demo mode, top-level status ok.
+  const hz = await get('/healthz?nocache=1', DOWN);
+  const h = (hz.json && hz.json.data) || {};
+  check('FIXTURE healthz -> 200 ok envelope', hz.status === 200 && hz.json.ok === true && hasKeys(hz.json, ['ok', 'data', 'meta']));
+  check('FIXTURE healthz status ok', h.status === 'ok', JSON.stringify(h).slice(0, 300));
+  check('FIXTURE healthz datastore fixture-demo', h.datastore && h.datastore.ok === true && h.datastore.mode === 'fixture-demo');
+  check('FIXTURE healthz rowCounts from fixture', h.datastore && h.datastore.rowCounts.CaseMaster === 40 && h.datastore.rowCounts.AnomalyAlert === 4 && h.datastore.rowCounts.OffenderProfile === 6);
+  check('FIXTURE healthz nosql fixture-demo', h.nosql && h.nosql.ok === true && h.nosql.mode === 'fixture-demo');
+  check('FIXTURE healthz cache ok', h.cache && h.cache.ok === true);
+
+  // Fallback activation state was tracked.
+  const st = getFallbackState();
+  check('FIXTURE fallback state active', st.active === true && st.datastore === true && st.nosql === true, JSON.stringify(st));
+  check('FIXTURE fallback counted queries+writes', st.queries > 0 && st.writes > 0, JSON.stringify(st));
+
+  downServer.close();
+}
 
 console.log('');
 console.log(`RESULT: ${pass} passed, ${failCount} failed`);

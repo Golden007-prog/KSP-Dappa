@@ -6,6 +6,7 @@ const express = require('express');
 const { createDatastore } = require('./datastore');
 const { createCache } = require('./cache');
 const { getFlags } = require('./flags');
+const { wrapClientWithFixtureFallback } = require('./fixture');
 const { requestLogger, fail } = require('./envelope');
 
 const readRoutes = require('./routes/read');
@@ -30,13 +31,18 @@ function createApp(options) {
   const cache = o.cache || createCache();
 
   app.use((req, res, next) => {
-    const client = o.clientFactory ? o.clientFactory(req) : null;
+    const flags = o.flags || getFlags();
+    let client = o.clientFactory ? o.clientFactory(req) : {
+      async execute() { throw new Error('datastore client not configured'); }
+    };
+    // PUBLIC_DEMO self-healing: if a real ZCQL call fails (e.g. Data Store
+    // tables not created yet), the same query is answered from the bundled
+    // fixture dataset so the live demo never breaks.
+    if (flags.publicDemo) client = wrapClientWithFixtureFallback(client);
     req.ctx = {
-      ds: client ? createDatastore(client) : createDatastore({
-        async execute() { throw new Error('datastore client not configured'); }
-      }),
+      ds: createDatastore(client),
       cache,
-      flags: o.flags || getFlags(),
+      flags,
       services: o.servicesFactory ? (o.servicesFactory(req) || {}) : {}
     };
     next();

@@ -1,31 +1,59 @@
-// Route registry. Every route is wrapped in an ErrorBoundary keyed by pathname
-// so a crash in one view never white-screens the app and resets on navigation.
-// /print/brief renders OUTSIDE Layout (bare print page for SmartBrowz).
+// Route registry. Every route is lazy() code-split and wrapped in an
+// ErrorBoundary keyed by pathname so a crash in one view never white-screens
+// the app and resets on navigation; Suspense shows a page skeleton while a
+// route chunk loads. Providers: ThemeProvider (class-strategy dark mode) and
+// ToastProvider (useToast) wrap everything — including /print/brief, which
+// renders OUTSIDE Layout (bare print page for SmartBrowz).
+import { lazy, Suspense } from 'react';
 import { Routes, Route, useLocation, Link } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import EmptyState from './components/EmptyState.jsx';
+import LoadingSkeleton from './components/LoadingSkeleton.jsx';
+import { ThemeProvider } from './components/ThemeProvider.jsx';
+import { ToastProvider } from './components/ToastProvider.jsx';
 
-import Dashboard from './routes/Dashboard.jsx';
-import GeoIntel from './routes/GeoIntel.jsx';
-import Trends from './routes/Trends.jsx';
-import Alerts from './routes/Alerts.jsx';
-import Network from './routes/Network.jsx';
-import Offenders from './routes/Offenders.jsx';
-import Offender360 from './routes/Offender360.jsx';
-import Predict from './routes/Predict.jsx';
-import Copilot from './routes/Copilot.jsx';
-import Cases from './routes/Cases.jsx';
-import CaseDetail from './routes/CaseDetail.jsx';
-import Reports from './routes/Reports.jsx';
-import PrintBrief from './routes/PrintBrief.jsx';
-import About from './routes/About.jsx';
+const Dashboard = lazy(() => import('./routes/Dashboard.jsx'));
+const GeoIntel = lazy(() => import('./routes/GeoIntel.jsx'));
+const Trends = lazy(() => import('./routes/Trends.jsx'));
+const Alerts = lazy(() => import('./routes/Alerts.jsx'));
+const Network = lazy(() => import('./routes/Network.jsx'));
+const Offenders = lazy(() => import('./routes/Offenders.jsx'));
+const Offender360 = lazy(() => import('./routes/Offender360.jsx'));
+const Predict = lazy(() => import('./routes/Predict.jsx'));
+const Copilot = lazy(() => import('./routes/Copilot.jsx'));
+const Cases = lazy(() => import('./routes/Cases.jsx'));
+const CaseDetail = lazy(() => import('./routes/CaseDetail.jsx'));
+const Reports = lazy(() => import('./routes/Reports.jsx'));
+const PrintBrief = lazy(() => import('./routes/PrintBrief.jsx'));
+const About = lazy(() => import('./routes/About.jsx'));
+
+/** Page-shaped skeleton shown while a route chunk downloads. */
+function RouteFallback() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading view">
+      <div className="space-y-2">
+        <LoadingSkeleton height={24} className="max-w-[16rem]" />
+        <LoadingSkeleton height={14} className="max-w-[24rem]" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <LoadingSkeleton key={i} height={92} />
+        ))}
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <LoadingSkeleton height={280} />
+        <LoadingSkeleton height={280} />
+      </div>
+    </div>
+  );
+}
 
 function Boundary({ label, children }) {
   const location = useLocation();
   return (
     <ErrorBoundary key={location.pathname} label={label}>
-      {children}
+      <Suspense fallback={<RouteFallback />}>{children}</Suspense>
     </ErrorBoundary>
   );
 }
@@ -42,27 +70,31 @@ function NotFound() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route
-        path="/print/brief"
-        element={<Boundary label="the print brief"><PrintBrief /></Boundary>}
-      />
-      <Route element={<Layout />}>
-        <Route path="/" element={<Boundary label="the dashboard"><Dashboard /></Boundary>} />
-        <Route path="/map" element={<Boundary label="GeoIntel"><GeoIntel /></Boundary>} />
-        <Route path="/trends" element={<Boundary label="Trends"><Trends /></Boundary>} />
-        <Route path="/alerts" element={<Boundary label="Alerts"><Alerts /></Boundary>} />
-        <Route path="/network" element={<Boundary label="the Network explorer"><Network /></Boundary>} />
-        <Route path="/offenders" element={<Boundary label="Offenders"><Offenders /></Boundary>} />
-        <Route path="/offenders/:personKey" element={<Boundary label="Offender 360"><Offender360 /></Boundary>} />
-        <Route path="/predict" element={<Boundary label="Predict"><Predict /></Boundary>} />
-        <Route path="/copilot" element={<Boundary label="Ask DAPPA"><Copilot /></Boundary>} />
-        <Route path="/cases" element={<Boundary label="the Case explorer"><Cases /></Boundary>} />
-        <Route path="/cases/:id" element={<Boundary label="the FIR detail"><CaseDetail /></Boundary>} />
-        <Route path="/reports" element={<Boundary label="Reports"><Reports /></Boundary>} />
-        <Route path="/about" element={<Boundary label="About"><About /></Boundary>} />
-        <Route path="*" element={<NotFound />} />
-      </Route>
-    </Routes>
+    <ThemeProvider>
+      <ToastProvider>
+        <Routes>
+          <Route
+            path="/print/brief"
+            element={<Boundary label="the print brief"><PrintBrief /></Boundary>}
+          />
+          <Route element={<Layout />}>
+            <Route path="/" element={<Boundary label="the dashboard"><Dashboard /></Boundary>} />
+            <Route path="/map" element={<Boundary label="GeoIntel"><GeoIntel /></Boundary>} />
+            <Route path="/trends" element={<Boundary label="Trends"><Trends /></Boundary>} />
+            <Route path="/alerts" element={<Boundary label="Alerts"><Alerts /></Boundary>} />
+            <Route path="/network" element={<Boundary label="the Network explorer"><Network /></Boundary>} />
+            <Route path="/offenders" element={<Boundary label="Offenders"><Offenders /></Boundary>} />
+            <Route path="/offenders/:personKey" element={<Boundary label="Offender 360"><Offender360 /></Boundary>} />
+            <Route path="/predict" element={<Boundary label="Predict"><Predict /></Boundary>} />
+            <Route path="/copilot" element={<Boundary label="Ask DAPPA"><Copilot /></Boundary>} />
+            <Route path="/cases" element={<Boundary label="the Case explorer"><Cases /></Boundary>} />
+            <Route path="/cases/:id" element={<Boundary label="the FIR detail"><CaseDetail /></Boundary>} />
+            <Route path="/reports" element={<Boundary label="Reports"><Reports /></Boundary>} />
+            <Route path="/about" element={<Boundary label="About"><About /></Boundary>} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

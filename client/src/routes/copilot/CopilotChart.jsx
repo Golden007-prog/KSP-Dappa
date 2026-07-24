@@ -1,11 +1,13 @@
 // /copilot — renders the optional chart payload from /copilot/query inside an
-// answer bubble. Payload contract: {type:'bar'|'line'|'pie', title, categories,
+// answer bubble, with a PNG download button (echarts getDataURL — pure client).
+// Payload contract: {type:'bar'|'line'|'pie', title, categories,
 // series:[{name, data}]}. Defensive: skips rendering on malformed payloads.
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
 // Importing ChartPanel registers the shared 'dappa' echarts theme as a side effect.
 import { DAPPA_CHART_COLORS } from '../../components/ChartPanel.jsx';
+import { useToast } from '../../components/ToastProvider.jsx';
 
 function buildOption(chart) {
   const cats = Array.isArray(chart.categories) ? chart.categories.map(String) : [];
@@ -51,12 +53,44 @@ function buildOption(chart) {
 }
 
 export default function CopilotChart({ chart }) {
+  const chartRef = useRef(null);
+  const toast = useToast();
   const option = useMemo(() => (chart ? buildOption(chart) : null), [chart]);
   if (!option) return null;
+
+  const exportPng = () => {
+    try {
+      const inst = chartRef.current?.getEchartsInstance();
+      if (!inst) return;
+      const url = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#111A2C' });
+      const a = document.createElement('a');
+      a.href = url;
+      const slug = String(chart.title || 'answer').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      a.download = `dappa-chart-${slug || 'answer'}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success('Chart downloaded as PNG');
+    } catch {
+      toast.error('Chart export failed in this browser.');
+    }
+  };
+
   return (
     <div className="mt-3 rounded-lg border border-grid bg-base/60 p-2">
-      {chart.title && <p className="text-[11px] text-muted mb-1 px-1">{chart.title}</p>}
+      <div className="flex items-center justify-between gap-2 mb-1 px-1">
+        <p className="text-[11px] text-muted truncate">{chart.title || ''}</p>
+        <button
+          type="button"
+          className="shrink-0 text-[10px] text-muted hover:text-primary transition-colors"
+          onClick={exportPng}
+          aria-label="Download chart as PNG"
+        >
+          PNG ↓
+        </button>
+      </div>
       <ReactECharts
+        ref={chartRef}
         echarts={echarts}
         theme="dappa"
         option={option}

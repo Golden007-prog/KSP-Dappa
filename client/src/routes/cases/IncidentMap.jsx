@@ -45,5 +45,13 @@ export default function IncidentMap({ lat, lng, label, height = 260 }) {
   if (!hasCoords) {
     return <EmptyState compact title="No coordinates" message="This case has no recorded incident location." />;
   }
-  return <div ref={elRef} className="w-full rounded-lg overflow-hidden border border-grid" style={{ height }} />;
+  return (
+    <>
+      {/* Leaflet tiles don't rasterize reliably in print — swap for the coords. */}
+      <div ref={elRef} className="w-full rounded-lg overflow-hidden border border-grid print:hidden" style={{ height }} />
+      <p className="hidden print:block num text-xs text-muted">
+        Incident location: {la.toFixed(5)}, {ln.toFixed(5)} (WGS84)
+      </p>
+    </>
+  );
 }

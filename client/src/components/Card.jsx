@@ -4,7 +4,7 @@
 export default function Card({ title, subtitle, actions, padded = true, className = '', children }) {
   const hasHeader = title || subtitle || actions;
   return (
-    <section className={`bg-panel border border-grid rounded-xl ${className}`}>
+    <section className={`bg-panel border border-grid rounded-xl shadow-card ${className}`}>
       {hasHeader && (
         <header className="flex items-start justify-between gap-3 px-4 pt-3 pb-2 border-b border-grid/60">
           <div className="min-w-0">

@@ -6,6 +6,7 @@ const { getLookups } = require('../lookups');
 const copilot = require('../copilot');
 const quickml = require('../quickml');
 const zia = require('../zia');
+const { getFallbackState, fixtureNetworkGraph } = require('../fixture');
 const { toNum } = require('../util');
 
 function register(router) {
@@ -121,6 +122,7 @@ function register(router) {
     const ctx = req.ctx;
     const health = { status: 'ok', datastore: { ok: false, rowCounts: {} }, cache: { ok: false, backend: null }, nosql: { ok: false }, flags: ctx.flags };
     const countTables = [['CaseMaster', 'COUNT(CaseMasterID)'], ['AggMonthly', 'COUNT(Ym)'], ['AnomalyAlert', 'COUNT(AlertID)'], ['OffenderProfile', 'COUNT(PersonKey)']];
+    const fixtureQueriesBefore = getFallbackState().queries;
     try {
       const results = await Promise.all(countTables.map(([table, expr]) =>
         ctx.ds.query({ table, columns: [expr] }).then((rows) => toNum(rows.length ? rows[0][expr] : 0)).catch(() => null)
@@ -129,6 +131,11 @@ function register(router) {
       health.datastore.ok = results.some((r) => r !== null);
     } catch (e) {
       health.datastore.ok = false;
+    }
+    // Honest reporting: if these very counts were answered from the bundled
+    // fixture (PUBLIC_DEMO self-healing), say so instead of claiming degraded.
+    if (health.datastore.ok && getFallbackState().queries > fixtureQueriesBefore) {
+      health.datastore.mode = 'fixture-demo';
     }
     try {
       health.cache.ok = await ctx.cache.ping();
@@ -141,12 +148,22 @@ function register(router) {
       if (loaders.nosql) {
         const g = await loaders.nosql();
         health.nosql.ok = Boolean(g && Array.isArray(g.nodes));
-      } else {
-        health.nosql.ok = false;
-        health.nosql.note = 'nosql loader not configured (fallback chain active)';
       }
     } catch (e) {
       health.nosql.ok = false;
+    }
+    if (!health.nosql.ok) {
+      if (ctx.flags.publicDemo) {
+        try {
+          const g = await fixtureNetworkGraph();
+          health.nosql.ok = Boolean(g && Array.isArray(g.nodes) && g.nodes.length > 0);
+          health.nosql.mode = 'fixture-demo';
+        } catch (e) {
+          health.nosql.ok = false;
+        }
+      } else if (!(ctx.services.graphLoaders || {}).nosql) {
+        health.nosql.note = 'nosql loader not configured (fallback chain active)';
+      }
     }
     if (!health.datastore.ok || !health.cache.ok) health.status = 'degraded';
     ok(res, health, { uptimeSec: Math.round(process.uptime()) });

@@ -3,7 +3,7 @@
 export default function EmptyState({ title, message, icon, action, compact = false, className = '' }) {
   return (
     <div className={`flex flex-col items-center justify-center text-center ${compact ? 'py-6 px-3' : 'py-14 px-6'} ${className}`}>
-      <div className="text-muted mb-2">
+      <div className={`flex items-center justify-center rounded-full border border-grid bg-grid/25 text-muted mb-3 ${compact ? 'h-10 w-10' : 'h-13 w-13'}`}>
         {icon || (
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />

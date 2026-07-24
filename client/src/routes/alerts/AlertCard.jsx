@@ -18,6 +18,7 @@ function cardBorder(severity, acked) {
 
 export default function AlertCard({
   alert: a, stations, acked = false, onAck, ackPending = false, ackError = false,
+  unread = false, onRead,
 }) {
   const sev = String(a.severity || 'medium').toLowerCase();
   return (
@@ -30,6 +31,12 @@ export default function AlertCard({
               {a.headName || 'Anomaly'} — {a.districtName || a.districtId || 'Unknown district'}
             </h3>
             <Badge tone={acked ? 'slate' : 'red'} className="num">z {fmtNum(a.zScore, 1)}</Badge>
+            {unread && !acked && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                new
+              </span>
+            )}
           </div>
 
           {a.narrative && <p className="text-xs text-muted leading-relaxed">{a.narrative}</p>}
@@ -65,6 +72,7 @@ export default function AlertCard({
               <Link
                 className="btn !text-xs flex-1 justify-center"
                 to={`/map?districtId=${encodeURIComponent(a.districtId)}`}
+                onClick={() => onRead?.(a.alertId)}
               >
                 View on map
               </Link>
@@ -76,7 +84,7 @@ export default function AlertCard({
                 type="button"
                 className="btn-primary !text-xs flex-1 justify-center"
                 disabled={ackPending}
-                onClick={() => onAck(a.alertId)}
+                onClick={() => { onRead?.(a.alertId); onAck(a.alertId); }}
               >
                 {ackPending ? 'Acknowledging…' : 'Acknowledge'}
               </button>

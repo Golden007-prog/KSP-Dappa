@@ -1,5 +1,6 @@
-// Hotspot chips row — top clusters by intensity. Clicking a chip flies the map
-// to the cluster and opens its hour-band annotation popup.
+// Hotspot chips row — top clusters ranked by intensity, each with a rank
+// number and a relative score bar. Clicking a chip flies the map to the
+// cluster and opens its hour-band annotation popup.
 import { unitInfo } from '../../lib/districtGeoMap.js';
 import { fmtInt } from '../../lib/format.js';
 import { hourBand } from './utils.js';
@@ -25,27 +26,36 @@ export default function HotspotChips({ hotspots, loading, error, onRetry, onSele
     );
   }
   if (!hotspots.length) return null;
+  const maxIntensity = Math.max(1e-9, ...hotspots.map((h) => Number(h.intensity) || 0));
   return (
-    <div className="pointer-events-auto flex gap-1.5 overflow-x-auto pb-1 max-w-full">
-      {hotspots.map((h) => {
+    <div className="pointer-events-auto flex gap-1.5 overflow-x-auto pb-1 max-w-full" role="list" aria-label="Top hotspots">
+      {hotspots.map((h, i) => {
         const band = hourBand(h.hourBandStart, h.hourBandEnd);
         const district = unitInfo(h.districtId)?.name;
         const selected = selectedId != null && String(h.clusterId) === String(selectedId);
+        const score = Math.max(0.08, (Number(h.intensity) || 0) / maxIntensity);
         return (
           <button
             key={h.clusterId}
             type="button"
+            role="listitem"
             onClick={() => onSelect(h)}
-            title={`Fly to hotspot${band ? ` · active ${band}` : ''}`}
+            title={`Fly to hotspot · intensity ${h.intensity}${band ? ` · active ${band}` : ''}`}
             className={`chip shrink-0 bg-panel/95 shadow-lg transition-colors ${
               selected ? '!border-amber/70 !text-amber' : 'hover:border-amber/50'
             }`}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-signal shrink-0" aria-hidden="true" />
-            <span className="truncate max-w-[10rem]">{h.label || h.subHeadName || `Cluster ${h.clusterId}`}</span>
-            {district && <span className="text-muted">· {district}</span>}
+            <span className="num text-[10px] text-muted">#{i + 1}</span>
+            <span className="truncate max-w-[9rem]">{h.label || h.subHeadName || `Cluster ${h.clusterId}`}</span>
+            {district && <span className="text-muted hidden sm:inline">· {district}</span>}
             <span className="num text-muted">{fmtInt(h.caseCount)}</span>
-            {band && <span className="num text-amber/80">{band}</span>}
+            <span className="h-1 w-9 rounded-full bg-grid overflow-hidden shrink-0" aria-hidden="true">
+              <span
+                className={`block h-full rounded-full ${score >= 0.66 ? 'bg-signal' : 'bg-amber'}`}
+                style={{ width: `${Math.round(score * 100)}%` }}
+              />
+            </span>
+            {band && <span className="num text-amber/80 hidden sm:inline">{band}</span>}
           </button>
         );
       })}

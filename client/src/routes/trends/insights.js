@@ -99,6 +99,61 @@ export function shareInsight(items) {
   return `${text}.`;
 }
 
+// ---------------------------------------------------------------------------
+// Deep-dive additions (all deterministic — computed via ./analysis.js helpers)
+// ---------------------------------------------------------------------------
+
+/** Overall trajectory: least-squares direction + last-3-vs-prior-3 momentum. */
+export function trendDirectionInsight(months, values, trend, recentPct) {
+  if (!months?.length || !trend) return null;
+  const dir = Math.abs(trend.pctPerMonth) < 0.5 ? 'flat'
+    : trend.pctPerMonth > 0 ? 'rising' : 'falling';
+  let text = dir === 'flat'
+    ? `The overall trajectory is flat across ${monthLabel(months[0])}–${monthLabel(months[months.length - 1])} (${fmtNum(Math.abs(trend.pctPerMonth), 1)}% per month drift).`
+    : `The overall trajectory is ${dir} at ~${fmtNum(Math.abs(trend.pctPerMonth), 1)}% per month across ${monthLabel(months[0])}–${monthLabel(months[months.length - 1])}.`;
+  if (Number.isFinite(recentPct)) {
+    text += ` The last 3 months run ${pct(Math.abs(recentPct))} ${recentPct >= 0 ? 'above' : 'below'} the prior 3.`;
+  }
+  return text;
+}
+
+/** Seasonal profile from calendar-month means → peak + trough months. */
+export function seasonalPeakInsight(byMonth, monthNames) {
+  if (!byMonth?.some((v) => v !== null && v > 0)) return null;
+  const known = byMonth.map((v, i) => ({ v, i })).filter((x) => x.v !== null);
+  if (known.length < 4) return null;
+  const mean = known.reduce((a, x) => a + x.v, 0) / known.length;
+  if (mean <= 0) return null;
+  const peak = known.reduce((a, x) => (x.v > a.v ? x : a));
+  const trough = known.reduce((a, x) => (x.v < a.v ? x : a));
+  return `Seasonal peak is ${monthNames[peak.i]} at ${fmtNum(peak.v / mean, 1)}× the monthly average; `
+    + `${monthNames[trough.i]} is the quietest month (${pct((1 - trough.v / mean) * 100, 0)} below average).`;
+}
+
+/** Anomaly summary for the strip → count + the most recent flagged month. */
+export function anomalySummaryInsight(months, anomalies) {
+  if (!months?.length) return null;
+  if (!anomalies?.length) return 'No statistically anomalous months in this window (trailing z-score, |z| ≥ 2).';
+  const last = anomalies[anomalies.length - 1];
+  const plural = anomalies.length === 1 ? 'month is' : 'months are';
+  return `${anomalies.length} ${plural} statistically anomalous (|z| ≥ 2 vs the trailing year); `
+    + `most recent: ${monthLabel(months[last.index])}, ${last.dir === 'up' ? 'a spike' : 'a drop'} at z = ${fmtNum(last.z, 1)}.`;
+}
+
+/** Compared series → biggest riser + biggest faller (last 3 vs prior 3 months). */
+export function riserFallerInsight(cells) {
+  const rated = (cells || []).filter((c) => Number.isFinite(c.deltaPct) && c.total >= 10);
+  if (rated.length < 2) return null;
+  const sorted = [...rated].sort((a, b) => b.deltaPct - a.deltaPct);
+  const up = sorted[0];
+  const down = sorted[sorted.length - 1];
+  let text = `Fastest riser among compared series: ${up.label} (${up.deltaPct >= 0 ? '+' : '−'}${pct(Math.abs(up.deltaPct))} last 3 months vs prior 3)`;
+  if (down !== up && down.deltaPct < 0) {
+    text += `; biggest faller: ${down.label} (−${pct(Math.abs(down.deltaPct))})`;
+  }
+  return `${text}.`;
+}
+
 /** District comparison bars → leader vs state median + sharpest MoM rise. */
 export function districtInsight(rows, metric) {
   if (!rows?.length) return null;

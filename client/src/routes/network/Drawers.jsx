@@ -34,7 +34,7 @@ function Stat({ label, children }) {
 }
 
 /** Node tap → offender identity drawer (enriched via GET /offenders/:key). */
-export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd }) {
+export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEgo = false }) {
   const detail = useOffender(node?.id || '');
   const d = detail.data || {};
   const hasCommunity = node?.communityId !== null && node?.communityId !== undefined && node?.communityId !== '';
@@ -92,6 +92,15 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd }) {
         {hasCommunity && (
           <button type="button" className="btn !py-1.5 !px-3 text-xs" onClick={() => onIsolate?.(node.communityId)}>
             Isolate group #{String(node.communityId)}
+          </button>
+        )}
+        {onEgo && (
+          <button
+            type="button"
+            className={`btn !py-1.5 !px-3 text-xs ${isEgo ? '!border-teal/60 text-teal' : ''}`}
+            onClick={() => onEgo(isEgo ? null : node?.id)}
+          >
+            {isEgo ? 'Exit ego focus' : 'Focus ego network'}
           </button>
         )}
       </div>

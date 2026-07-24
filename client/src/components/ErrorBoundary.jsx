@@ -23,7 +23,7 @@ export default class ErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return (
-        <div className="bg-panel border border-grid rounded-xl m-2">
+        <div className="bg-panel border border-grid rounded-xl shadow-card m-2">
           <EmptyState
             title={`Something broke while rendering ${this.props.label || 'this view'}.`}
             message={String(this.state.error?.message || this.state.error)}

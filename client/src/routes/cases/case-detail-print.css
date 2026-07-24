@@ -1,0 +1,58 @@
+/* Print styling for /cases/:id — loaded with the CaseDetail chunk.
+   Two jobs:
+   1. Structural (app-wide, print-only, harmless elsewhere): Layout scrolls in
+      #main-scroll, which clips printing to one page — flatten the scroller.
+   2. Palette: inside .case-print-root, remap the design-token triplets to a
+      light print palette so cards, badges and text come out ink-on-white
+      without touching any shared file. Alpha-modifier utilities (bg-amber/10…)
+      keep working because only the RGB triplets change. */
+
+@media print {
+  html, body, #root {
+    height: auto !important;
+  }
+  #root > div {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  #main-scroll {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .case-print-root {
+    --t-base: 255 255 255;
+    --t-panel: 255 255 255;
+    --t-panel-raised: 245 247 250;
+    --t-grid: 203 209 220;
+    --t-ink: 17 24 39;
+    --t-muted: 75 85 99;
+    --t-primary: 29 78 216;
+    --t-primary-on: 255 255 255;
+    --t-amber: 146 91 6;
+    --t-signal: 153 27 27;
+    --t-teal: 15 118 110;
+    --c-base: #ffffff;
+    --c-panel: #ffffff;
+    --c-grid: #cbd1dc;
+    --c-ink: #111827;
+    --c-muted: #4b5563;
+    --c-amber: #92400e;
+    --c-red: #991b1b;
+    --c-teal: #0f766e;
+    --c-primary: #1d4ed8;
+    max-width: none;
+  }
+  .case-print-root section {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+  .case-print-root .case-timeline {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+  .case-print-root .skeleton::after {
+    animation: none;
+  }
+}

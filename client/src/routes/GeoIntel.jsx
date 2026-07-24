@@ -1,12 +1,16 @@
 // Route 2 — /map GeoIntel. Full-bleed Leaflet command map for Karnataka:
-// OSM dark tiles with layer toggles (choropleth / incident heat / hotspot
-// clusters / station bubbles / alert pulse overlay, zustand-persisted),
-// district click → zoom + station drill, station click → KPI side panel with
-// recent cases, a month time-scrubber animating the heat layer, and a hotspot
-// chips row that flies the map to a cluster with its hour-band annotation.
+// OSM tiles (dark-filtered in dark theme) with layer toggles (choropleth /
+// incident heat / incident popup markers / hotspot clusters / station bubbles /
+// alert pulse, zustand + localStorage persisted), district click → zoom +
+// station drill, station click → KPI side panel with recent cases, a month
+// time-scrubber (URL-synced, play/pause + speed control) animating the heat
+// layer, ranked hotspot chips with score bars, a locate-district search box,
+// a fullscreen mode (F / Esc), and on phones a swipeable docked bottom info
+// sheet instead of the desktop overlays.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  useDistrictsGeo, useHotspots, useKarnatakaGeoJson, useStations, useTrendsMonthly,
+  useDistrictsGeo, useHotspots, useKarnatakaGeoJson, useLookups, useStations, useTrendsMonthly,
 } from '../lib/api.js';
 import { useUrlFilters } from '../lib/filters.js';
 import { useUiStore } from '../lib/store.js';
@@ -16,25 +20,45 @@ import {
 import FilterBar from '../components/FilterBar.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import PulseDot from '../components/PulseDot.jsx';
+import Tooltip from '../components/Tooltip.jsx';
 import MapCanvas from './geointel/MapCanvas.jsx';
 import LayerToggles from './geointel/LayerToggles.jsx';
-import TimeScrubber from './geointel/TimeScrubber.jsx';
+import TimeScrubber, { SCRUB_SPEEDS } from './geointel/TimeScrubber.jsx';
 import HotspotChips from './geointel/HotspotChips.jsx';
 import SidePanel from './geointel/SidePanel.jsx';
+import LocateSearch from './geointel/LocateSearch.jsx';
+import MobileSheet from './geointel/MobileSheet.jsx';
 import { useIncidentsLayer } from './geointel/hooks.js';
 import { monthWindow } from './geointel/utils.js';
+import { loadPrefs, savePrefs } from './geointel/prefs.js';
 
 const MAX_SCRUB_MONTHS = 24;
+const LAYER_KEYS = ['choropleth', 'heat', 'incidents', 'hotspots', 'stations', 'alertPulse'];
 
-// Route-scoped skins: dark-filtered OSM raster tiles and the dark Leaflet
-// popup used for hotspot hour-band annotations (index.css is off-limits).
+// Route-scoped skins. Tiles are dark-filtered only under html.dark (the light
+// theme keeps plain OSM); popups follow the theme via the --c-* CSS vars
+// (index.css is off-limits, so these live here).
 const GEOINTEL_CSS = `
-.geointel-tiles { filter: invert(1) hue-rotate(200deg) brightness(0.6) contrast(1.05) saturate(0.35); }
-.geointel-popup .leaflet-popup-content-wrapper { background:#111A2C; color:#E6EAF2; border:1px solid #1E2A44; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+html.dark .geointel-tiles { filter: invert(1) hue-rotate(200deg) brightness(0.6) contrast(1.05) saturate(0.35); }
+.geointel-popup .leaflet-popup-content-wrapper { background:var(--c-panel); color:var(--c-ink); border:1px solid var(--c-grid); border-radius:10px; box-shadow:var(--shadow-lift); }
 .geointel-popup .leaflet-popup-content { margin:10px 12px; }
-.geointel-popup .leaflet-popup-tip { background:#111A2C; border:1px solid #1E2A44; }
-.geointel-range { accent-color:#F5A623; }
+.geointel-popup .leaflet-popup-content a { color:var(--c-amber); font-weight:600; }
+.geointel-popup .leaflet-popup-tip { background:var(--c-panel); border:1px solid var(--c-grid); }
+.geointel-range { accent-color:var(--c-amber); }
 `;
+
+const ExpandIcon = (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+  </svg>
+);
+const CompressIcon = (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5" />
+  </svg>
+);
 
 function ErrorChip({ label, onRetry }) {
   return (
@@ -47,8 +71,25 @@ function ErrorChip({ label, onRetry }) {
   );
 }
 
+function LegendItems() {
+  return (
+    <>
+      <span className="flex items-center gap-1.5">
+        <span className="h-1.5 w-14 rounded-full" style={{ background: 'linear-gradient(90deg,#233150,#F5A623)' }} aria-hidden="true" />
+        case density
+      </span>
+      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal" aria-hidden="true" /> low-risk station</span>
+      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-signal" aria-hidden="true" /> high-risk station</span>
+      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber" aria-hidden="true" /> commissionerate</span>
+      <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-teal" aria-hidden="true" /> incident point (zoom 12+)</span>
+      <span className="flex items-center gap-1.5"><PulseDot /> anomaly district</span>
+    </>
+  );
+}
+
 export default function GeoIntel() {
   const { apiParams, districtId } = useUrlFilters();
+  const [searchParams, setSearchParams] = useSearchParams();
   const mapLayers = useUiStore((s) => s.mapLayers);
   const setMapLayer = useUiStore((s) => s.setMapLayer);
 
@@ -57,9 +98,13 @@ export default function GeoIntel() {
   const stations = useStations(apiParams);
   const hotspots = useHotspots(apiParams);
   const trends = useTrendsMonthly(apiParams); // months list for the scrubber
+  const lookups = useLookups(); // crime-head names for incident popup cards
 
   const [scrubIndex, setScrubIndex] = useState(0); // 0 = whole window
   const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1); // 0.5 | 1 | 2 (persisted)
+  const [fullscreen, setFullscreen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false); // mobile info sheet
   const [drill, setDrill] = useState(null); // {type:'district',polygon,unitIds,title} | {type:'station',station}
   const [fly, setFly] = useState(null);
   const [selectedHotspotId, setSelectedHotspotId] = useState(null);
@@ -69,27 +114,68 @@ export default function GeoIntel() {
     setFly({ seq: flySeq.current, ...cmd });
   };
 
+  // ---- persisted prefs: layer toggles + playback speed ----------------------
+  useEffect(() => {
+    const p = loadPrefs();
+    if (p.mapLayers && typeof p.mapLayers === 'object') {
+      for (const k of LAYER_KEYS) {
+        if (typeof p.mapLayers[k] === 'boolean') setMapLayer(k, p.mapLayers[k]);
+      }
+    } else if (useUiStore.getState().mapLayers.incidents === undefined) {
+      setMapLayer('incidents', true); // discoverable default for the new layer
+    }
+    if (SCRUB_SPEEDS.includes(p.scrubSpeed)) setSpeed(p.scrubSpeed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const firstPersist = useRef(true);
+  useEffect(() => {
+    if (firstPersist.current) { firstPersist.current = false; return; }
+    savePrefs({ mapLayers, scrubSpeed: speed });
+  }, [mapLayers, speed]);
+
   const months = useMemo(() => (trends.data?.months || []).slice(-MAX_SCRUB_MONTHS), [trends.data]);
   const scrubMonth = scrubIndex > 0 && scrubIndex <= months.length ? months[scrubIndex - 1] : null;
   const incidentParams = useMemo(
     () => (scrubMonth ? { ...apiParams, ...monthWindow(scrubMonth) } : apiParams),
     [apiParams, scrubMonth],
   );
-  const incidents = useIncidentsLayer(incidentParams, mapLayers.heat);
+  const incidents = useIncidentsLayer(incidentParams, mapLayers.heat || mapLayers.incidents);
 
   // Filter change can shrink the month list — clamp the scrub position.
   useEffect(() => {
     setScrubIndex((i) => (i > months.length ? 0 : i));
   }, [months.length]);
 
-  // Play loop: advance a month every 1.4 s, wrap back to the first month.
+  // Deep-linked scrub month (?m=YYYY-MM) — applied once when months arrive.
+  const appliedUrlMonth = useRef(false);
+  useEffect(() => {
+    if (appliedUrlMonth.current || !months.length) return;
+    appliedUrlMonth.current = true;
+    const m = searchParams.get('m');
+    if (!m) return;
+    const idx = months.indexOf(m);
+    if (idx >= 0) {
+      setScrubIndex(idx + 1);
+      if (!useUiStore.getState().mapLayers.heat) setMapLayer('heat', true);
+    }
+  }, [months, searchParams, setMapLayer]);
+  // …and mirrored back so the current animation frame is shareable.
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (scrubMonth) next.set('m', scrubMonth); else next.delete('m');
+      return String(next) === String(prev) ? prev : next;
+    }, { replace: true });
+  }, [scrubMonth, setSearchParams]);
+
+  // Play loop: advance a month per tick (speed-scaled), wrap to the first.
   useEffect(() => {
     if (!playing || !months.length) return undefined;
     const t = setInterval(() => {
       setScrubIndex((i) => (i >= months.length ? 1 : i + 1));
-    }, 1400);
+    }, Math.round(1400 / speed));
     return () => clearInterval(t);
-  }, [playing, months.length]);
+  }, [playing, months.length, speed]);
 
   const togglePlay = () => {
     if (!playing) {
@@ -103,6 +189,20 @@ export default function GeoIntel() {
     setScrubIndex(i);
     if (i > 0 && !mapLayers.heat) setMapLayer('heat', true);
   };
+
+  // ---- fullscreen mode (F toggles, Esc exits) -------------------------------
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') { setFullscreen(false); return; }
+      if (e.key !== 'f' && e.key !== 'F') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      setFullscreen((v) => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // ---- derived layer data (memoized: MapCanvas keys effects on identity) ----
   const choroValues = useMemo(() => aggregateCountsPerPolygon(districts.data || []), [districts.data]);
@@ -121,15 +221,21 @@ export default function GeoIntel() {
     }).filter(Boolean),
     [districts.data],
   );
-  const heatPoints = useMemo(() => {
-    const pts = [];
+  const incidentRows = useMemo(() => {
+    const rows = [];
     for (const r of incidents.data || []) {
       const lat = Number(r.lat ?? r.latitude);
       const lng = Number(r.lng ?? r.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push([lat, lng, 0.6]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) rows.push({ ...r, lat, lng });
     }
-    return pts;
+    return rows;
   }, [incidents.data]);
+  const heatPoints = useMemo(() => incidentRows.map((r) => [r.lat, r.lng, 0.6]), [incidentRows]);
+  const headNames = useMemo(() => {
+    const o = {};
+    for (const h of lookups.data?.crimeHeads || []) o[String(h.crimeHeadId)] = h.headName;
+    return o;
+  }, [lookups.data]);
   const hotspotRows = useMemo(() => {
     const rows = (hotspots.data || []).filter(
       (h) => Number.isFinite(Number(h.centroidLat)) && Number.isFinite(Number(h.centroidLng)),
@@ -165,6 +271,16 @@ export default function GeoIntel() {
     setSelectedHotspotId(h.clusterId ?? null);
     issueFly({ type: 'hotspot', hotspot: h });
   };
+  const onLocateUnit = (u) => {
+    openDistrict(u.polygon, { unitIds: [u.unitId], title: u.name });
+    if (CITY_UNIT_IDS.includes(u.unitId)) issueFly({ type: 'point', lat: u.lat, lng: u.lng, zoom: 11 });
+    else issueFly({ type: 'polygon', name: u.polygon });
+  };
+
+  // Tapping into a drill on a phone pulls the info sheet up to show it.
+  useEffect(() => {
+    if (drill) setSheetOpen(true);
+  }, [drill]);
 
   // Arriving with ?districtId= (e.g. from the dashboard choropleth) auto-drills
   // once the GeoJSON is ready; clearing the filter re-arms the trigger.
@@ -188,9 +304,14 @@ export default function GeoIntel() {
 
   const anyLayerLoading = districts.isLoading || stations.isLoading || hotspots.isLoading || geojson.isLoading;
   const selectedUnitId = drill?.type === 'station' ? drill.station.unitId : null;
+  const wantIncidents = mapLayers.heat || mapLayers.incidents;
+
+  const shellCls = fullscreen
+    ? 'fixed inset-0 z-50 bg-base overflow-hidden'
+    : 'relative -m-4 md:-m-6 h-[calc(100dvh-10rem)] min-h-[22rem] md:h-[calc(100vh-5.5rem)] overflow-hidden';
 
   return (
-    <div className="relative -m-4 md:-m-6 h-[calc(100vh-1.75rem)] overflow-hidden">
+    <div className={shellCls}>
       <style>{GEOINTEL_CSS}</style>
 
       <MapCanvas
@@ -200,6 +321,8 @@ export default function GeoIntel() {
         alertPolygons={alertPolygons}
         cityMarkers={cityMarkers}
         heatPoints={heatPoints}
+        incidentRows={incidentRows}
+        headNames={headNames}
         hotspots={hotspotRows}
         stations={stations.data || []}
         selectedUnitId={selectedUnitId}
@@ -210,18 +333,47 @@ export default function GeoIntel() {
         onHotspotClick={onHotspotClick}
       />
 
-      {/* top overlay: title, shared filter bar, layer toggles, status chips */}
+      {/* top overlay: title + fullscreen, shared filter bar, layers, locate, status chips */}
       <div className="absolute top-3 left-3 right-3 z-10 pointer-events-none flex flex-col items-start gap-2">
         <div className="flex flex-wrap items-stretch gap-2 max-w-full">
-          <div className="pointer-events-auto bg-panel/95 border border-grid rounded-xl px-3 py-2 shadow-lg">
-            <h1 className="text-sm font-semibold text-ink leading-tight">GeoIntel</h1>
-            <p className="text-[10px] text-muted leading-tight">Operational map · Karnataka</p>
+          <div className="pointer-events-auto bg-panel/95 border border-grid rounded-xl px-3 py-2 shadow-lg flex items-center gap-2.5">
+            <div>
+              <h1 className="text-sm font-semibold text-ink leading-tight">GeoIntel</h1>
+              <p className="text-[10px] text-muted leading-tight">Operational map · Karnataka</p>
+            </div>
+            <Tooltip label={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen map (F)'} position="bottom">
+              <button
+                type="button"
+                className="btn !px-2 !py-1.5"
+                aria-pressed={fullscreen}
+                aria-label={fullscreen ? 'Exit fullscreen map' : 'Enter fullscreen map'}
+                onClick={() => setFullscreen((v) => !v)}
+              >
+                {fullscreen ? CompressIcon : ExpandIcon}
+              </button>
+            </Tooltip>
           </div>
           <FilterBar className="pointer-events-auto !bg-panel/95 shadow-lg max-w-full" />
         </div>
-        <div className="pointer-events-auto bg-panel/95 border border-grid rounded-xl px-2.5 py-1.5 shadow-lg flex items-center gap-2 max-w-full overflow-x-auto">
-          <span className="text-[10px] uppercase tracking-wider text-muted shrink-0">Layers</span>
-          <LayerToggles />
+        <div className="flex items-start gap-2 max-w-full">
+          <div className="pointer-events-auto bg-panel/95 border border-grid rounded-xl px-2.5 py-1.5 shadow-lg flex items-center gap-2 max-w-full overflow-x-auto no-scrollbar">
+            <span className="text-[10px] uppercase tracking-wider text-muted shrink-0">Layers</span>
+            <LayerToggles />
+            <button
+              type="button"
+              className="chip shrink-0 text-muted hover:text-ink transition-colors"
+              onClick={() => issueFly({ type: 'reset' })}
+              title="Fly back to the full Karnataka view"
+            >
+              ⌂ Reset view
+            </button>
+          </div>
+          <LocateSearch
+            className="pointer-events-auto hidden md:block shrink-0"
+            stations={stations.data || []}
+            onPickUnit={onLocateUnit}
+            onPickStation={onStationClick}
+          />
         </div>
         {anyLayerLoading && (
           <div className="pointer-events-auto chip bg-panel/95 shadow-lg">
@@ -233,8 +385,8 @@ export default function GeoIntel() {
         {stations.error && mapLayers.stations && (
           <ErrorChip label="Stations failed to load" onRetry={() => stations.refetch()} />
         )}
-        {incidents.error && mapLayers.heat && (
-          <ErrorChip label="Incident heat failed to load" onRetry={() => incidents.refetch()} />
+        {incidents.error && wantIncidents && (
+          <ErrorChip label="Incident layer failed to load" onRetry={() => incidents.refetch()} />
         )}
         {geojson.error && (
           <div className="pointer-events-auto max-w-sm">
@@ -249,17 +401,10 @@ export default function GeoIntel() {
         )}
       </div>
 
-      {/* bottom overlay: hotspot chips + heat time-scrubber + legend */}
-      <div className="absolute left-3 bottom-3 right-3 sm:right-24 z-10 pointer-events-none flex flex-col items-start gap-2">
-        <div className="pointer-events-none hidden md:flex items-center gap-3 bg-panel/95 border border-grid rounded-xl px-3 py-1.5 shadow-lg text-[10px] text-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-14 rounded-full" style={{ background: 'linear-gradient(90deg,#233150,#F5A623)' }} aria-hidden="true" />
-            case density
-          </span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal" aria-hidden="true" /> low-risk station</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-signal" aria-hidden="true" /> high-risk station</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber" aria-hidden="true" /> commissionerate</span>
-          <span className="flex items-center gap-1.5"><PulseDot /> anomaly district</span>
+      {/* bottom overlay (desktop): legend + hotspot chips + heat time-scrubber */}
+      <div className="hidden md:flex absolute left-3 bottom-3 right-24 z-10 pointer-events-none flex-col items-start gap-2">
+        <div className="pointer-events-none flex items-center gap-3 bg-panel/95 border border-grid rounded-xl px-3 py-1.5 shadow-lg text-[10px] text-muted">
+          <LegendItems />
         </div>
         <HotspotChips
           hotspots={hotspotRows.slice(0, 10)}
@@ -274,16 +419,18 @@ export default function GeoIntel() {
             months={months}
             index={scrubIndex}
             playing={playing}
-            loading={mapLayers.heat && incidents.isFetching}
+            loading={wantIncidents && incidents.isFetching}
             onIndexChange={onScrub}
             onPlayToggle={togglePlay}
+            speed={speed}
+            onSpeedChange={setSpeed}
           />
         </div>
       </div>
 
-      {/* right drill panel: district → stations, station → KPIs + recent cases */}
+      {/* right drill panel (desktop): district → stations, station → KPIs + cases */}
       {drill && (
-        <div className="absolute top-3 right-3 bottom-20 z-20 w-[21rem] max-w-[85vw]">
+        <div className="hidden md:block absolute top-3 right-3 bottom-20 z-20 w-[21rem] max-w-[85vw]">
           <SidePanel
             drill={drill}
             apiParams={apiParams}
@@ -301,6 +448,68 @@ export default function GeoIntel() {
           />
         </div>
       )}
+
+      {/* mobile: swipeable docked bottom info sheet (scrubber peek + details) */}
+      <MobileSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        title="Map info"
+        peek={(
+          <TimeScrubber
+            compact
+            months={months}
+            index={scrubIndex}
+            playing={playing}
+            loading={wantIncidents && incidents.isFetching}
+            onIndexChange={onScrub}
+            onPlayToggle={togglePlay}
+            speed={speed}
+            onSpeedChange={setSpeed}
+          />
+        )}
+      >
+        {drill ? (
+          <div className="h-[46vh]">
+            <SidePanel
+              drill={drill}
+              apiParams={apiParams}
+              onClose={() => setDrill(null)}
+              onStationSelect={onStationClick}
+              onBackToDistrict={(station) => {
+                const polygon = polygonForUnit(station.districtId);
+                if (polygon) openDistrict(polygon);
+                else setDrill(null);
+              }}
+            />
+          </div>
+        ) : (
+          <>
+            <LocateSearch
+              className="w-full"
+              stations={stations.data || []}
+              onPickUnit={(u) => { onLocateUnit(u); setSheetOpen(false); }}
+              onPickStation={(s) => { onStationClick(s); }}
+            />
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Top hotspots</p>
+              <HotspotChips
+                hotspots={hotspotRows.slice(0, 10)}
+                loading={hotspots.isLoading}
+                error={hotspots.error}
+                onRetry={() => hotspots.refetch()}
+                onSelect={(h) => { onHotspotClick(h); setSheetOpen(false); }}
+                selectedId={selectedHotspotId}
+              />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Legend</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px] text-muted">
+                <LegendItems />
+              </div>
+            </div>
+          </>
+        )}
+      </MobileSheet>
     </div>
   );
 }

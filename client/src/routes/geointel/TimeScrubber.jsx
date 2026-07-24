@@ -1,8 +1,10 @@
 // Month time-scrubber for the incident heat layer. Slider value 0 = the whole
 // current filter window; 1..N = individual months (ascending). Play loops
 // month-by-month; each month's /geo/incidents fetch is cached by react-query,
-// so the second loop replays instantly.
+// so the second loop replays instantly. The speed button cycles 0.5× → 1× → 2×.
 import { monthLabel } from '../../lib/format.js';
+
+export const SCRUB_SPEEDS = [0.5, 1, 2];
 
 const PlayIcon = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -15,11 +17,21 @@ const PauseIcon = (
   </svg>
 );
 
-export default function TimeScrubber({ months, index, playing, loading, onIndexChange, onPlayToggle }) {
+export default function TimeScrubber({
+  months, index, playing, loading, onIndexChange, onPlayToggle, speed = 1, onSpeedChange, compact = false,
+}) {
   const disabled = !months.length;
   const label = index > 0 && months[index - 1] ? monthLabel(months[index - 1]) : 'All months';
+  const cycleSpeed = () => {
+    if (!onSpeedChange) return;
+    const i = SCRUB_SPEEDS.indexOf(speed);
+    onSpeedChange(SCRUB_SPEEDS[(i + 1) % SCRUB_SPEEDS.length]);
+  };
   return (
-    <div className="flex items-center gap-3 bg-panel/95 border border-grid rounded-xl px-3 py-2 shadow-lg">
+    <div className={`flex items-center gap-2.5 ${compact
+      ? ''
+      : 'bg-panel/95 border border-grid rounded-xl px-3 py-2 shadow-lg'}`}
+    >
       <button
         type="button"
         className="btn !px-2.5 !py-1.5 shrink-0"
@@ -30,7 +42,19 @@ export default function TimeScrubber({ months, index, playing, loading, onIndexC
       >
         {playing ? PauseIcon : PlayIcon}
       </button>
-      <div className="flex-1 min-w-[8rem]">
+      {onSpeedChange && (
+        <button
+          type="button"
+          className="btn !px-2 !py-1.5 shrink-0 num text-[11px]"
+          onClick={cycleSpeed}
+          disabled={disabled}
+          aria-label={`Playback speed ${speed}x — click to change`}
+          title="Playback speed"
+        >
+          {speed}×
+        </button>
+      )}
+      <div className="flex-1 min-w-[7rem]">
         <input
           type="range"
           min={0}
@@ -41,6 +65,7 @@ export default function TimeScrubber({ months, index, playing, loading, onIndexC
           onChange={(e) => onIndexChange(Number(e.target.value))}
           className="w-full geointel-range cursor-pointer disabled:cursor-not-allowed"
           aria-label="Heat-layer month"
+          aria-valuetext={label}
         />
         <div className="flex justify-between text-[9px] text-muted leading-none">
           <span>All</span>
@@ -51,8 +76,10 @@ export default function TimeScrubber({ months, index, playing, loading, onIndexC
       </div>
       <div className="w-20 text-right shrink-0">
         <p className="num text-xs font-semibold text-ink leading-tight">{label}</p>
-        <p className="text-[9px] text-muted leading-tight">
-          {disabled ? 'no monthly data' : loading ? 'loading…' : 'incident heat'}
+        <p className="text-[9px] text-muted leading-tight num">
+          {disabled ? 'no monthly data'
+            : loading ? 'loading…'
+              : index > 0 ? `month ${index}/${months.length}` : 'incident heat'}
         </p>
       </div>
     </div>

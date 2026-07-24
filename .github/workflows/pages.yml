@@ -1,0 +1,64 @@
+# Static no-backend demo of the KSP DAPPA client on GitHub Pages
+# (https://golden007-prog.github.io/KSP-Dappa/). Catalyst remains the primary
+# deployment — this build bakes fixture-backed API snapshots into the bundle
+# (VITE_STATIC_DEMO=1) so the SPA runs with no server at all.
+name: Deploy static demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            functions/dappa_api/package-lock.json
+
+      # The snapshot script boots the express app in-process from source.
+      - name: Install API dependencies
+        working-directory: functions/dappa_api
+        run: npm ci
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Generate static API snapshot
+        run: node scripts/demo_snapshot.mjs
+
+      - name: Build client in static-demo mode
+        working-directory: client
+        env:
+          VITE_STATIC_DEMO: '1'
+          VITE_BASE: /KSP-Dappa/
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -62,6 +62,74 @@ export function computeCommunityStats(nodes = [], edges = [], districtsByPerson 
     .sort((a, b) => b.members - a.members || b.cases - a.cases || Number(a.id) - Number(b.id));
 }
 
+/** Edge tier from shared-case weight: 1 → 'single', 2 → 'repeat', ≥3 → 'strong'. */
+export function edgeTier(weight) {
+  const w = Number(weight) || 0;
+  return w >= 3 ? 'strong' : w === 2 ? 'repeat' : 'single';
+}
+
+/**
+ * Ego subgraph — nodes within `depth` hops of egoId over the given edges,
+ * plus every edge whose endpoints both survive. Returns {nodes, edges, dist}
+ * where dist maps nodeId → hop distance from the ego (0 for the ego itself).
+ */
+export function egoSubgraph(nodes = [], edges = [], egoId, depth = 1) {
+  const id = String(egoId ?? '');
+  const adj = new Map();
+  const add = (x, y) => { if (!adj.has(x)) adj.set(x, []); adj.get(x).push(y); };
+  for (const e of edges) {
+    const s = String(e.source); const t = String(e.target);
+    add(s, t); add(t, s);
+  }
+  const dist = new Map([[id, 0]]);
+  let frontier = [id];
+  for (let d = 1; d <= depth && frontier.length; d += 1) {
+    const next = [];
+    for (const n of frontier) {
+      for (const nb of adj.get(n) || []) {
+        if (dist.has(nb)) continue;
+        dist.set(nb, d);
+        next.push(nb);
+      }
+    }
+    frontier = next;
+  }
+  return {
+    nodes: nodes.filter((n) => dist.has(String(n.id))),
+    edges: edges.filter((e) => dist.has(String(e.source)) && dist.has(String(e.target))),
+    dist,
+  };
+}
+
+/** Number of connected components in the visible graph (isolates count as 1 each). */
+export function countComponents(nodes = [], edges = []) {
+  const ids = new Set(nodes.map((n) => String(n.id)));
+  const adj = new Map();
+  const add = (x, y) => { if (!adj.has(x)) adj.set(x, []); adj.get(x).push(y); };
+  for (const e of edges) {
+    const s = String(e.source); const t = String(e.target);
+    if (ids.has(s) && ids.has(t)) { add(s, t); add(t, s); }
+  }
+  const seen = new Set();
+  let components = 0;
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    components += 1;
+    let frontier = [id];
+    seen.add(id);
+    while (frontier.length) {
+      const next = [];
+      for (const n of frontier) {
+        for (const nb of adj.get(n) || []) {
+          if (!seen.has(nb)) { seen.add(nb); next.push(nb); }
+        }
+      }
+      frontier = next;
+    }
+  }
+  return components;
+}
+
 /** Unweighted BFS shortest path over undirected edges → [nodeId,…] or null. */
 export function shortestPath(edges = [], from, to) {
   const a = String(from ?? ''); const b = String(to ?? '');
