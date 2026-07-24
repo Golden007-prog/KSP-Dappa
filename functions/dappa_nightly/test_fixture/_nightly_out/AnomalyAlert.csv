@@ -1,0 +1,3 @@
+AlertID,DistrictID,UnitID,CrimeHeadID,PeriodStart,PeriodEnd,Observed,Expected,ZScore,Severity,Status,Narrative,CreatedAt
+NA-20260720-0001,0101,9001,3,2026-07-14,2026-07-20,19,5.0,14.0,3,OPEN,Crime head 3 cases in district 0101 rose to 19 against an expected ~5.0 for 2026-07-14 to 2026-07-20 (robust z-score +14.0).,2026-07-24 02:00:00
+NA-20260720-0002,0101,9002,5,2026-06-23,2026-06-29,6,4.5,2.02,1,OPEN,Crime head 5 cases in district 0101 rose to 6 against an expected ~4.5 for 2026-06-23 to 2026-06-29 (robust z-score +2.0).,2026-07-24 02:00:00

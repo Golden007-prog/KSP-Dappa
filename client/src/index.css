@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- design tokens (Command Center) ------------------------------------ */
+:root {
+  --c-base: #0B1220;
+  --c-panel: #111A2C;
+  --c-grid: #1E2A44;
+  --c-amber: #F5A623;
+  --c-red: #E5484D;
+  --c-teal: #2DD4BF;
+  --c-ink: #E6EAF2;
+  --c-muted: #8A94A8;
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-base text-ink font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03';
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--c-base); }
+  ::-webkit-scrollbar-thumb { background: var(--c-grid); border-radius: 6px; border: 2px solid var(--c-base); }
+  ::-webkit-scrollbar-thumb:hover { background: #2a3a5e; }
+}
+
+@layer components {
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-ink;
+  }
+  .page-subtitle {
+    @apply text-sm text-muted;
+  }
+  /* number tiles use tabular figures — pinned in the design spec */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .input-dark {
+    @apply bg-panel border border-grid rounded-lg px-3 py-2 text-sm text-ink placeholder:text-muted
+      focus:outline-none focus:ring-1 focus:ring-amber/60 focus:border-amber/60 transition-colors;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-grid bg-panel px-3 py-1.5 text-sm
+      text-ink hover:border-amber/50 hover:text-amber transition-colors disabled:opacity-50
+      disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 rounded-lg bg-amber px-3 py-1.5 text-sm font-medium
+      text-[#0B1220] hover:bg-amber/90 transition-colors disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-grid bg-panel px-2.5 py-1 text-xs
+      text-ink whitespace-nowrap;
+  }
+  .skeleton {
+    @apply rounded-md bg-grid/60 relative overflow-hidden;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent, rgba(230, 234, 242, 0.06), transparent);
+    background-size: 400px 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
+
+/* ---- red alert pulse ---------------------------------------------------- */
+.pulse-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--c-red);
+}
+.pulse-dot::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  background: var(--c-red);
+  opacity: 0.5;
+  animation: pulse-ring 1.8s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+.pulse-dot--amber { background: var(--c-amber); }
+.pulse-dot--amber::before { background: var(--c-amber); }
+.pulse-dot--teal { background: var(--c-teal); }
+.pulse-dot--teal::before { background: var(--c-teal); }
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.9); opacity: 0.55; }
+  70% { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(229, 72, 77, 0); }
+}
+
+/* animated stroke pulse for alerted polygons on Leaflet SVG layers */
+@keyframes poly-pulse {
+  0%, 100% { stroke-opacity: 0.95; stroke-width: 2; }
+  50% { stroke-opacity: 0.35; stroke-width: 3.5; }
+}
+.alert-poly {
+  animation: poly-pulse 2s ease-in-out infinite;
+}
+
+/* ---- Leaflet on the dark theme ------------------------------------------ */
+.leaflet-container {
+  background: var(--c-base);
+  font-family: inherit;
+}
+.leaflet-tooltip.dappa-tooltip {
+  background: var(--c-panel);
+  border: 1px solid var(--c-grid);
+  color: var(--c-ink);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.leaflet-tooltip.dappa-tooltip::before { display: none; }
+
+/* ---- print base (used by /print/brief; SmartBrowz renders this route) ---- */
+.print-page {
+  background: #ffffff;
+  color: #111827;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 14mm;
+  min-height: 100vh;
+}
+.print-page h1, .print-page h2, .print-page h3 { color: #0b1220; }
+
+@media print {
+  body { background: #ffffff !important; color: #111827 !important; }
+  .no-print { display: none !important; }
+  .print-page { max-width: none; padding: 0; min-height: 0; }
+  @page { size: A4; margin: 12mm; }
+}

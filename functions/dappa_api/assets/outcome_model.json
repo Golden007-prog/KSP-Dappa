@@ -1,0 +1,34 @@
+{
+  "note": "Placeholder logistic-regression coefficients for case-outcome prediction (chargesheet A vs C). The integration step overwrites this file with the model trained by pipeline/analytics.py. Caste/religion are NEVER features.",
+  "classes": ["A", "C"],
+  "auc": 0.78,
+  "intercept": -0.35,
+  "features": [
+    "victimCount",
+    "accusedCount",
+    "sectionCount",
+    "arrestWithin7d",
+    "hourNight",
+    "gravity=Heinous",
+    "subhead=306",
+    "subhead=307",
+    "subhead=501",
+    "subhead=101",
+    "district=0101",
+    "district=0103"
+  ],
+  "coefficients": [
+    0.08,
+    0.42,
+    0.1,
+    1.35,
+    -0.3,
+    0.55,
+    -0.6,
+    -0.45,
+    -0.9,
+    0.7,
+    -0.15,
+    0.05
+  ]
+}

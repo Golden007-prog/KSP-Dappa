@@ -1,0 +1,17 @@
+{
+  "name": "dappa_api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KSP DAPPA backend API — Catalyst Advanced I/O function (Node 20 + Express)",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

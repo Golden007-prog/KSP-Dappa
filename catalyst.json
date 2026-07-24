@@ -1,0 +1,18 @@
+{
+    "functions": {
+        "source": "functions",
+        "targets": [
+            "dappa_api",
+            "dappa_nightly",
+            "dappa_event"
+        ],
+        "ignore": [
+            "node_modules",
+            "test",
+            "test_fixture"
+        ]
+    },
+    "client": {
+        "source": "client/dist"
+    }
+}

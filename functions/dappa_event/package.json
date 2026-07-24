@@ -1,0 +1,13 @@
+{
+  "name": "dappa_event",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KSP DAPPA event function — CaseMaster insert -> AggMonthly upsert + fast z-check -> AnomalyAlert",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.0.0"
+  }
+}

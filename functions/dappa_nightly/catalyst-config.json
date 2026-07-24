@@ -1,0 +1,11 @@
+{
+	"deployment": {
+		"name": "dappa_nightly",
+		"stack": "python_3_12",
+		"type": "cron",
+		"env_variables": {}
+	},
+	"execution": {
+		"main": "main.py"
+	}
+}

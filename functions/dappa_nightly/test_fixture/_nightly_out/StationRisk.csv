@@ -1,0 +1,5 @@
+UnitID,Horizon,RiskScore,DriversJson,ComputedAt
+9001,30,100,"[""rising case trend (+4.6 cases/month)"", ""100% of last-90-day cases inside an active hotspot (86 cases)"", ""4 severity-weighted anomaly alert(s) in district 0101""]",2026-07-24 02:00:00
+9002,30,72,"[""rising case trend (+3.8 cases/month)"", ""4 severity-weighted anomaly alert(s) in district 0101""]",2026-07-24 02:00:00
+9003,30,20,"[""rising case trend (+1.5 cases/month)""]",2026-07-24 02:00:00
+9099,30,0,"[""no significant risk drivers in the recent window""]",2026-07-24 02:00:00

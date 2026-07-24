@@ -1,0 +1,12 @@
+{
+  "agg_delta_rows": 4,
+  "agg_rows": 20,
+  "anomaly_alerts": 2,
+  "cases_read": 283,
+  "data_end": "2026-07-20",
+  "forecast_model": "seasonal-naive",
+  "forecast_rows": 24,
+  "last_refresh": "2026-07-24 02:00:00",
+  "mode": "local-dryrun",
+  "stations_scored": 4
+}

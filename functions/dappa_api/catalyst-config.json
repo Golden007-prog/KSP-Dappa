@@ -1,0 +1,24 @@
+{
+  "deployment": {
+    "name": "dappa_api",
+    "stack": "node20",
+    "type": "advancedio",
+    "env_variables": {
+      "FEATURE_QUICKML": "off",
+      "FEATURE_QUICKML_LLM": "off",
+      "FEATURE_ZIA": "off",
+      "FEATURE_SMARTBROWZ": "off",
+      "FEATURE_MAIL": "off",
+      "PUBLIC_DEMO": "true",
+      "QUICKML_OUTCOME_URL": "",
+      "QUICKML_LLM_URL": "",
+      "CATALYST_QUICKML_KEY": "",
+      "MAIL_FROM": "",
+      "DIGEST_TO": "",
+      "APP_BASE_URL": ""
+    }
+  },
+  "execution": {
+    "main": "index.js"
+  }
+}

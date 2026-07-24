@@ -1,0 +1,5 @@
+UnitID,Horizon,RiskScore,DriversJson,ComputedAt
+9001,30,10,"[""stale driver""]",2026-06-01 02:00:00
+9002,30,20,"[""stale driver""]",2026-06-01 02:00:00
+9003,30,30,"[""stale driver""]",2026-06-01 02:00:00
+9099,30,40,"[""stale driver""]",2026-06-01 02:00:00
