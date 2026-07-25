@@ -25,6 +25,7 @@ import { useUiStore } from '../lib/store.js';
 import { useTheme } from './ThemeProvider.jsx';
 import CommandPalette, { recordRecentAction } from './CommandPalette.jsx';
 import DensityToggle from './DensityToggle.jsx';
+import LanguageToggle from './LanguageToggle.jsx';
 import OfflineBanner from './OfflineBanner.jsx';
 import PrintHeader from './PrintHeader.jsx';
 import PulseDot from './PulseDot.jsx';
@@ -991,6 +992,7 @@ export default function Layout() {
               </button>
             </Tooltip>
             <HealthPill />
+            <LanguageToggle className="hidden lg:inline-flex" variant="compact" />
             <DensityToggle className="hidden md:inline-flex" />
             {zen && (
               <Tooltip label="Exit zen mode" position="bottom">
@@ -1091,6 +1093,10 @@ export default function Layout() {
           ))}
         </nav>
         <div className="mt-3 border-t border-grid pt-3 space-y-3 px-1">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs text-muted">Language · ಭಾಷೆ · भाषा</span>
+            <LanguageToggle size="md" />
+          </div>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-xs text-muted">Theme</span>
             <SegmentedControl

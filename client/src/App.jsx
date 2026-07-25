@@ -12,6 +12,7 @@ import EmptyState from './components/EmptyState.jsx';
 import LoadingSkeleton from './components/LoadingSkeleton.jsx';
 import { ThemeProvider } from './components/ThemeProvider.jsx';
 import { ToastProvider } from './components/ToastProvider.jsx';
+import { LanguageProvider } from './lib/i18n.jsx';
 
 const Dashboard = lazy(() => import('./routes/Dashboard.jsx'));
 const GeoIntel = lazy(() => import('./routes/GeoIntel.jsx'));
@@ -141,7 +142,8 @@ function NotFound() {
 export default function App() {
   return (
     <ThemeProvider>
-      <ToastProvider>
+      <LanguageProvider>
+        <ToastProvider>
         <Routes>
           <Route
             path="/print/brief"
@@ -164,7 +166,8 @@ export default function App() {
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
-      </ToastProvider>
+        </ToastProvider>
+      </LanguageProvider>
     </ThemeProvider>
   );
 }

@@ -23,7 +23,22 @@ export default {
         teal: { DEFAULT: v('--t-teal'), dim: '#1a4f4b' },
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Inter covers Latin; per-glyph fallback picks up the platform's Indic
+        // fonts for ಕನ್ನಡ / हिन्दी without a single webfont request (external
+        // network calls are barred, and system Indic fonts are universal:
+        // Nirmala UI on Windows, Noto Sans * on Android/Linux, Sangam MN on Apple).
+        sans: [
+          'Inter',
+          'Nirmala UI',
+          'Noto Sans Kannada',
+          'Kannada Sangam MN',
+          'Tunga',
+          'Noto Sans Devanagari',
+          'Devanagari Sangam MN',
+          'ui-sans-serif',
+          'system-ui',
+          'sans-serif',
+        ],
       },
       boxShadow: {
         card: 'var(--shadow-card)',
