@@ -64,9 +64,18 @@ function fromConstants() {
 
 function withMaps(lk) {
   return Object.assign({}, lk, {
+    // District ids are zero-padded in the fact tables (AggMonthly.DistrictID
+    // '0101') but not in the District master ('101'), so an exact match drops
+    // the name and the UI falls back to showing the raw code. Compare on the
+    // unpadded form in both directions.
     districtName: (id) => {
-      const hit = lk.districts.find((d) => d.districtId === String(id));
-      return hit ? hit.districtName : String(id);
+      const raw = String(id);
+      const bare = raw.replace(/^0+(?=\d)/, '');
+      const hit = lk.districts.find((d) => {
+        const dv = String(d.districtId);
+        return dv === raw || dv.replace(/^0+(?=\d)/, '') === bare;
+      });
+      return hit ? hit.districtName : raw;
     },
     unitById: new Map(lk.units.map((u) => [u.unitId, u])),
     headName: (id) => {
