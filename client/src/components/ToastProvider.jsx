@@ -124,37 +124,38 @@ export function ToastProvider({ children }) {
               </button>
             </div>
           )}
-          {toasts.map((t) => {
-            const tone = TONE[t.tone] || TONE.info;
+          {/* the item is `item`, never `t` — `t` is the translator from useT() */}
+          {toasts.map((item) => {
+            const tone = TONE[item.tone] || TONE.info;
             return (
               <div
-                key={t.id}
-                role={t.tone === 'error' ? 'alert' : 'status'}
-                onMouseEnter={() => pause(t.id)}
-                onMouseLeave={() => resume(t.id)}
-                onFocus={() => pause(t.id)}
-                onBlur={() => resume(t.id)}
+                key={item.id}
+                role={item.tone === 'error' ? 'alert' : 'status'}
+                onMouseEnter={() => pause(item.id)}
+                onMouseLeave={() => resume(item.id)}
+                onFocus={() => pause(item.id)}
+                onBlur={() => resume(item.id)}
                 className="pointer-events-auto flex items-stretch overflow-hidden rounded-xl border border-grid bg-panel shadow-lift animate-fade-up"
               >
                 <div className={`w-1 shrink-0 ${tone.bar}`} aria-hidden="true" />
-                <div className={`flex items-center pl-3 ${tone.text}`}><ToneIcon tone={t.tone} /></div>
+                <div className={`flex items-center pl-3 ${tone.text}`}><ToneIcon tone={item.tone} /></div>
                 <div className="flex-1 min-w-0 px-3 py-3">
-                  <p className="text-sm text-ink leading-snug">{t.message}</p>
-                  {t.action && (
+                  <p className="text-sm text-ink leading-snug">{item.message}</p>
+                  {item.action && (
                     <button
                       type="button"
                       onClick={() => {
-                        try { t.action.onClick(); } finally { dismiss(t.id); }
+                        try { item.action.onClick(); } finally { dismiss(item.id); }
                       }}
                       className="mt-1.5 inline-flex min-h-[32px] items-center rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
                     >
-                      {t.action.label}
+                      {item.action.label}
                     </button>
                   )}
                 </div>
                 <button
                   type="button"
-                  onClick={() => dismiss(t.id)}
+                  onClick={() => dismiss(item.id)}
                   aria-label={t('shell.toast.dismissAria', { tone: t(tone.key) })}
                   className="px-3 text-muted hover:text-ink transition-colors min-w-[44px]"
                 >

@@ -10,6 +10,7 @@ import SegmentedControl from '../../components/SegmentedControl.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { fmtInt, monthLabel } from '../../lib/format.js';
+import { useI18n } from '../../lib/i18n.jsx';
 import { shareInsight } from './insights.js';
 import { downloadCsv, slug } from './csv.js';
 import InsightLine from './InsightLine.jsx';
@@ -19,8 +20,13 @@ const TOP_N = 5;
 export default function StackedShare({ baseParams, colors, otherColor, surface }) {
   const toast = useToast();
   const lookups = useLookups();
+  const { t, tName } = useI18n();
   const [view, setView] = useState('count');
   const share = useCategoryShare(baseParams);
+  // A crime-head filter turns the share rows into sub-heads, so the reference
+  // map has to follow — otherwise a sub-head id would miss the crimeHeads map.
+  const shareKind = baseParams?.crimeHeadId ? 'crimeSubHeads' : 'crimeHeads';
+  const headLabel = (r) => tName(shareKind, r.id, r.name);
 
   const topHeads = useMemo(() => {
     const items = [...(share.data || [])].sort((a, b) => b.count - a.count);
@@ -61,7 +67,9 @@ export default function StackedShare({ baseParams, colors, otherColor, surface }
     const months = queries[queries.length - 1].data.months || [];
     if (!months.length) return null;
     const totals = sum(queries[queries.length - 1].data);
-    const headSeries = topHeads.map((h, i) => ({ id: h.id, name: h.name, data: sum(queries[i].data) }));
+    const headSeries = topHeads.map((h, i) => ({
+      id: h.id, name: h.name, label: headLabel(h), data: sum(queries[i].data),
+    }));
     const other = months.map((_, i) => Math.max(0, totals[i] - headSeries.reduce((a, s) => a + (s.data[i] || 0), 0)));
     // trim the shared leading all-zero run (API zero-fills history)
     let start = totals.findIndex((v) => v > 0);
@@ -71,10 +79,17 @@ export default function StackedShare({ baseParams, colors, otherColor, surface }
       totals: totals.slice(start),
       series: [
         ...headSeries.map((s) => ({ ...s, data: s.data.slice(start), color: headColor(s.id) })),
-        { id: 'other', name: 'Other heads', data: other.slice(start), color: otherColor, other: true },
+        {
+          id: 'other',
+          name: 'Other heads',
+          label: t('trends.mix.otherHeads'),
+          data: other.slice(start),
+          color: otherColor,
+          other: true,
+        },
       ],
     };
-  }, [loading, topHeads, queries, colors, otherColor, heads]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, topHeads, queries, colors, otherColor, heads, t, tName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const option = useMemo(() => {
     if (!model) return null;
@@ -98,7 +113,7 @@ export default function StackedShare({ baseParams, colors, otherColor, surface }
       xAxis: { type: 'category', boundaryGap: false, data: model.months.map(monthLabel) },
       yAxis: { type: 'value', max: pct ? 100 : null, axisLabel: pct ? { formatter: '{value}%' } : {} },
       series: model.series.map((s) => ({
-        name: s.name,
+        name: s.label || s.name,
         type: 'line',
         stack: 'mix',
         data: pct ? toPct(s.data) : s.data,
@@ -114,31 +129,37 @@ export default function StackedShare({ baseParams, colors, otherColor, surface }
 
   const exportCsv = () => {
     if (!model) return;
-    const headers = ['month', ...model.series.map((s) => s.name), 'total'];
+    const headers = ['month', ...model.series.map((s) => s.label || s.name), 'total'];
     const rows = model.months.map((ym, i) => [ym, ...model.series.map((s) => s.data[i]), model.totals[i]]);
     downloadCsv(`dappa-category-mix_${slug(baseParams.districtId || 'karnataka')}`, headers, rows);
-    toast.success(`Exported ${model.series.length} head series × ${model.months.length} months`);
+    toast.success(t('trends.toast.mix', { series: model.series.length, months: model.months.length }));
   };
 
-  const insight = useMemo(() => shareInsight(share.data), [share.data]);
+  const insight = useMemo(
+    () => shareInsight(share.data, t, headLabel),
+    [share.data, t, tName], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   return (
     <div className="space-y-2">
       <ChartPanel
-        title="Category mix over time"
-        subtitle={`Monthly volume stacked by crime head — top ${TOP_N} heads, remainder folded into Other`}
+        title={t('trends.mix.title')}
+        subtitle={t('trends.mix.subtitle', { n: TOP_N })}
         actions={(
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <SegmentedControl
-              ariaLabel="Mix view"
+              ariaLabel={t('trends.mix.viewAria')}
               value={view}
               onChange={setView}
-              options={[{ value: 'count', label: 'Count' }, { value: 'pct', label: 'Share %' }]}
+              options={[
+                { value: 'count', label: t('trends.mix.count') },
+                { value: 'pct', label: t('trends.mix.sharePct') },
+              ]}
             />
             {fetchError && (
-              <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={retryAll}>Retry</button>
+              <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={retryAll}>{t('common.action.retry')}</button>
             )}
-            <Tooltip label="Download the stacked series as CSV">
+            <Tooltip label={t('trends.mix.csvTip')}>
               <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!model}>CSV</button>
             </Tooltip>
           </div>
@@ -146,7 +167,7 @@ export default function StackedShare({ baseParams, colors, otherColor, surface }
         option={option}
         loading={loading}
         empty={!loading && !option}
-        emptyMessage={fetchError?.message || 'No category data for the current filters.'}
+        emptyMessage={fetchError?.message || t('trends.share.empty')}
         height={320}
       />
       <InsightLine text={insight} loading={share.isLoading} />

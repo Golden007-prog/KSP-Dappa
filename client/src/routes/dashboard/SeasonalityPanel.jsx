@@ -8,12 +8,21 @@ import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
 import { fmtInt, fmtPct } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 import { seasonalitySplits } from './insights.js';
 
 const hh = (h) => String(h).padStart(2, '0');
 
+// The API/normalizer emits English weekday abbreviations; they stay the data
+// key (peak matching) and only the rendered label is translated.
+const DAY_KEY = {
+  Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat', Sun: 'sun',
+};
+
 export default function SeasonalityPanel({ query }) {
+  const t = useT();
   const s = query.data;
+  const dayLabel = (d) => (DAY_KEY[d] ? t(`dashboard.day.${DAY_KEY[d]}`) : d);
 
   const peak = useMemo(() => {
     if (!s || !s.max) return null;
@@ -31,24 +40,34 @@ export default function SeasonalityPanel({ query }) {
     return (
       <EmptyState
         compact
-        title="Couldn't load seasonality"
+        title={t('dashboard.seasonality.error')}
         message={query.error.message}
-        action={<button type="button" className="btn" onClick={() => query.refetch()}>Retry</button>}
+        action={<button type="button" className="btn" onClick={() => query.refetch()}>{t('common.action.retry')}</button>}
       />
     );
   }
   if (!s || !s.max) {
-    return <EmptyState compact title="No seasonality data" message="No day-by-hour counts for the current filters." />;
+    return (
+      <EmptyState
+        compact
+        title={t('dashboard.seasonality.empty')}
+        message={t('dashboard.seasonality.emptyHint')}
+      />
+    );
   }
 
   return (
     <div className="space-y-2.5">
       {peak && (
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="amber">Peak window</Badge>
+          <Badge tone="amber">{t('dashboard.seasonality.peakWindow')}</Badge>
           <span className="text-xs text-muted">
-            {peak.day} {hh(peak.hour)}:00–{hh((peak.hour + 1) % 24)}:00 ·{' '}
-            <span className="num text-ink">{fmtInt(peak.value)}</span> incidents
+            {t('dashboard.seasonality.peakDetail', {
+              day: dayLabel(peak.day),
+              from: `${hh(peak.hour)}:00`,
+              to: `${hh((peak.hour + 1) % 24)}:00`,
+              n: fmtInt(peak.value),
+            })}
           </span>
         </div>
       )}
@@ -56,12 +75,14 @@ export default function SeasonalityPanel({ query }) {
         <div className="flex flex-wrap items-center gap-1.5">
           {splits.nightPct !== null && (
             <Badge tone={splits.nightPct >= 40 ? 'red' : 'neutral'}>
-              Night 22–05 · {fmtPct(splits.nightPct, { digits: 0 })}
+              {t('dashboard.seasonality.night', { pct: fmtPct(splits.nightPct, { digits: 0 }) })}
             </Badge>
           )}
           {splits.weekendDeltaPct !== null && (
             <Badge tone={splits.weekendDeltaPct > 0 ? 'amber' : 'teal'}>
-              Weekend {fmtPct(splits.weekendDeltaPct, { sign: true, digits: 0 })} vs weekdays
+              {t('dashboard.seasonality.weekend', {
+                pct: fmtPct(splits.weekendDeltaPct, { sign: true, digits: 0 }),
+              })}
             </Badge>
           )}
         </div>
@@ -72,8 +93,8 @@ export default function SeasonalityPanel({ query }) {
           style={{ gridTemplateColumns: '2.4rem repeat(24, minmax(0.7rem, 1fr))' }}
           role="img"
           aria-label={peak
-            ? `Incidents by weekday and hour; peak is ${peak.day} at ${hh(peak.hour)}:00`
-            : 'Incidents by weekday and hour'}
+            ? t('dashboard.seasonality.gridAriaPeak', { day: dayLabel(peak.day), hour: `${hh(peak.hour)}:00` })
+            : t('dashboard.seasonality.gridAria')}
         >
           <span aria-hidden="true" />
           {s.hours.map((h) => (
@@ -83,7 +104,7 @@ export default function SeasonalityPanel({ query }) {
           ))}
           {s.days.map((day, d) => (
             <Fragment key={day}>
-              <span className="self-center text-[10px] text-muted" aria-hidden="true">{day}</span>
+              <span className="self-center text-[10px] text-muted" aria-hidden="true">{dayLabel(day)}</span>
               {s.hours.map((h) => {
                 const v = s.matrix[d]?.[h] || 0;
                 const a = v > 0 ? 0.08 + 0.92 * (v / s.max) : 0;
@@ -91,7 +112,9 @@ export default function SeasonalityPanel({ query }) {
                 return (
                   <span
                     key={h}
-                    title={`${day} ${hh(h)}:00 — ${fmtInt(v)} incidents`}
+                    title={t('dashboard.seasonality.cellTitle', {
+                      day: dayLabel(day), hour: `${hh(h)}:00`, n: fmtInt(v),
+                    })}
                     className={`h-4 rounded-[3px] border border-grid/40 ${isPeak ? 'outline outline-1 outline-signal' : ''}`}
                     style={a > 0 ? { background: `rgb(var(--t-amber) / ${a.toFixed(2)})` } : undefined}
                   />
@@ -101,7 +124,7 @@ export default function SeasonalityPanel({ query }) {
           ))}
         </div>
       </div>
-      <p className="text-[10px] text-muted">Darker amber = more incidents · 24-hour clock, Mon–Sun</p>
+      <p className="text-[10px] text-muted">{t('dashboard.seasonality.footnote')}</p>
     </div>
   );
 }

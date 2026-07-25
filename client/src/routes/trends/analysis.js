@@ -138,6 +138,27 @@ export function toPerLakh(values, population) {
 
 export const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+/** Localised calendar-month short labels; pass the `t` from useT(). */
+export function monthShortNames(t) {
+  if (!t) return MONTH_SHORT.slice();
+  return MONTH_KEYS.map((k) => t(`trends.month.${k}`));
+}
+
+/**
+ * Translate one API weekday label ('Mon', 'Monday', …). Matching on the first
+ * three letters keeps it working whichever spelling the API sends; the row
+ * index is the fallback because normalizeSeasonality builds the matrix Mon→Sun.
+ */
+export function dayName(label, index, t) {
+  const key = DAY_KEYS.find((k) => k === String(label || '').slice(0, 3).toLowerCase())
+    || DAY_KEYS[index];
+  if (!key) return String(label || '');
+  return t ? t(`trends.day.${key}`) : String(label || '');
+}
+
 // ---------------------------------------------------------------------------
 // Second-pass statistical helpers: decomposition, changepoints, correlation,
 // YoY matrices, hour profiles. Still pure + deterministic — no React, no fetch.
@@ -352,6 +373,8 @@ export function seasonalityQuickStats(s) {
     (a, row, d) => a + (isWeekendLabel(s.days[d]) ? daySums[d] : 0), 0);
   return {
     busiestDay: s.days[busiestDay],
+    // Row index too, so the caller can resolve the translated weekday label.
+    busiestDayIndex: busiestDay,
     busiestDayPct: (daySums[busiestDay] / total) * 100,
     bandStart: band.start,
     bandEnd: band.start + 3,

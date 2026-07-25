@@ -17,6 +17,7 @@ import { cosineSim } from './analysis.js';
 import { mixInsight } from './insights.js';
 import { downloadCsv, slug } from './csv.js';
 import { fmtNum } from '../../lib/format.js';
+import { useI18n } from '../../lib/i18n.jsx';
 
 const MAX_AXES = 8;
 
@@ -29,6 +30,7 @@ const shareQuery = (params) => ({
 export default function MixRadar({ window: win, districtId, colors, otherColor, surface }) {
   const toast = useToast();
   const lookups = useLookups();
+  const { t, tName } = useI18n();
   const districts = lookups.data?.districts || [];
 
   const [selA, setSelA] = useState('');
@@ -38,7 +40,11 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
   // A follows the shared district filter until the user picks explicitly.
   const idA = selA || districtId || districts[0]?.districtId || '';
   const idB = selB && selB !== idA ? selB : '';
-  const nameOf = (id) => districts.find((d) => d.districtId === String(id))?.districtName || `District ${id}`;
+  // Raw = the API's English name; slug() strips non-Latin script, so CSV
+  // filenames have to be built from this rather than the translated label.
+  const rawNameOf = (id) => districts.find((d) => d.districtId === String(id))?.districtName
+    || t('trends.compare.districtFallback', { id });
+  const nameOf = (id) => tName('districts', id, rawNameOf(id));
 
   const base = { from: win.from || undefined, to: win.to || undefined };
   const mainDefs = useMemo(() => {
@@ -72,6 +78,7 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
     const b = idB ? shareMap(byRole.B?.data) : null;
     const rows = axes.map((h) => ({
       head: h.name,
+      headLabel: tName('crimeHeads', h.id, h.name),
       a: a.get(h.name) || 0,
       base: state.get(h.name) || 0,
       b: b ? (b.get(h.name) || 0) : null,
@@ -79,20 +86,20 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
     }));
     const max = Math.max(5, ...rows.flatMap((r) => [r.a, r.base, r.b || 0])) * 1.15;
     return { rows, max };
-  }, [loading, axes, idA, idB, byRole.state?.data, byRole.A?.data, byRole.B?.data]);
+  }, [loading, axes, idA, idB, byRole.state?.data, byRole.A?.data, byRole.B?.data, tName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const option = useMemo(() => {
     if (!model) return null;
     const series = [
       { name: nameOf(idA), value: model.rows.map((r) => Number(r.a.toFixed(1))), color: colors[0] },
-      { name: 'Karnataka', value: model.rows.map((r) => Number(r.base.toFixed(1))), color: otherColor },
+      { name: t('trends.radar.karnataka'), value: model.rows.map((r) => Number(r.base.toFixed(1))), color: otherColor },
       ...(idB ? [{ name: nameOf(idB), value: model.rows.map((r) => Number((r.b || 0).toFixed(1))), color: colors[2] }] : []),
     ];
     return {
       tooltip: { trigger: 'item', valueFormatter: (v) => `${fmtNum(v, 1)}%` },
       legend: { bottom: 0, type: 'scroll' },
       radar: {
-        indicator: model.rows.map((r) => ({ name: r.head, max: model.max })),
+        indicator: model.rows.map((r) => ({ name: r.headLabel || r.head, max: model.max })),
         radius: '62%',
         center: ['50%', '46%'],
         axisName: { color: surface.muted, fontSize: 10 },
@@ -112,7 +119,7 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
         })),
       }],
     };
-  }, [model, idA, idB, colors, otherColor, surface, districts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [model, idA, idB, colors, otherColor, surface, districts, t, tName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- similarity finder (on demand: one profile fetch per district) -------
   const simDefs = useMemo(
@@ -141,30 +148,30 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
       .filter((r) => Number.isFinite(r.sim))
       .sort((a, b) => b.sim - a.sim)
       .slice(0, 5);
-  }, [simOn, simDone, simDefs, simQueries, byRole.A?.data, byRole.state?.data, districts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [simOn, simDone, simDefs, simQueries, byRole.A?.data, byRole.state?.data, districts, tName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const insight = useMemo(
-    () => (model ? mixInsight(nameOf(idA), model.rows) : null),
-    [model, idA, districts], // eslint-disable-line react-hooks/exhaustive-deps
+    () => (model ? mixInsight(nameOf(idA), model.rows, t) : null),
+    [model, idA, districts, t, tName], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const exportCsv = () => {
     if (!model) return;
     downloadCsv(
-      `dappa-crime-mix_${slug(nameOf(idA))}`,
+      `dappa-crime-mix_${slug(rawNameOf(idA))}`,
       ['crime_head', `${nameOf(idA)}_share_pct`, 'karnataka_share_pct', ...(idB ? [`${nameOf(idB)}_share_pct`] : [])],
       model.rows.map((r) => [
-        r.head, fmtNum(r.a, 1), fmtNum(r.base, 1), ...(idB ? [fmtNum(r.b || 0, 1)] : []),
+        r.headLabel || r.head, fmtNum(r.a, 1), fmtNum(r.base, 1), ...(idB ? [fmtNum(r.b || 0, 1)] : []),
       ]),
     );
-    toast.success('Crime-mix profile exported');
+    toast.success(t('trends.toast.radar'));
   };
 
   return (
     <div className="space-y-2">
       <Card
-        title="Crime-mix radar"
-        subtitle="Share of a district's own cases per crime head vs the Karnataka baseline"
+        title={t('trends.radar.title')}
+        subtitle={t('trends.radar.subtitle')}
         actions={(
           <div className="trends-no-print flex flex-wrap items-center justify-end gap-1.5">
             <select
@@ -172,23 +179,29 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
               value={idA}
               onChange={(e) => setSelA(e.target.value)}
               disabled={lookups.isLoading}
-              aria-label="Radar district"
+              aria-label={t('trends.radar.districtAria')}
             >
-              {districts.map((d) => <option key={d.districtId} value={d.districtId}>{d.districtName}</option>)}
+              {districts.map((d) => (
+                <option key={d.districtId} value={d.districtId}>
+                  {tName('districts', d.districtId, d.districtName)}
+                </option>
+              ))}
             </select>
             <select
               className="input-dark !py-2 !px-2 text-xs max-w-[9.5rem] min-h-[40px]"
               value={idB}
               onChange={(e) => setSelB(e.target.value)}
               disabled={lookups.isLoading}
-              aria-label="Comparison district (optional)"
+              aria-label={t('trends.radar.compareAria')}
             >
-              <option value="">+ compare district…</option>
+              <option value="">{t('trends.radar.addCompare')}</option>
               {districts.filter((d) => d.districtId !== idA).map((d) => (
-                <option key={d.districtId} value={d.districtId}>{d.districtName}</option>
+                <option key={d.districtId} value={d.districtId}>
+                  {tName('districts', d.districtId, d.districtName)}
+                </option>
               ))}
             </select>
-            <Tooltip label="Download the radar shares as CSV">
+            <Tooltip label={t('trends.radar.csvTip')}>
               <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!model}>CSV</button>
             </Tooltip>
           </div>
@@ -200,7 +213,7 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
           loading={loading || lookups.isLoading}
           error={error}
           onRetry={() => mainQueries.forEach((q) => { if (q.error) q.refetch(); })}
-          emptyMessage="No category data for this district in the current window."
+          emptyMessage={t('trends.radar.empty')}
         />
 
         <div className="trends-no-print mt-3 border-t border-grid/60 pt-3">
@@ -211,17 +224,19 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
               onClick={() => setSimOn(true)}
               disabled={simOn || !model}
             >
-              Find similar districts
+              {t('trends.radar.findSimilar')}
             </button>
             <span className="text-[11px] text-muted">
               {simOn
-                ? (similar ? `Cosine similarity of crime-mix profiles vs ${nameOf(idA)}` : `Fetching profiles… ${simDone}/${simDefs.length}`)
-                : 'Ranks every district by how closely its crime blend matches (one small request per district).'}
+                ? (similar
+                  ? t('trends.radar.simDone', { name: nameOf(idA) })
+                  : t('trends.radar.simFetching', { done: simDone, total: simDefs.length }))
+                : t('trends.radar.simHint')}
             </span>
           </div>
           {similar && (
             similar.length === 0 ? (
-              <p className="text-xs text-muted mt-2">No comparable district profiles in this window.</p>
+              <p className="text-xs text-muted mt-2">{t('trends.radar.simEmpty')}</p>
             ) : (
               <ul className="mt-2.5 space-y-1.5">
                 {similar.map((r) => (
@@ -230,7 +245,7 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
                       type="button"
                       className="min-h-[40px] flex-1 min-w-0 flex items-center gap-2 rounded-lg border border-grid bg-base/40 px-2.5 text-left hover:border-amber/40 transition-colors"
                       onClick={() => setSelB(r.districtId)}
-                      title={`Overlay ${r.name} on the radar`}
+                      title={t('trends.radar.overlayTip', { name: r.name })}
                     >
                       <span className="text-xs text-ink truncate flex-1">{r.name}</span>
                       <span className="h-1.5 w-24 shrink-0 rounded-full bg-grid overflow-hidden" aria-hidden="true">
@@ -247,7 +262,7 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
       </Card>
       <div className="flex flex-wrap items-center gap-2">
         <InsightLine text={insight} loading={loading} />
-        {model && <Badge tone="slate" className="trends-no-print">shares within each area's own caseload</Badge>}
+        {model && <Badge tone="slate" className="trends-no-print">{t('trends.radar.badge')}</Badge>}
       </div>
     </div>
   );

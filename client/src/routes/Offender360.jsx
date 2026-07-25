@@ -15,7 +15,8 @@ import LoadingSkeleton from '../components/LoadingSkeleton.jsx';
 import Badge from '../components/Badge.jsx';
 import MiniChoropleth from '../components/MiniChoropleth.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
-import { fmtInt, dateLabel } from '../lib/format.js';
+import { fmtInt, fmtPct, dateLabel } from '../lib/format.js';
+import { useI18n } from '../lib/i18n.jsx';
 import { communityColor } from './network/graphUtils.js';
 import { copyText } from './network/clipboard.js';
 import RiskGauge from './offenders/RiskGauge.jsx';
@@ -23,7 +24,7 @@ import MiniEgoGraph from './offenders/MiniEgoGraph.jsx';
 import YearSparkline from './offenders/YearSparkline.jsx';
 import OffenderTimeline from './offenders/Timeline.jsx';
 import { TempoCard, CaseMixCard } from './offenders/BehaviorCards.jsx';
-import { RiskBadge } from './offenders/common.jsx';
+import { RiskBadge, useDistrictName } from './offenders/common.jsx';
 import { aliasConfidence, confidenceBand } from './offenders/identity.js';
 import { addToCompare, COMPARE_MAX } from './offenders/compareStore.js';
 import { pushRecent } from './offenders/recentStore.js';
@@ -50,6 +51,8 @@ export default function Offender360() {
   const { personKey } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { t, tName } = useI18n();
+  const localDistrict = useDistrictName();
   const off = useOffender(personKey);
   const registry = useOffenders({ perPage: 200 }); // associate name enrichment (cached with /offenders)
 
@@ -106,8 +109,8 @@ export default function Offender360() {
   // code, per the pinned format); profile district names as fallback.
   const districtCounts = useMemo(() => {
     const byCode = {};
-    for (const t of timeline) {
-      const code = districtCodeFromCrimeNo(t.crimeNo);
+    for (const row of timeline) {
+      const code = districtCodeFromCrimeNo(row.crimeNo);
       if (code) byCode[code] = (byCode[code] || 0) + 1;
     }
     if (!Object.keys(byCode).length) {
@@ -130,21 +133,20 @@ export default function Offender360() {
     () => Object.entries(districtCounts)
       .map(([code, v]) => {
         const u = unitInfo(code);
-        return u ? { lat: u.lat, lng: u.lng, label: u.name, value: v, unitId: code } : null;
+        return u ? { lat: u.lat, lng: u.lng, label: tName('districts', code, u.name), value: v, unitId: code } : null;
       })
       .filter(Boolean),
-    [districtCounts],
+    [districtCounts, tName],
   );
 
   // District hop sequence — chronological, consecutive duplicates collapsed.
   const hops = useMemo(() => {
     const asc = [...timeline].sort((a, b) => String(a.registeredDate).localeCompare(String(b.registeredDate)));
     const out = [];
-    for (const t of asc) {
-      const code = districtCodeFromCrimeNo(t.crimeNo);
+    for (const row of asc) {
+      const code = districtCodeFromCrimeNo(row.crimeNo);
       if (!code) continue;
-      const name = unitInfo(code)?.name || code;
-      if (out[out.length - 1] !== name) out.push(name);
+      if (out[out.length - 1]?.code !== code) out.push({ code, name: unitInfo(code)?.name || code });
     }
     return out;
   }, [timeline]);
@@ -153,29 +155,29 @@ export default function Offender360() {
 
   const addCompare = () => {
     const r = addToCompare(p.personKey || personKey);
-    if (r.status === 'added') toast.success('Added to compare — open the tray on the Offenders registry.');
-    else if (r.status === 'exists') toast.info('Already in the compare tray.');
-    else toast.info(`Compare holds up to ${COMPARE_MAX} offenders — remove one in the registry first.`);
+    if (r.status === 'added') toast.success(t('network.toast.compareAddedPlain'));
+    else if (r.status === 'exists') toast.info(t('network.toast.compareExists'));
+    else toast.info(t('network.toast.compareFull', { n: fmtInt(COMPARE_MAX) }));
   };
 
   const toggleWatch = () => {
     const r = toggleWatchKey(p.personKey || personKey, p.canonicalName);
-    if (r.status === 'added') toast.success('Added to the watchlist — starred across Offenders and Network.');
-    else if (r.status === 'removed') toast.info('Removed from the watchlist.');
-    else toast.info(`Watchlist holds up to ${WATCH_MAX} people — remove one first.`);
+    if (r.status === 'added') toast.success(t('network.toast.watchAddedPlain'));
+    else if (r.status === 'removed') toast.info(t('network.toast.watchRemoved'));
+    else toast.info(t('network.toast.watchFull', { n: fmtInt(WATCH_MAX) }));
   };
 
   const copyLink = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.success('Profile link copied.');
-    else toast.error('Could not copy the link in this browser.');
+    if (ok) toast.success(t('network.toast.profileLinkCopied'));
+    else toast.error(t('network.toast.copyFailed'));
   };
 
   if (off.isLoading) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="page-title">Offender 360</h1>
+          <h1 className="page-title">{t('network.o360.title')}</h1>
           <p className="page-subtitle num">{personKey}</p>
         </div>
         <Card><LoadingSkeleton lines={4} /></Card>
@@ -191,17 +193,17 @@ export default function Offender360() {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="page-title">Offender 360</h1>
+          <h1 className="page-title">{t('network.o360.title')}</h1>
           <p className="page-subtitle num">{personKey}</p>
         </div>
         <Card>
           <EmptyState
-            title={off.error.status === 404 ? 'Offender not found' : "Couldn't load this offender"}
+            title={t(off.error.status === 404 ? 'network.o360.notFound' : 'network.o360.loadError')}
             message={off.error.message}
             action={(
               <div className="flex gap-2">
-                <button type="button" className="btn" onClick={() => off.refetch()}>Retry</button>
-                <Link to="/offenders" className="btn">← Back to offenders</Link>
+                <button type="button" className="btn" onClick={() => off.refetch()}>{t('common.action.retry')}</button>
+                <Link to="/offenders" className="btn">{t('network.o360.backButton')}</Link>
               </div>
             )}
           />
@@ -214,15 +216,15 @@ export default function Offender360() {
     <div className="off-print-root space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Link to="/offenders" className="no-print inline-flex items-center min-h-[36px] text-xs text-muted hover:text-amber transition-colors">← Offenders</Link>
+          <Link to="/offenders" className="no-print inline-flex items-center min-h-[36px] text-xs text-muted hover:text-amber transition-colors">{t('network.o360.backToOffenders')}</Link>
           <h1 className="page-title mt-0.5">{p.canonicalName || personKey}</h1>
           <p className="page-subtitle num">{p.personKey || personKey}</p>
           {(watched || (p.districts || []).length >= 2) && (
             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-              {watched && <Badge tone="amber">★ watchlisted</Badge>}
+              {watched && <Badge tone="amber">{t('network.o360.watchlisted')}</Badge>}
               {(p.districts || []).length >= 2 && (
-                <Badge tone="teal" className="cursor-help" title={(p.districts || []).join(', ')}>
-                  cross-jurisdiction · {fmtInt((p.districts || []).length)} districts
+                <Badge tone="teal" className="cursor-help" title={(p.districts || []).map(localDistrict).join(', ')}>
+                  {t('network.o360.crossJurisdiction', { n: fmtInt((p.districts || []).length) })}
                 </Badge>
               )}
             </div>
@@ -233,18 +235,26 @@ export default function Offender360() {
             <Link
               to={`/offenders/${encodeURIComponent(prevOff.personKey)}`}
               className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
-              title={`Next higher risk: ${prevOff.canonicalName || prevOff.personKey} (#${riskRank.i} of ${riskRank.rows.length} by risk)`}
+              title={t('network.o360.higherRiskHint', {
+                name: prevOff.canonicalName || prevOff.personKey,
+                rank: fmtInt(riskRank.i),
+                total: fmtInt(riskRank.rows.length),
+              })}
             >
-              ← Higher risk
+              {t('network.o360.higherRisk')}
             </Link>
           )}
           {nextOff && (
             <Link
               to={`/offenders/${encodeURIComponent(nextOff.personKey)}`}
               className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
-              title={`Next lower risk: ${nextOff.canonicalName || nextOff.personKey} (#${riskRank.i + 2} of ${riskRank.rows.length} by risk)`}
+              title={t('network.o360.lowerRiskHint', {
+                name: nextOff.canonicalName || nextOff.personKey,
+                rank: fmtInt(riskRank.i + 2),
+                total: fmtInt(riskRank.rows.length),
+              })}
             >
-              Lower risk →
+              {t('network.o360.lowerRisk')}
             </Link>
           )}
           <button
@@ -252,32 +262,32 @@ export default function Offender360() {
             className={`btn !py-1.5 !px-2.5 text-xs min-h-[40px] ${watched ? '!border-amber/60 text-amber' : ''}`}
             onClick={toggleWatch}
             aria-pressed={watched}
-            title={watched ? 'Remove from the shared watchlist' : 'Star this person across Offenders and Network'}
+            title={t(watched ? 'network.drawer.unwatchHint' : 'network.o360.watchHint')}
           >
-            {watched ? '★ Watching' : '☆ Watch'}
+            {t(watched ? 'network.drawer.watching' : 'network.drawer.watch')}
           </button>
           <button
             type="button"
             className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
             onClick={copyLink}
-            title="Copy a direct link to this profile"
+            title={t('network.o360.linkHint')}
           >
-            Link
+            {t('network.tool.link')}
           </button>
           <button
             type="button"
             className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
             onClick={addCompare}
           >
-            ＋ Compare
+            {t('network.drawer.addCompare')}
           </button>
           <button
             type="button"
             className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]"
             onClick={() => window.print()}
-            title="Print this profile as a dossier (ink-on-white)"
+            title={t('network.o360.printHint')}
           >
-            Print dossier
+            {t('network.o360.print')}
           </button>
           {hasCommunity && (
             <Link
@@ -285,75 +295,75 @@ export default function Offender360() {
               className="btn-primary !py-1.5 text-xs min-h-[40px] inline-flex items-center gap-1.5"
             >
               <span className="h-2 w-2 rounded-full" style={{ background: communityColor(p.communityId) }} />
-              Community #{String(p.communityId)} in Network →
+              {t('network.o360.communityInNetwork', { id: String(p.communityId) })}
             </Link>
           )}
         </div>
       </div>
 
-      <Card title="Identity" subtitle="Single resolved person across multiple FIR name spellings">
+      <Card title={t('network.o360.identity')} subtitle={t('network.o360.identitySub')}>
         <div className="grid grid-cols-1 sm:grid-cols-[11rem_minmax(0,1fr)] gap-4 items-start">
           <div>
             <RiskGauge score={p.riskScore} height={150} />
             {riskPercentile !== null && (
               <p className="text-[11px] text-muted text-center mt-1.5">
-                Higher risk than <span className="num text-ink">{riskPercentile}%</span> of the loaded registry
+                {t('network.o360.percentile', { pct: fmtPct(riskPercentile, { digits: 0 }) })}
               </p>
             )}
           </div>
           <div className="space-y-2 min-w-0">
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
-              <Fact label="Cases">{fmtInt(p.caseCount)}</Fact>
-              <Fact label="Districts">{fmtInt((p.districts || []).length)}</Fact>
-              <Fact label="Network degree">{fmtInt(p.degree)}</Fact>
-              <Fact label="First seen">{dateLabel(p.firstSeen)}</Fact>
-              <Fact label="Last seen">{dateLabel(p.lastSeen)}</Fact>
+              <Fact label={t('network.o360.factCases')}>{fmtInt(p.caseCount)}</Fact>
+              <Fact label={t('network.o360.factDistricts')}>{fmtInt((p.districts || []).length)}</Fact>
+              <Fact label={t('network.o360.factDegree')}>{fmtInt(p.degree)}</Fact>
+              <Fact label={t('network.o360.factFirstSeen')}>{dateLabel(p.firstSeen)}</Fact>
+              <Fact label={t('network.o360.factLastSeen')}>{dateLabel(p.lastSeen)}</Fact>
             </div>
             <YearSparkline timeline={timeline} />
           </div>
         </div>
         <div className="mt-3">
-          <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">Known aliases</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">{t('network.o360.knownAliases')}</p>
           {(p.aliases || []).length ? (
             <div className="flex flex-wrap gap-1.5">
               {(p.aliases || []).map((a) => {
                 const conf = aliasConfidence(a, p.canonicalName);
                 const band = confidenceBand(conf);
+                const pct = fmtPct(conf, { fraction: true, digits: 0 });
                 return (
                   <span
                     key={a}
                     className="chip cursor-help"
-                    title={`match confidence ${Math.round(conf * 100)}% (${band.label}) — heuristic name-similarity vs the canonical spelling`}
+                    title={t('network.o360.aliasConfidence', { pct, band: t(`network.confidence.${band.id}`) })}
                   >
                     {a}
-                    <span className={`num text-[9px] ${band.text}`}>{Math.round(conf * 100)}%</span>
+                    <span className={`num text-[9px] ${band.text}`}>{pct}</span>
                   </span>
                 );
               })}
             </div>
           ) : (
-            <p className="text-xs text-muted">No alternate spellings on file.</p>
+            <p className="text-xs text-muted">{t('network.o360.noAliases')}</p>
           )}
           <p className="text-[11px] text-muted mt-2">
-            <Badge tone="teal" className="mr-1.5">identity-resolution</Badge>
-            Aliases linked by fuzzy name + shared phone/address signals (~0.9 precision on the synthetic ground truth).
-            Percentages are heuristic name-similarity to the canonical spelling.
+            <Badge tone="teal" className="mr-1.5">{t('network.o360.identityResolution')}</Badge>
+            {t('network.o360.identityNote')}
           </p>
         </div>
       </Card>
 
       <div className="print-stack grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <div className="space-y-4">
-          <Card title="Operating area" subtitle="Cases per district, decoded from CrimeNo">
+          <Card title={t('network.o360.operatingArea')} subtitle={t('network.o360.operatingAreaSub')}>
             <MiniChoropleth values={choroValues} markers={markers} height={260} />
             {hops.length > 1 && (
               <div className="mt-2.5">
-                <p className="text-[10px] uppercase tracking-wide text-muted mb-1">District hops (chronological)</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.o360.districtHops')}</p>
                 <p className="text-xs text-ink leading-5">
                   {hops.map((h, i) => (
-                    <span key={`${h}-${i}`}>
+                    <span key={`${h.code}-${i}`}>
                       {i > 0 && <span className="text-amber"> → </span>}
-                      {h}
+                      {tName('districts', h.code, h.name)}
                     </span>
                   ))}
                 </p>
@@ -365,17 +375,17 @@ export default function Offender360() {
 
           <CaseMixCard timeline={timeline} />
 
-          <Card title="MO signature" subtitle="Recurring modus-operandi tags across this person's cases">
+          <Card title={t('network.o360.moSignature')} subtitle={t('network.o360.moSignatureSub')}>
             {(p.moTags || []).length ? (
               <div className="flex flex-wrap gap-1.5">
-                {(p.moTags || []).map((t) => <Badge key={t} tone="amber">{t}</Badge>)}
+                {(p.moTags || []).map((tag) => <Badge key={tag} tone="amber">{tag}</Badge>)}
               </div>
             ) : (
-              <EmptyState compact title="No MO tags" message="No recurring modus-operandi pattern detected." />
+              <EmptyState compact title={t('network.o360.noMoTitle')} message={t('network.o360.noMoMsg')} />
             )}
           </Card>
 
-          <Card title="Known associates" subtitle="Co-accused links from the network graph">
+          <Card title={t('network.o360.associates')} subtitle={t('network.o360.associatesSub')}>
             {(p.associates || []).length ? (
               <>
                 <div className="no-print mb-2 rounded-lg border border-grid/60 overflow-hidden">
@@ -388,7 +398,7 @@ export default function Offender360() {
                     height={210}
                     onTapPerson={(k) => navigate(`/offenders/${encodeURIComponent(k)}`)}
                   />
-                  <p className="text-[10px] text-muted text-center pb-1.5">Tap an associate to open their profile</p>
+                  <p className="text-[10px] text-muted text-center pb-1.5">{t('network.o360.tapAssociate')}</p>
                 </div>
                 <ul className="divide-y divide-grid/50">
                   {[...(p.associates || [])]
@@ -400,13 +410,13 @@ export default function Offender360() {
                         <li key={a.personKey} className="py-1.5 first:pt-0 last:pb-0">
                           <Link to={`/offenders/${encodeURIComponent(a.personKey)}`} className="flex items-center gap-2 min-h-[36px] group">
                             {watchKeys.has(String(a.personKey)) && (
-                              <span className="text-amber text-[11px] shrink-0" title="On the watchlist" aria-label="On the watchlist">★</span>
+                              <span className="text-amber text-[11px] shrink-0" title={t('network.o360.onWatchlist')} aria-label={t('network.o360.onWatchlist')}>★</span>
                             )}
                             <span className="text-xs text-ink truncate flex-1 group-hover:text-amber transition-colors">
                               {nameByKey.get(String(a.personKey)) || a.personKey}
                             </span>
                             {reg && <RiskBadge score={reg.riskScore} />}
-                            <Badge tone="slate">{fmtInt(a.sharedCases)} shared</Badge>
+                            <Badge tone="slate">{t('network.o360.sharedBadge', { n: fmtInt(a.sharedCases) })}</Badge>
                           </Link>
                         </li>
                       );
@@ -414,15 +424,16 @@ export default function Offender360() {
                 </ul>
               </>
             ) : (
-              <EmptyState compact title="No associates" message="No shared-case links for this person." />
+              <EmptyState compact title={t('network.o360.noAssociatesTitle')} message={t('network.o360.noAssociatesMsg')} />
             )}
           </Card>
         </div>
 
         <Card
           className="xl:col-span-2"
-          title="Case timeline"
-          subtitle={`${fmtInt(timeline.length)} linked FIR${timeline.length === 1 ? '' : 's'}, most recent first`}
+          title={t('network.o360.timeline')}
+          subtitle={t(timeline.length === 1 ? 'network.o360.timelineSub.one' : 'network.o360.timelineSub.other',
+            { n: fmtInt(timeline.length) })}
         >
           <OffenderTimeline timeline={timeline} />
         </Card>

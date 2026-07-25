@@ -25,6 +25,7 @@ import SegmentedControl from '../components/SegmentedControl.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt, fmtNum, fmtPct } from '../lib/format.js';
+import { useT, useNames } from '../lib/i18n.jsx';
 import CytoGraph from './network/CytoGraph.jsx';
 import { NodeDrawer, EdgeDrawer } from './network/Drawers.jsx';
 import SavedViews from './network/SavedViews.jsx';
@@ -49,28 +50,28 @@ const LABELS_PREF = 'dappa-net-labels';
 const NEIGHBOR_PREF = 'dappa-net-neighbor';
 const BRIDGE_PREF = 'dappa-net-bridges';
 
-const EDGE_TIERS = [
-  { id: 'single', label: '1 case', hint: 'links from a single shared FIR' },
-  { id: 'repeat', label: '2 cases', hint: 'links from two shared FIRs' },
-  { id: 'strong', label: '3+ cases', hint: 'strong ties — three or more shared FIRs' },
-];
+// Tier ids only — labels/hints resolve through t('network.tier.<id>[Hint]').
+const EDGE_TIERS = ['single', 'repeat', 'strong'];
 
-const NODE_CSV = [
-  { key: 'id', label: 'Person key' },
-  { key: 'label', label: 'Name' },
-  { key: 'communityId', label: 'Community' },
-  { key: 'degree', label: 'Degree' },
-  { key: 'caseCount', label: 'Cases' },
+// CSV headers are user-visible, so the column sets are built per render with
+// the active translator rather than frozen at module load.
+const nodeCsvColumns = (t) => [
+  { key: 'id', label: t('network.csv.personKey') },
+  { key: 'label', label: t('network.csv.name') },
+  { key: 'communityId', label: t('network.csv.community') },
+  { key: 'degree', label: t('network.csv.degree') },
+  { key: 'caseCount', label: t('network.csv.cases') },
 ];
-const EDGE_CSV = [
-  { key: 'source', label: 'Person A' },
-  { key: 'target', label: 'Person B' },
-  { key: 'weight', label: 'Shared cases' },
-  { label: 'Case IDs', map: (e) => (e.caseIds || []).join('; ') },
+const edgeCsvColumns = (t) => [
+  { key: 'source', label: t('network.csv.personA') },
+  { key: 'target', label: t('network.csv.personB') },
+  { key: 'weight', label: t('network.csv.sharedCases') },
+  { label: t('network.csv.caseIds'), map: (e) => (e.caseIds || []).join('; ') },
 ];
 
 /** Tiny degree-distribution bar strip for the Legend card (degrees 1..7, 8+). */
 function DegreeHistogram({ nodes }) {
+  const t = useT();
   const counts = [0, 0, 0, 0, 0, 0, 0, 0];
   for (const n of nodes) {
     const d = Math.max(1, Math.min(8, Number(n.degree) || 1));
@@ -80,18 +81,20 @@ function DegreeHistogram({ nodes }) {
   if (!nodes.length) return null;
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide mb-1.5">Degree distribution</p>
+      <p className="text-[10px] uppercase tracking-wide mb-1.5">{t('network.legend.degreeDistribution')}</p>
       <div
         className="flex items-end gap-1"
         role="img"
-        aria-label={`People per degree: ${counts.map((c, i) => `${i + 1 === 8 ? '8+' : i + 1}: ${c}`).join(', ')}`}
+        aria-label={t('network.legend.degreeDistAria', {
+          list: counts.map((c, i) => `${i + 1 === 8 ? '8+' : i + 1}: ${fmtInt(c)}`).join(', '),
+        })}
       >
         {counts.map((c, i) => (
           <div key={i} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
             <div
               className={`w-full rounded-sm ${c ? 'bg-amber/70' : 'bg-grid/50'}`}
               style={{ height: `${3 + Math.round((c / max) * 30)}px` }}
-              title={`degree ${i + 1 === 8 ? '8+' : i + 1}: ${fmtInt(c)} people`}
+              title={t('network.legend.degreeBarTitle', { d: i + 1 === 8 ? '8+' : i + 1, n: fmtInt(c) })}
             />
             <span className="text-[9px] text-muted num" aria-hidden="true">{i + 1 === 8 ? '8+' : i + 1}</span>
           </div>
@@ -102,11 +105,12 @@ function DegreeHistogram({ nodes }) {
 }
 
 function PersonSelect({ label, value, onChange, options }) {
+  const t = useT();
   return (
     <label className="block text-[11px] text-muted">
       <span className="block mb-1">{label}</span>
       <select className="input-dark !py-1.5 w-full" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-        <option value="">— pick a person —</option>
+        <option value="">{t('network.path.pickPerson')}</option>
         {value && !options.some((o) => o.id === value) && <option value={value}>{value}</option>}
         {options.map((o) => (
           <option key={o.id} value={o.id}>{o.label}</option>
@@ -121,6 +125,8 @@ export default function Network() {
   const { districtId } = useUrlFilters();
   const lookups = useLookups();
   const toast = useToast();
+  const t = useT();
+  const tName = useNames();
   const isDesktop = useMediaQuery('(min-width: 1280px)');
 
   // URL-synced analytic state (deep-linkable): community isolate, ego focus
@@ -402,9 +408,12 @@ export default function Network() {
 
   const personOptions = useMemo(
     () => filtered.nodes
-      .map((n) => ({ id: String(n.id), label: `${n.label || n.id} (${fmtInt(n.caseCount)} cases)` }))
+      .map((n) => ({
+        id: String(n.id),
+        label: t('network.path.personOption', { name: n.label || n.id, n: fmtInt(n.caseCount) }),
+      }))
       .sort((a, b) => a.label.localeCompare(b.label)),
-    [filtered.nodes],
+    [filtered.nodes, t],
   );
 
   const searchMatches = useMemo(() => {
@@ -450,8 +459,8 @@ export default function Network() {
   // ('f' belongs to the app-wide zen-mode shortcut in Layout — leave it alone.)
   useEffect(() => {
     const onKey = (e) => {
-      const t = e.target;
-      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      const el = e.target;
+      const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (document.querySelector('[aria-modal="true"]')) return; // sheet/palette open
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); }
@@ -466,23 +475,26 @@ export default function Network() {
 
   const exportPng = () => {
     const uri = cyApi.current?.png?.();
-    if (!uri) { toast.error('The graph canvas is not ready yet.'); return; }
+    if (!uri) { toast.error(t('network.toast.canvasNotReady')); return; }
     downloadDataUrl(`dappa-network-${new Date().toISOString().slice(0, 10)}.png`, uri);
-    toast.success('Network graph exported as PNG.');
+    toast.success(t('network.toast.pngExported'));
   };
 
   const exportCsv = () => {
-    if (!filtered.nodes.length) { toast.info('Nothing to export in the current view.'); return; }
+    if (!filtered.nodes.length) { toast.info(t('network.toast.nothingToExport')); return; }
     const day = new Date().toISOString().slice(0, 10);
-    downloadCsv(`dappa-network-nodes-${day}.csv`, NODE_CSV, filtered.nodes);
-    downloadCsv(`dappa-network-edges-${day}.csv`, EDGE_CSV, filtered.edges);
-    toast.success(`Exported ${fmtInt(filtered.nodes.length)} people + ${fmtInt(filtered.edges.length)} links as two CSV files.`);
+    downloadCsv(`dappa-network-nodes-${day}.csv`, nodeCsvColumns(t), filtered.nodes);
+    downloadCsv(`dappa-network-edges-${day}.csv`, edgeCsvColumns(t), filtered.edges);
+    toast.success(t('network.toast.csvExported', {
+      n: fmtInt(filtered.nodes.length),
+      m: fmtInt(filtered.edges.length),
+    }));
   };
 
   const copyLink = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.success('View link copied — filters, community and ego focus travel with it.');
-    else toast.error('Could not copy the link in this browser.');
+    if (ok) toast.success(t('network.toast.linkCopied'));
+    else toast.error(t('network.toast.copyFailed'));
   };
 
   const onLayoutStop = () => {
@@ -527,9 +539,9 @@ export default function Network() {
     if (graph.error) {
       return (
         <EmptyState
-          title="Couldn't load the network graph"
+          title={t('network.error.graph')}
           message={graph.error.message}
-          action={<button type="button" className="btn" onClick={() => graph.refetch()}>Retry</button>}
+          action={<button type="button" className="btn" onClick={() => graph.refetch()}>{t('common.action.retry')}</button>}
         />
       );
     }
@@ -537,13 +549,13 @@ export default function Network() {
     if (!filtered.nodes.length) {
       return (
         <EmptyState
-          title="No linked persons in this view"
+          title={t('network.empty.title')}
           message={communityId
-            ? `Community #${communityId} has no members under the current filters.`
-            : 'No co-accused links match the current district / degree / link-type filters.'}
+            ? t('network.empty.communityMsg', { id: communityId })
+            : t('network.empty.msg')}
           action={(communityId || minDegree > 1 || ego || Object.values(edgeTypes).some((v) => !v)) ? (
             <button type="button" className="btn" onClick={clearGraphFilters}>
-              Clear graph filters
+              {t('network.empty.clearFilters')}
             </button>
           ) : undefined}
         />
@@ -558,7 +570,10 @@ export default function Network() {
         highlightIds={bridgeIds}
         showLabels={showLabels}
         neighborFocus={neighborFocus}
-        ariaLabel={`Co-accused network graph: ${fmtInt(filtered.nodes.length)} people and ${fmtInt(filtered.edges.length)} links. Use the Find-person search or the Top connectors list for keyboard access.`}
+        ariaLabel={t('network.graph.aria', {
+          nodes: fmtInt(filtered.nodes.length),
+          edges: fmtInt(filtered.edges.length),
+        })}
         onNodeTap={(d) => setSelected({ type: 'node', data: d })}
         onEdgeTap={(d) => setSelected({ type: 'edge', data: d })}
         onBackgroundTap={() => setSelected(null)}
@@ -577,13 +592,13 @@ export default function Network() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="page-title">Network Explorer</h1>
-        <p className="page-subtitle">Co-accused communities and shared-case links from identity-resolved persons</p>
+        <h1 className="page-title">{t('network.title')}</h1>
+        <p className="page-subtitle">{t('network.subtitle')}</p>
       </div>
 
       <FilterBar show={['district']}>
         <label className="flex items-center gap-2 text-xs text-muted whitespace-nowrap min-h-[40px]">
-          <span>Degree ≥ <span className="num text-ink">{minDegree}</span></span>
+          <span>{t('network.control.degreeMin')} <span className="num text-ink">{fmtInt(minDegree)}</span></span>
           <input
             type="range"
             min="1"
@@ -592,24 +607,24 @@ export default function Network() {
             value={minDegree}
             onChange={(e) => setParams({ minDegree: Number(e.target.value) > 1 ? e.target.value : '' })}
             className="accent-amber w-24"
-            aria-label="Minimum node degree"
+            aria-label={t('network.control.degreeMinAria')}
           />
         </label>
-        <span className="text-xs text-muted whitespace-nowrap hidden sm:inline" aria-hidden="true">Links:</span>
-        {EDGE_TIERS.map((t) => (
-          <Tooltip key={t.id} label={t.hint}>
+        <span className="text-xs text-muted whitespace-nowrap hidden sm:inline" aria-hidden="true">{t('network.control.linksLabel')}</span>
+        {EDGE_TIERS.map((tier) => (
+          <Tooltip key={tier} label={t(`network.tier.${tier}Hint`)}>
             <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none whitespace-nowrap min-h-[40px] px-0.5">
               <input
                 type="checkbox"
                 className="accent-amber h-4 w-4"
-                checked={edgeTypes[t.id]}
-                onChange={(e) => setEdgeTypes((p) => ({ ...p, [t.id]: e.target.checked }))}
+                checked={edgeTypes[tier]}
+                onChange={(e) => setEdgeTypes((p) => ({ ...p, [tier]: e.target.checked }))}
               />
-              {t.label}
+              {t(`network.tier.${tier}`)}
             </label>
           </Tooltip>
         ))}
-        <Tooltip label="links whose endpoints sit in different communities">
+        <Tooltip label={t('network.control.bridgesToggleHint')}>
           <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none whitespace-nowrap min-h-[40px] px-0.5">
             <input
               type="checkbox"
@@ -617,21 +632,26 @@ export default function Network() {
               checked={edgeTypes.bridge}
               onChange={(e) => setEdgeTypes((p) => ({ ...p, bridge: e.target.checked }))}
             />
-            bridges
+            {t('network.control.bridgesToggle')}
           </label>
         </Tooltip>
         <label className="flex items-center gap-2 text-xs text-muted">
-          <span className="hidden sm:inline">Community</span>
+          <span className="hidden sm:inline">{t('network.control.community')}</span>
           <select
             className="input-dark !py-1.5 max-w-[16rem]"
             value={communityId}
             onChange={(e) => setCommunity(e.target.value)}
-            aria-label="Community picker"
+            aria-label={t('network.control.communityAria')}
           >
-            <option value="">All communities</option>
+            <option value="">{t('network.control.allCommunities')}</option>
             {communities.map((c) => (
               <option key={c.id} value={c.id}>
-                {`Group #${c.id} · ${c.members} members · ${fmtInt(c.cases)} cases${c.districts ? ` · ${c.districts} district${c.districts > 1 ? 's' : ''}` : ''}`}
+                {t(
+                  c.districts
+                    ? (c.districts > 1 ? 'network.control.communityOptionD' : 'network.control.communityOptionD1')
+                    : 'network.control.communityOption',
+                  { id: c.id, members: fmtInt(c.members), cases: fmtInt(c.cases), d: fmtInt(c.districts) },
+                )}
               </option>
             ))}
           </select>
@@ -646,32 +666,34 @@ export default function Network() {
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_330px] gap-4 items-start">
         <Card padded={false}>
           <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-grid/60 text-[11px] text-muted">
-            <span className="num">{fmtInt(filtered.nodes.length)} people</span>
+            <span className="num">{t('network.stat.people', { n: fmtInt(filtered.nodes.length) })}</span>
             <span>·</span>
-            <span className="num">{fmtInt(filtered.edges.length)} links</span>
+            <span className="num">{t('network.stat.links', { n: fmtInt(filtered.edges.length) })}</span>
             <span>·</span>
-            <span className="num">{fmtInt(components)} component{components === 1 ? '' : 's'}</span>
+            <span className="num">
+              {t(components === 1 ? 'network.stat.components.one' : 'network.stat.components.other', { n: fmtInt(components) })}
+            </span>
             <span>·</span>
-            <span className="num">{fmtInt(communities.length)} groups</span>
+            <span className="num">{t('network.stat.groups', { n: fmtInt(communities.length) })}</span>
             <span className="hidden md:inline">·</span>
-            <Tooltip label="Share of possible pairwise links that actually exist in this view">
-              <span className="num hidden md:inline">{fmtPct(density * 100, { digits: 1 })} dense</span>
+            <Tooltip label={t('network.stat.densityHint')}>
+              <span className="num hidden md:inline">{t('network.stat.density', { pct: fmtPct(density * 100, { digits: 1 }) })}</span>
             </Tooltip>
             <span className="hidden md:inline">·</span>
-            <Tooltip label="Average co-accused links per visible person">
-              <span className="num hidden md:inline">avg {fmtNum(avgDegree, 1)} links</span>
+            <Tooltip label={t('network.stat.avgLinksHint')}>
+              <span className="num hidden md:inline">{t('network.stat.avgLinks', { n: fmtNum(avgDegree, 1) })}</span>
             </Tooltip>
-            {districtName && <Badge tone="amber">{districtName}</Badge>}
-            {communityId && <Badge tone="teal">isolated: group #{communityId}</Badge>}
-            {filtered.capped && <Badge tone="slate">showing top {NODE_CAP} by degree</Badge>}
-            {filtered.egoMissing && <Badge tone="slate">ego person not in current view</Badge>}
-            {showBridges && !bridgeIds.length && <Badge tone="slate">no bridge links in view</Badge>}
+            {districtName && <Badge tone="amber">{tName('districts', districtId, districtName)}</Badge>}
+            {communityId && <Badge tone="teal">{t('network.badge.isolated', { id: communityId })}</Badge>}
+            {filtered.capped && <Badge tone="slate">{t('network.badge.capped', { n: fmtInt(NODE_CAP) })}</Badge>}
+            {filtered.egoMissing && <Badge tone="slate">{t('network.badge.egoMissing')}</Badge>}
+            {showBridges && !bridgeIds.length && <Badge tone="slate">{t('network.badge.noBridges')}</Badge>}
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2 min-w-0">
               <div className="relative">
                 <input
                   ref={searchRef}
                   className="input-dark !py-2 w-40 sm:w-48"
-                  placeholder="Find person… ( / )"
+                  placeholder={t('network.search.placeholder')}
                   value={searchQ}
                   onChange={(e) => setSearchQ(e.target.value)}
                   onKeyDown={onSearchKeyDown}
@@ -682,17 +704,17 @@ export default function Network() {
                   aria-activedescendant={searchQ.trim() && searchMatches.length
                     ? `net-search-opt-${Math.min(searchIdx, searchMatches.length - 1)}`
                     : undefined}
-                  aria-label="Search people in the visible graph"
+                  aria-label={t('network.search.aria')}
                 />
                 {searchQ.trim() && (
                   <ul
                     id="net-search-listbox"
                     className="absolute right-0 z-40 mt-1 w-60 max-h-56 overflow-y-auto rounded-lg border border-grid bg-panel shadow-lift"
                     role="listbox"
-                    aria-label="Matching people"
+                    aria-label={t('network.search.listAria')}
                   >
                     {searchMatches.length === 0 && (
-                      <li className="px-3 py-2 text-[11px] text-muted" role="presentation">No matching person in view</li>
+                      <li className="px-3 py-2 text-[11px] text-muted" role="presentation">{t('network.search.noMatch')}</li>
                     )}
                     {searchMatches.map((n, i) => (
                       <li
@@ -711,7 +733,7 @@ export default function Network() {
                           onMouseEnter={() => setSearchIdx(i)}
                         >
                           <span className="truncate">{n.label || String(n.id)}</span>
-                          <span className="num text-muted shrink-0">{fmtInt(n.caseCount)} cases</span>
+                          <span className="num text-muted shrink-0">{fmtInt(n.caseCount)} {t('common.unit.cases')}</span>
                         </button>
                       </li>
                     ))}
@@ -719,70 +741,70 @@ export default function Network() {
                 )}
               </div>
               <SegmentedControl
-                ariaLabel="Graph layout"
+                ariaLabel={t('network.layout.aria')}
                 value={layout}
                 onChange={changeLayout}
                 options={[
-                  { value: 'fcose', label: 'Force' },
-                  { value: 'concentric', label: 'Rings' },
-                  { value: 'grid', label: 'Grid' },
-                  { value: 'breadthfirst', label: 'Tree' },
+                  { value: 'fcose', label: t('network.layout.force') },
+                  { value: 'concentric', label: t('network.layout.rings') },
+                  { value: 'grid', label: t('network.layout.grid') },
+                  { value: 'breadthfirst', label: t('network.layout.tree') },
                 ]}
               />
-              <Tooltip label="Zoom out (−)">
-                <button type="button" className={toolBtn} onClick={() => cyApi.current?.zoomOut?.()} aria-label="Zoom out">−</button>
+              <Tooltip label={t('network.tool.zoomOutHint')}>
+                <button type="button" className={toolBtn} onClick={() => cyApi.current?.zoomOut?.()} aria-label={t('network.tool.zoomOut')}>−</button>
               </Tooltip>
-              <Tooltip label="Zoom in (+)">
-                <button type="button" className={toolBtn} onClick={() => cyApi.current?.zoomIn?.()} aria-label="Zoom in">＋</button>
+              <Tooltip label={t('network.tool.zoomInHint')}>
+                <button type="button" className={toolBtn} onClick={() => cyApi.current?.zoomIn?.()} aria-label={t('network.tool.zoomIn')}>＋</button>
               </Tooltip>
-              <Tooltip label="Fit graph to view (0)">
+              <Tooltip label={t('network.tool.fitHint')}>
                 <button type="button" className={toolBtn} onClick={() => cyApi.current?.fit()}>
-                  Fit
+                  {t('network.tool.fit')}
                 </button>
               </Tooltip>
-              <Tooltip label={showLabels ? 'Hide node labels (declutters dense graphs)' : 'Show node labels'}>
+              <Tooltip label={showLabels ? t('network.tool.labelsOnHint') : t('network.tool.labelsOffHint')}>
                 <button
                   type="button"
                   className={`${toolBtn} ${showLabels ? '!border-amber/60 text-amber' : ''}`}
                   onClick={toggleLabels}
                   aria-pressed={showLabels}
                 >
-                  Labels
+                  {t('network.tool.labels')}
                 </button>
               </Tooltip>
-              <Tooltip label={neighborFocus ? 'Stop dimming non-neighbors of the selection' : 'Dim everything except the selection and its direct neighbors'}>
+              <Tooltip label={neighborFocus ? t('network.tool.focusOnHint') : t('network.tool.focusOffHint')}>
                 <button
                   type="button"
                   className={`${toolBtn} ${neighborFocus ? '!border-amber/60 text-amber' : ''}`}
                   onClick={toggleNeighbor}
                   aria-pressed={neighborFocus}
                 >
-                  Focus
+                  {t('network.tool.focus')}
                 </button>
               </Tooltip>
-              <Tooltip label={showBridges ? 'Stop highlighting cross-community links' : 'Highlight the people and links that bridge different communities'}>
+              <Tooltip label={showBridges ? t('network.tool.bridgesOnHint') : t('network.tool.bridgesOffHint')}>
                 <button
                   type="button"
                   className={`${toolBtn} ${showBridges ? '!border-amber/60 text-amber' : ''}`}
                   onClick={toggleBridges}
                   aria-pressed={showBridges}
                 >
-                  Bridges
+                  {t('network.tool.bridges')}
                 </button>
               </Tooltip>
-              <Tooltip label="Download the graph as a PNG image">
+              <Tooltip label={t('network.tool.pngHint')}>
                 <button type="button" className={toolBtn} onClick={exportPng}>
-                  PNG
+                  {t('network.tool.png')}
                 </button>
               </Tooltip>
-              <Tooltip label="Download visible people + links as two CSV files">
+              <Tooltip label={t('network.tool.csvHint')}>
                 <button type="button" className={toolBtn} onClick={exportCsv}>
-                  CSV
+                  {t('network.tool.csv')}
                 </button>
               </Tooltip>
-              <Tooltip label="Copy a shareable link to this exact view">
+              <Tooltip label={t('network.tool.linkHint')}>
                 <button type="button" className={toolBtn} onClick={copyLink}>
-                  Link
+                  {t('network.tool.link')}
                 </button>
               </Tooltip>
             </div>
@@ -790,20 +812,20 @@ export default function Network() {
 
           {ego && !filtered.egoMissing && (
             <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-grid/60 text-[11px]">
-              <Badge tone="teal" pulse>ego: {egoLabel}</Badge>
-              <span className="text-muted">depth</span>
+              <Badge tone="teal" pulse>{t('network.ego.badge', { name: egoLabel })}</Badge>
+              <span className="text-muted">{t('network.ego.depth')}</span>
               <SegmentedControl
-                ariaLabel="Ego network depth"
+                ariaLabel={t('network.ego.depthAria')}
                 value={String(depth)}
                 onChange={(v) => setParams({ depth: v })}
                 options={[
-                  { value: '1', label: '1 hop' },
-                  { value: '2', label: '2 hops' },
-                  { value: '3', label: '3 hops' },
+                  { value: '1', label: t('network.ego.hop1') },
+                  { value: '2', label: t('network.ego.hop2') },
+                  { value: '3', label: t('network.ego.hop3') },
                 ]}
               />
               <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px] ml-auto" onClick={() => setEgo(null)}>
-                Exit ego focus
+                {t('network.ego.exit')}
               </button>
             </div>
           )}
@@ -818,14 +840,18 @@ export default function Network() {
                   type="button"
                   className={`chip !py-1 min-h-[36px] hover:border-amber/50 transition-colors ${String(communityId) === c.id ? '!border-amber text-amber' : ''}`}
                   onClick={() => setCommunity(String(communityId) === c.id ? '' : c.id)}
-                  title={`${c.members} members — top: ${c.topLabel}`}
+                  title={t('network.chip.communityTitle', { members: fmtInt(c.members), label: c.topLabel })}
                 >
                   <span className="h-2 w-2 rounded-full shrink-0" style={{ background: communityColor(c.id) }} />
                   #{c.id}
-                  <span className="num text-muted">{c.members}</span>
+                  <span className="num text-muted">{fmtInt(c.members)}</span>
                 </button>
               ))}
-              {communities.length > 8 && <span className="text-[11px] text-muted">+{communities.length - 8} more in the picker</span>}
+              {communities.length > 8 && (
+                <span className="text-[11px] text-muted">
+                  {t('network.chip.moreCommunities', { n: fmtInt(communities.length - 8) })}
+                </span>
+              )}
             </div>
           )}
         </Card>
@@ -844,22 +870,22 @@ export default function Network() {
             />
           )}
 
-          <Card title="Shortest path" subtitle="Fewest shared-case hops between two persons">
+          <Card title={t('network.path.title')} subtitle={t('network.path.subtitle')}>
             <div className="space-y-2.5">
-              <PersonSelect label="Person A" value={pathEnds.a} onChange={(v) => setPathEnds((p) => ({ ...p, a: v }))} options={personOptions} />
-              <PersonSelect label="Person B" value={pathEnds.b} onChange={(v) => setPathEnds((p) => ({ ...p, b: v }))} options={personOptions} />
+              <PersonSelect label={t('network.path.personA')} value={pathEnds.a} onChange={(v) => setPathEnds((p) => ({ ...p, a: v }))} options={personOptions} />
+              <PersonSelect label={t('network.path.personB')} value={pathEnds.b} onChange={(v) => setPathEnds((p) => ({ ...p, b: v }))} options={personOptions} />
               {(pathEnds.a || pathEnds.b) && (
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px]" onClick={() => setPathEnds({ a: '', b: '' })}>
-                    Clear path
+                    {t('network.path.clear')}
                   </button>
                   <button
                     type="button"
                     className="btn !py-1.5 !px-2.5 text-[11px] min-h-[36px]"
                     onClick={() => setPathEnds((p) => ({ a: p.b, b: p.a }))}
-                    title="Swap person A and person B"
+                    title={t('network.path.swapHint')}
                   >
-                    ⇄ Swap
+                    {t('network.path.swap')}
                   </button>
                 </div>
               )}
@@ -867,9 +893,13 @@ export default function Network() {
                 path ? (
                   <div className="text-xs text-ink space-y-1">
                     <span className="inline-flex flex-wrap gap-1.5">
-                      <Badge tone="teal">{path.length - 1} hop{path.length - 1 === 1 ? '' : 's'}</Badge>
+                      <Badge tone="teal">
+                        {t(path.length - 1 === 1 ? 'network.path.hops.one' : 'network.path.hops.other', { n: fmtInt(path.length - 1) })}
+                      </Badge>
                       {pathStrength > 0 && (
-                        <Badge tone="amber">Σ {fmtInt(pathStrength)} shared FIR{pathStrength === 1 ? '' : 's'}</Badge>
+                        <Badge tone="amber">
+                          {t(pathStrength === 1 ? 'network.path.strength.one' : 'network.path.strength.other', { n: fmtInt(pathStrength) })}
+                        </Badge>
                       )}
                     </span>
                     <p className="leading-5">
@@ -884,7 +914,7 @@ export default function Network() {
                     </p>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-muted">No path between these two persons in the current view.</p>
+                  <p className="text-[11px] text-muted">{t('network.path.none')}</p>
                 )
               )}
             </div>
@@ -895,10 +925,10 @@ export default function Network() {
           <WatchlistPanel nodesById={nodesById} onPick={pickFromPanel} />
 
           <Card
-            title="Legend"
+            title={t('network.legend.title')}
             actions={(
               <button type="button" className="btn-ghost !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={toggleLegend} aria-expanded={legendOpen}>
-                {legendOpen ? 'Hide' : 'Show'}
+                {legendOpen ? t('network.legend.hide') : t('network.legend.show')}
               </button>
             )}
             padded={legendOpen}
@@ -906,7 +936,7 @@ export default function Network() {
             {legendOpen && (
               <div className="space-y-3 text-[11px] text-muted">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide mb-1.5">Communities (color)</p>
+                  <p className="text-[10px] uppercase tracking-wide mb-1.5">{t('network.legend.communities')}</p>
                   <ul className="space-y-1">
                     {communities.slice(0, 8).map((c) => (
                       <li key={c.id} className="flex items-center gap-2 min-w-0">
@@ -916,26 +946,26 @@ export default function Network() {
                         <span className="num ml-auto shrink-0">{fmtInt(c.members)}</span>
                       </li>
                     ))}
-                    {!communities.length && <li>No communities detected in this view.</li>}
+                    {!communities.length && <li>{t('network.legend.noCommunities')}</li>}
                   </ul>
                 </div>
                 <ul className="space-y-1.5 border-t border-grid/60 pt-2.5">
-                  <li>Node size = network degree (co-accused links)</li>
-                  <li>Edge width = FIRs shared by the pair</li>
-                  <li><span className="text-amber">Amber ring</span> = selected person / shortest path</li>
-                  <li><span className="text-teal">Teal ring</span> = ego-focus person</li>
-                  <li><span className="text-amber">Dashed amber</span> = cross-community bridge (Bridges)</li>
-                  <li>◆ diamond = watchlisted person</li>
-                  <li>Pinch or scroll to zoom · drag to pan · tap for details</li>
+                  <li>{t('network.legend.nodeSize')}</li>
+                  <li>{t('network.legend.edgeWidth')}</li>
+                  <li><span className="text-amber">{t('network.legend.amberRing')}</span> {t('network.legend.amberRingText')}</li>
+                  <li><span className="text-teal">{t('network.legend.tealRing')}</span> {t('network.legend.tealRingText')}</li>
+                  <li><span className="text-amber">{t('network.legend.dashedAmber')}</span> {t('network.legend.dashedAmberText')}</li>
+                  <li>{t('network.legend.diamond')}</li>
+                  <li>{t('network.legend.gestures')}</li>
                 </ul>
                 <div className="border-t border-grid/60 pt-2.5">
                   <DegreeHistogram nodes={filtered.nodes} />
                 </div>
                 <div className="border-t border-grid/60 pt-2.5">
-                  <p className="text-[10px] uppercase tracking-wide mb-1.5">Keyboard</p>
+                  <p className="text-[10px] uppercase tracking-wide mb-1.5">{t('network.legend.keyboard')}</p>
                   <ul className="space-y-1">
-                    <li><kbd className="chip !py-0 !px-1.5 text-[10px] num">/</kbd> find person · <kbd className="chip !py-0 !px-1.5 text-[10px] num">0</kbd> fit view</li>
-                    <li><kbd className="chip !py-0 !px-1.5 text-[10px] num">+</kbd> / <kbd className="chip !py-0 !px-1.5 text-[10px] num">−</kbd> zoom · <kbd className="chip !py-0 !px-1.5 text-[10px] num">Esc</kbd> clear selection</li>
+                    <li><kbd className="chip !py-0 !px-1.5 text-[10px] num">/</kbd> {t('network.legend.kbdFind')} · <kbd className="chip !py-0 !px-1.5 text-[10px] num">0</kbd> {t('network.legend.kbdFit')}</li>
+                    <li><kbd className="chip !py-0 !px-1.5 text-[10px] num">+</kbd> / <kbd className="chip !py-0 !px-1.5 text-[10px] num">−</kbd> {t('network.legend.kbdZoom')} · <kbd className="chip !py-0 !px-1.5 text-[10px] num">Esc</kbd> {t('network.legend.kbdClear')}</li>
                   </ul>
                 </div>
               </div>
@@ -943,12 +973,15 @@ export default function Network() {
           </Card>
 
           {isDesktop && (
-            <Card title={selected ? (selected.type === 'node' ? 'Person' : 'Link') : 'Selection'}>
+            <Card title={selected
+              ? (selected.type === 'node' ? t('network.select.person') : t('network.select.link'))
+              : t('network.select.none')}
+            >
               {!selected && (
                 <EmptyState
                   compact
-                  title="Nothing selected"
-                  message="Tap a node for the offender panel, or an edge for its shared-case list."
+                  title={t('network.select.emptyTitle')}
+                  message={t('network.select.emptyMsg')}
                 />
               )}
               {drawerFor(selected)}
@@ -961,7 +994,7 @@ export default function Network() {
         <Sheet
           open={!!selected}
           onClose={() => setSelected(null)}
-          title={selected?.type === 'node' ? 'Person' : 'Shared-case link'}
+          title={selected?.type === 'node' ? t('network.select.person') : t('network.edge.title')}
         >
           {drawerFor(selected)}
         </Sheet>

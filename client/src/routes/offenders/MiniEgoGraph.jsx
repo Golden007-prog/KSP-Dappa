@@ -4,6 +4,8 @@
 import { useMemo } from 'react';
 import CytoGraph from '../network/CytoGraph.jsx';
 import { communityColor } from '../network/graphUtils.js';
+import { fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const MAX_ASSOCIATES = 12;
 
@@ -11,6 +13,7 @@ export default function MiniEgoGraph({
   personKey, name, communityId, associates = [], nameByKey = new Map(),
   height = 230, onTapPerson,
 }) {
+  const t = useT();
   const elements = useMemo(() => {
     const ego = String(personKey);
     const top = [...associates]
@@ -46,7 +49,10 @@ export default function MiniEgoGraph({
       elements={elements}
       layout="concentric"
       height={height}
-      ariaLabel={`Ego network of ${name || personKey}: the person plus their ${Math.min(associates.length, MAX_ASSOCIATES)} strongest co-accused links. The Known-associates list below is the keyboard-accessible equivalent.`}
+      ariaLabel={t('network.o360.egoAria', {
+        name: name || personKey,
+        n: fmtInt(Math.min(associates.length, MAX_ASSOCIATES)),
+      })}
       onNodeTap={(d) => {
         if (String(d.id) !== String(personKey)) onTapPerson?.(String(d.id));
       }}

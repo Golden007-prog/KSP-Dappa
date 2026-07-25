@@ -10,12 +10,15 @@ import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import SegmentedControl from '../../components/SegmentedControl.jsx';
 import { fmtInt, fmtCompact } from '../../lib/format.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
 import { useLocalPref } from './lib.js';
 
 const TOP = 8;
 
 export default function CategoryDonut({ query, linkSearch = '', height = 264, chartRef }) {
   const navigate = useNavigate();
+  const t = useT();
+  const tName = useNames();
   const [mode, setMode] = useLocalPref('dappa-dash-sharemode', 'donut');
   // echarts-for-react binds onEvents once at chart init — route the handler
   // through a ref so slice clicks always use the CURRENT filter search string.
@@ -27,13 +30,16 @@ export default function CategoryDonut({ query, linkSearch = '', height = 264, ch
     const items = query.data || [];
     if (!items.length) return null;
     const sorted = [...items].sort((a, b) => (b.count || 0) - (a.count || 0));
-    const data = sorted.slice(0, TOP).map((s) => ({ name: s.name, value: s.count || 0 }));
+    const data = sorted.slice(0, TOP).map((s) => ({
+      name: tName('crimeHeads', s.id, s.name) || s.name,
+      value: s.count || 0,
+    }));
     const otherSum = sorted.slice(TOP).reduce((a, s) => a + (s.count || 0), 0);
-    if (otherSum > 0) data.push({ name: 'Other', value: otherSum });
+    if (otherSum > 0) data.push({ name: t('dashboard.share.other'), value: otherSum });
     if (!data.some((d) => d.value > 0)) return null;
     const total = data.reduce((a, d) => a + d.value, 0);
     return { data, total };
-  }, [query.data]);
+  }, [query.data, t, tName]);
 
   const option = useMemo(() => {
     if (!model) return null;
@@ -57,14 +63,14 @@ export default function CategoryDonut({ query, linkSearch = '', height = 264, ch
         ],
         series: [
           {
-            name: 'Cases',
+            name: t('dashboard.series.cases'),
             type: 'bar',
             barMaxWidth: 22,
             data: model.data.map((d) => d.value),
             tooltip: { valueFormatter: (v) => fmtInt(v) },
           },
           {
-            name: 'Cumulative share',
+            name: t('dashboard.series.cumShare'),
             type: 'line',
             yAxisIndex: 1,
             symbolSize: 5,
@@ -89,7 +95,7 @@ export default function CategoryDonut({ query, linkSearch = '', height = 264, ch
       legend: { bottom: 0, type: 'scroll' },
       title: {
         text: fmtCompact(model.total),
-        subtext: 'FIRs',
+        subtext: t('dashboard.series.firs'),
         left: 'center',
         top: '32%',
         itemGap: 2,
@@ -106,39 +112,39 @@ export default function CategoryDonut({ query, linkSearch = '', height = 264, ch
         data: model.data,
       }],
     };
-  }, [model, mode]);
+  }, [model, mode, t]);
 
   if (query.isLoading) return <LoadingSkeleton height={height} />;
   if (query.error) {
     return (
       <EmptyState
         compact
-        title="Couldn't load category share"
+        title={t('dashboard.share.error')}
         message={query.error.message}
-        action={<button type="button" className="btn" onClick={() => query.refetch()}>Retry</button>}
+        action={<button type="button" className="btn" onClick={() => query.refetch()}>{t('common.action.retry')}</button>}
       />
     );
   }
-  if (!option) return <EmptyState compact title="No share data" message="No category counts for the current filters." />;
+  if (!option) {
+    return <EmptyState compact title={t('dashboard.share.empty')} message={t('dashboard.share.emptyHint')} />;
+  }
 
   return (
     <>
       <div className="mb-2">
         <SegmentedControl
-          ariaLabel="Category share chart mode"
+          ariaLabel={t('dashboard.share.modeAria')}
           value={mode}
           onChange={setMode}
           options={[
-            { value: 'donut', label: 'Donut' },
-            { value: 'pareto', label: 'Pareto' },
+            { value: 'donut', label: t('dashboard.share.donut') },
+            { value: 'pareto', label: t('dashboard.share.pareto') },
           ]}
         />
       </div>
       <DashChart ref={chartRef} option={option} height={height} onEvents={events} />
       <p className="mt-1 text-[10px] text-muted">
-        {mode === 'pareto'
-          ? 'Bars sorted by volume · line = cumulative share vs the 80% concentration mark · click to open Trends'
-          : 'Click a slice to open Trends'}
+        {t(mode === 'pareto' ? 'dashboard.share.paretoNote' : 'dashboard.share.donutNote')}
       </p>
     </>
   );

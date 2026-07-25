@@ -27,6 +27,28 @@ export default {
   'festival.deepavali': 'Deepavali',
   'festival.dasaraDeepavali': 'Dasara · Deepavali',
 
+  // Weekday + calendar-month short labels — chart axes, quick stats and the
+  // insight sentences. Kept to ~3 glyphs so a heatmap axis never reflows.
+  'day.mon': 'Mon',
+  'day.tue': 'Tue',
+  'day.wed': 'Wed',
+  'day.thu': 'Thu',
+  'day.fri': 'Fri',
+  'day.sat': 'Sat',
+  'day.sun': 'Sun',
+  'month.jan': 'Jan',
+  'month.feb': 'Feb',
+  'month.mar': 'Mar',
+  'month.apr': 'Apr',
+  'month.may': 'May',
+  'month.jun': 'Jun',
+  'month.jul': 'Jul',
+  'month.aug': 'Aug',
+  'month.sep': 'Sep',
+  'month.oct': 'Oct',
+  'month.nov': 'Nov',
+  'month.dec': 'Dec',
+
   // ---------------------------------------------------------- auto-insight --
   'insight.label': 'Auto-insight',
   'insights.title': 'Auto-insights',

@@ -118,7 +118,8 @@ export function riskPerPolygon(riskRows) {
 
 /**
  * Red zones from live alerts: polygons with an OPEN alert at |z| ≥ minZ.
- * → [{polygon, maxZ, districtName}] sorted worst first.
+ * → [{polygon, maxZ, districtId, districtName}] sorted worst first.
+ * districtId rides along so callers can run the name through tName().
  */
 export function redZonesFromAlerts(alerts, { minZ = 2 } = {}) {
   const best = new Map();
@@ -129,7 +130,14 @@ export function redZonesFromAlerts(alerts, { minZ = 2 } = {}) {
     const poly = polygonForUnit(a.districtId ?? a.unitId);
     if (!poly) continue;
     const prev = best.get(poly);
-    if (!prev || z > prev.maxZ) best.set(poly, { polygon: poly, maxZ: z, districtName: a.districtName || poly });
+    if (!prev || z > prev.maxZ) {
+      best.set(poly, {
+        polygon: poly,
+        maxZ: z,
+        districtId: a.districtId ?? a.unitId,
+        districtName: a.districtName || poly,
+      });
+    }
   }
   return [...best.values()].sort((a, b) => b.maxZ - a.maxZ);
 }
@@ -154,76 +162,133 @@ export function seasonalitySplits(s) {
   };
 }
 
-const unitName = (row) => row?.districtName || unitInfo(row?.districtId)?.name || row?.districtId || 'district';
-
 /**
  * Auto-generated one-liners for the IntelTicker. Every input is optional —
  * insights only render for data that actually arrived. Items:
  * [{id, tone:'up'|'down'|'alert'|'info', text, to}].
+ *
+ * `t` / `tName` come from the calling component (useT / useNames): this module
+ * is plain JS and must never call a hook. `dayLabel` translates the weekday
+ * abbreviation the seasonality normalizer emits.
  */
 export function buildInsights({
   compareView, geoRows, openAlerts, redZones, seasonalityData, splits,
   forecast, riskRows, hotspots, correlation, detectionPct, search = '',
+  detectionTarget = 65, t: translate, tName, headLabel = (n) => n, dayLabel = (d) => d,
 } = {}) {
   const items = [];
+  const t = translate || ((k) => k);
   const push = (id, tone, text, to) => { if (text) items.push({ id, tone, text, to: to ? `${to}${search}` : undefined }); };
+  const names = tName || ((_kind, _id, fallback) => fallback || '');
+  const unitName = (row) => names('districts', row?.districtId ?? row?.unitId,
+    row?.districtName || unitInfo(row?.districtId)?.name || row?.districtId)
+    || row?.districtName || row?.districtId || t('dashboard.alerts.districtFallback');
 
   const riser = compareView?.items?.find((it) => it.delta > 0);
   if (riser) {
-    push('riser', 'alert', `${riser.name} is this month's fastest riser — ${fmtPct(riser.delta, { sign: true })} vs ${monthLabel(compareView.prevYm)}.`, '/trends');
+    push('riser', 'alert', t('dashboard.insight.riser', {
+      name: riser.label || headLabel(riser.name),
+      pct: fmtPct(riser.delta, { sign: true }),
+      month: monthLabel(compareView.prevYm),
+    }), '/trends');
   }
   const faller = [...(compareView?.items || [])].reverse().find((it) => it.delta < 0);
   if (faller) {
-    push('faller', 'up', `${faller.name} is easing — ${fmtPct(faller.delta, { sign: true })} month-over-month.`, '/trends');
+    push('faller', 'up', t('dashboard.insight.faller', {
+      name: faller.label || headLabel(faller.name),
+      pct: fmtPct(faller.delta, { sign: true }),
+    }), '/trends');
   }
   const topMover = [...(geoRows || [])]
     .filter((r) => Number.isFinite(Number(r.momDeltaPct)))
     .sort((a, b) => Number(b.momDeltaPct) - Number(a.momDeltaPct))[0];
   if (topMover && Number(topMover.momDeltaPct) > 0) {
-    push('mover', 'alert', `${unitName(topMover)} leads district risers at ${fmtPct(Number(topMover.momDeltaPct), { sign: true })} MoM.`, '/map');
+    push('mover', 'alert', t('dashboard.insight.mover', {
+      name: unitName(topMover),
+      pct: fmtPct(Number(topMover.momDeltaPct), { sign: true }),
+    }), '/map');
   }
   const crit = (openAlerts || []).filter((a) => /critical/i.test(String(a.severity)));
   if (crit.length) {
     const worst = crit.sort((a, b) => Math.abs(Number(b.zScore) || 0) - Math.abs(Number(a.zScore) || 0))[0];
-    push('critical', 'down', `${crit.length} critical anomaly alert${crit.length > 1 ? 's' : ''} open — worst z ${fmtNum(worst.zScore, 1)} (${worst.headName || 'anomaly'} in ${unitName(worst)}).`, '/alerts');
+    push('critical', 'down', t(crit.length > 1 ? 'dashboard.insight.criticalMany' : 'dashboard.insight.criticalOne', {
+      n: crit.length,
+      z: fmtNum(worst.zScore, 1),
+      head: names('crimeHeads', worst.crimeHeadId, worst.headName) || worst.headName || t('dashboard.insight.anomaly'),
+      district: unitName(worst),
+    }), '/alerts');
   }
   if (redZones?.length) {
-    push('redzone', 'down', `${redZones.length} red-zone district${redZones.length > 1 ? 's' : ''} running ≥2σ above historical mean — worst: ${redZones[0].districtName}.`, '/map');
+    push('redzone', 'down', t(redZones.length > 1 ? 'dashboard.insight.redzoneMany' : 'dashboard.insight.redzoneOne', {
+      n: redZones.length,
+      district: names('districts', redZones[0].districtId, redZones[0].districtName) || redZones[0].districtName,
+    }), '/map');
   }
   const fc = forecast?.forecast?.[0];
   const lastActual = forecast?.history?.length ? Number(forecast.history[forecast.history.length - 1].actual) : null;
   if (fc && Number.isFinite(Number(fc.predicted))) {
-    const deltaTxt = lastActual > 0
-      ? ` (${fmtPct(((Number(fc.predicted) - lastActual) / lastActual) * 100, { sign: true })} vs this month)`
+    const delta = lastActual > 0
+      ? t('dashboard.insight.forecastDelta', {
+        pct: fmtPct(((Number(fc.predicted) - lastActual) / lastActual) * 100, { sign: true }),
+      })
       : '';
-    push('forecast', 'info', `${forecast.model || 'Model'} projects ${fmtInt(fc.predicted)} FIRs for ${monthLabel(fc.ym)}${deltaTxt}.`, '/predict');
+    push('forecast', 'info', t('dashboard.insight.forecast', {
+      model: forecast.model || t('dashboard.insight.forecastModel'),
+      n: fmtInt(fc.predicted),
+      month: monthLabel(fc.ym),
+      delta,
+    }), '/predict');
   }
   const topRisk = [...(riskRows || [])].sort((a, b) => (Number(b.riskScore) || 0) - (Number(a.riskScore) || 0))[0];
   if (topRisk) {
-    push('risk', 'alert', `${topRisk.unitName || 'A station'} tops the 30-day risk watchlist at ${fmtNum(topRisk.riskScore, 1)}.`, '/predict');
+    push('risk', 'alert', t('dashboard.insight.risk', {
+      station: topRisk.unitName || t('dashboard.insight.riskStation'),
+      score: fmtNum(topRisk.riskScore, 1),
+    }), '/predict');
   }
   const topHot = [...(hotspots || [])].sort((a, b) => (Number(b.intensity) || 0) - (Number(a.intensity) || 0))[0];
   if (topHot) {
-    const band = hourBandLabel(topHot.hourBandStart, topHot.hourBandEnd);
-    push('hotspot', 'alert', `Hottest cluster: ${topHot.subHeadName || topHot.label || 'cluster'} around ${unitInfo(topHot.districtId)?.name || 'a district'}${band ? `, active ${band}` : ''}.`, '/map');
+    const hours = hourBandLabel(topHot.hourBandStart, topHot.hourBandEnd);
+    push('hotspot', 'alert', t('dashboard.insight.hotspot', {
+      label: names('crimeHeads', topHot.crimeHeadId, topHot.subHeadName || topHot.label)
+        || topHot.subHeadName || topHot.label || t('dashboard.insight.hotspotCluster'),
+      district: names('districts', topHot.districtId, unitInfo(topHot.districtId)?.name)
+        || unitInfo(topHot.districtId)?.name || t('dashboard.insight.hotspotDistrict'),
+      band: hours ? t('dashboard.insight.hotspotBand', { band: hours }) : '',
+    }), '/map');
   }
   if (splits?.nightPct !== null && splits?.nightPct !== undefined) {
-    push('night', 'info', `${splits.nightPct.toFixed(0)}% of incidents occur in the 22:00–05:00 night window.`, '/trends');
+    push('night', 'info', t('dashboard.insight.night', { pct: splits.nightPct.toFixed(0) }), '/trends');
   }
   if (correlation) {
-    const strength = Math.abs(correlation.r) >= 0.7 ? 'strongly tracks' : Math.abs(correlation.r) >= 0.4 ? 'moderately tracks' : 'only weakly tracks';
-    push('corr', 'info', `Case volume ${strength} population (r = ${correlation.r.toFixed(2)} across ${correlation.n} units) — switch the map to Per lakh to isolate true outliers.`, '/map');
+    const abs = Math.abs(correlation.r);
+    const strength = t(abs >= 0.7 ? 'dashboard.insight.corrStrong'
+      : abs >= 0.4 ? 'dashboard.insight.corrModerate' : 'dashboard.insight.corrWeak');
+    push('corr', 'info', t('dashboard.insight.corr', {
+      strength,
+      r: fmtNum(correlation.r, 2),
+      n: correlation.n,
+      mode: t('dashboard.choro.mode.rate'),
+    }), '/map');
   }
   if (Number.isFinite(detectionPct)) {
-    const vs = detectionPct >= 65 ? 'above' : 'below';
-    push('detect', detectionPct >= 65 ? 'up' : 'down', `Detection rate ${detectionPct.toFixed(1)}% — ${vs} the 65% state target.`, '/predict');
+    const above = detectionPct >= detectionTarget;
+    push('detect', above ? 'up' : 'down', t('dashboard.insight.detect', {
+      pct: fmtNum(detectionPct, 1),
+      vs: t(above ? 'dashboard.insight.detectAbove' : 'dashboard.insight.detectBelow'),
+      target: detectionTarget,
+    }), '/predict');
   }
   if (seasonalityData?.max) {
     // peak cell (first max hit)
     for (let d = 0; d < seasonalityData.matrix.length; d += 1) {
       const h = seasonalityData.matrix[d].indexOf(seasonalityData.max);
       if (h !== -1) {
-        push('peak', 'info', `Statewide incidents peak ${seasonalityData.days[d]} ${hh(h)}:00–${hh((h + 1) % 24)}:00.`, '/trends');
+        push('peak', 'info', t('dashboard.insight.peak', {
+          day: dayLabel(seasonalityData.days[d]),
+          from: `${hh(h)}:00`,
+          to: `${hh((h + 1) % 24)}:00`,
+        }), '/trends');
         break;
       }
     }

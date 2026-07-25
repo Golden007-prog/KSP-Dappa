@@ -3,14 +3,16 @@
 // timeline's registeredDate years. Renders nothing when no year parses.
 import { useMemo } from 'react';
 import { fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const MAX_YEARS = 12;
 
 export default function YearSparkline({ timeline = [], height = 40 }) {
+  const t = useT();
   const data = useMemo(() => {
     const byYear = new Map();
-    for (const t of timeline) {
-      const y = Number(String(t?.registeredDate || '').slice(0, 4));
+    for (const row of timeline) {
+      const y = Number(String(row?.registeredDate || '').slice(0, 4));
       if (y >= 1990 && y <= 2100) byYear.set(y, (byYear.get(y) || 0) + 1);
     }
     if (!byYear.size) return null;
@@ -28,14 +30,16 @@ export default function YearSparkline({ timeline = [], height = 40 }) {
   const bw = 100 / data.years.length;
   return (
     <div className="bg-base/60 border border-grid rounded-lg px-3 py-2 min-w-0">
-      <p className="text-[10px] uppercase tracking-wide text-muted">Activity by year</p>
+      <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.spark.title')}</p>
       <svg
         viewBox="0 0 100 30"
         preserveAspectRatio="none"
         className="w-full mt-1"
         style={{ height }}
         role="img"
-        aria-label={`Cases per year: ${data.years.map((y, i) => `${y}: ${data.counts[i]}`).join(', ')}`}
+        aria-label={t('network.spark.aria', {
+          list: data.years.map((y, i) => `${y}: ${fmtInt(data.counts[i])}`).join(', '),
+        })}
       >
         {data.years.map((y, i) => {
           const h = (data.counts[i] / data.max) * 26;
@@ -49,7 +53,10 @@ export default function YearSparkline({ timeline = [], height = 40 }) {
               rx={0.6}
               className={data.counts[i] ? 'fill-amber' : 'fill-grid'}
             >
-              <title>{`${y}: ${fmtInt(data.counts[i])} case${data.counts[i] === 1 ? '' : 's'}`}</title>
+              <title>
+                {t(data.counts[i] === 1 ? 'network.spark.barTitle.one' : 'network.spark.barTitle.other',
+                  { year: y, n: fmtInt(data.counts[i]) })}
+              </title>
             </rect>
           );
         })}

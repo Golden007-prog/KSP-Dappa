@@ -8,7 +8,9 @@
 import { useMemo } from 'react';
 import Card from '../../components/Card.jsx';
 import StatDelta from '../../components/StatDelta.jsx';
-import { fmtInt } from '../../lib/format.js';
+import { fmtInt, fmtNum, fmtPct } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
+import { useRefNames } from './common.jsx';
 
 const DAY = 86400000;
 
@@ -27,9 +29,10 @@ function Tile({ label, children }) {
 }
 
 export function TempoCard({ timeline = [], lastSeen }) {
+  const t = useT();
   const stats = useMemo(() => {
     const days = timeline
-      .map((t) => parseDay(t?.registeredDate))
+      .map((row) => parseDay(row?.registeredDate))
       .filter((v) => v !== null)
       .sort((a, b) => a - b);
     if (days.length < 2) return null;
@@ -55,19 +58,19 @@ export function TempoCard({ timeline = [], lastSeen }) {
 
   if (!stats) return null;
   return (
-    <Card title="Behavioral tempo" subtitle="Cadence and escalation from the case timeline">
+    <Card title={t('network.tempo.title')} subtitle={t('network.tempo.subtitle')}>
       <div className="grid grid-cols-2 gap-2">
-        <Tile label="Days since last case">{fmtInt(stats.sinceLast)}</Tile>
-        <Tile label="Median gap">{fmtInt(stats.median)} d</Tile>
-        <Tile label="Active span">{stats.spanYears.toFixed(1)} yr</Tile>
-        <Tile label="Cases, last 12 mo">
+        <Tile label={t('network.tempo.sinceLast')}>{fmtInt(stats.sinceLast)}</Tile>
+        <Tile label={t('network.tempo.medianGap')}>{t('network.tempo.days', { n: fmtInt(stats.median) })}</Tile>
+        <Tile label={t('network.tempo.activeSpan')}>{t('network.tempo.years', { n: fmtNum(stats.spanYears, 1) })}</Tile>
+        <Tile label={t('network.tempo.last12')}>
           {fmtInt(stats.last12)}
-          {stats.delta !== null && <StatDelta value={stats.delta} positiveIsGood={false} label="vs prior yr" />}
+          {stats.delta !== null && (
+            <StatDelta value={stats.delta} positiveIsGood={false} label={t('network.tempo.vsPriorYear')} />
+          )}
         </Tile>
       </div>
-      <p className="text-[11px] text-muted mt-2">
-        12-month windows are anchored at this person&apos;s latest case, so dormant profiles read historically.
-      </p>
+      <p className="text-[11px] text-muted mt-2">{t('network.tempo.note')}</p>
     </Card>
   );
 }
@@ -75,10 +78,12 @@ export function TempoCard({ timeline = [], lastSeen }) {
 const MIX_CAP = 6;
 
 export function CaseMixCard({ timeline = [] }) {
+  const t = useT();
+  const ref = useRefNames();
   const mix = useMemo(() => {
     const freq = new Map();
-    for (const t of timeline) {
-      const k = String(t?.headName || '').trim();
+    for (const row of timeline) {
+      const k = String(row?.headName || '').trim();
       if (k) freq.set(k, (freq.get(k) || 0) + 1);
     }
     if (!freq.size) return null;
@@ -91,15 +96,15 @@ export function CaseMixCard({ timeline = [] }) {
 
   if (!mix) return null;
   return (
-    <Card title="Case mix" subtitle="Crime heads across this person's linked FIRs">
+    <Card title={t('network.mix.title')} subtitle={t('network.mix.subtitle')}>
       <ul className="space-y-2">
         {mix.rows.map(([name, n]) => {
           const pct = (n / mix.total) * 100;
           return (
             <li key={name} className="text-xs">
               <div className="flex items-center justify-between gap-2 mb-0.5 min-w-0">
-                <span className="text-ink truncate">{name}</span>
-                <span className="num text-muted shrink-0">{fmtInt(n)} · {pct.toFixed(0)}%</span>
+                <span className="text-ink truncate">{ref.head(name)}</span>
+                <span className="num text-muted shrink-0">{fmtInt(n)} · {fmtPct(pct, { digits: 0 })}</span>
               </div>
               <div className="h-1.5 rounded-full bg-grid/40 overflow-hidden" aria-hidden="true">
                 <div className="h-full bg-amber/80 rounded-full" style={{ width: `${Math.max(2, pct)}%` }} />
@@ -108,7 +113,11 @@ export function CaseMixCard({ timeline = [] }) {
           );
         })}
       </ul>
-      {mix.more > 0 && <p className="text-[11px] text-muted mt-2">+{fmtInt(mix.more)} more crime head{mix.more === 1 ? '' : 's'}</p>}
+      {mix.more > 0 && (
+        <p className="text-[11px] text-muted mt-2">
+          {t(mix.more === 1 ? 'network.mix.more.one' : 'network.mix.more.other', { n: fmtInt(mix.more) })}
+        </p>
+      )}
     </Card>
   );
 }

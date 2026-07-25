@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Card from '../../components/Card.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
@@ -75,6 +76,7 @@ export default function DashPanel({
   onTogglePin, onToggleCollapse, maximized = false, onToggleMax,
   onExportCsv, onExportPng, padded = true, className = '', children,
 }) {
+  const t = useT();
   const bodyId = `dash-panel-${id}`;
 
   // Esc restores a maximized panel (backdrop click too, below).
@@ -88,11 +90,11 @@ export default function DashPanel({
   const actions = (
     <div className="flex items-center gap-0.5 print:hidden">
       {headerExtra}
-      {onExportCsv && <IconBtn label="Download CSV" onClick={onExportCsv} icon={ICONS.csv} />}
-      {onExportPng && <IconBtn label="Download PNG" onClick={onExportPng} icon={ICONS.png} />}
+      {onExportCsv && <IconBtn label={t('dashboard.panel.exportCsv')} onClick={onExportCsv} icon={ICONS.csv} />}
+      {onExportPng && <IconBtn label={t('dashboard.panel.exportPng')} onClick={onExportPng} icon={ICONS.png} />}
       {onToggleMax && (
         <IconBtn
-          label={maximized ? 'Restore panel size' : 'Maximize panel'}
+          label={t(maximized ? 'dashboard.panel.restore' : 'dashboard.panel.maximize')}
           onClick={onToggleMax}
           active={maximized}
           icon={maximized ? ICONS.restore : ICONS.max}
@@ -100,7 +102,7 @@ export default function DashPanel({
       )}
       {onTogglePin && (
         <IconBtn
-          label={pinned ? 'Unpin from top' : 'Pin to top'}
+          label={t(pinned ? 'dashboard.panel.unpin' : 'dashboard.panel.pin')}
           onClick={onTogglePin}
           active={pinned}
           icon={ICONS.pin}
@@ -108,7 +110,7 @@ export default function DashPanel({
       )}
       {onToggleCollapse && (
         <IconBtn
-          label={collapsed ? 'Expand panel' : 'Collapse panel'}
+          label={t(collapsed ? 'dashboard.panel.expand' : 'dashboard.panel.collapse')}
           onClick={onToggleCollapse}
           expanded={!collapsed}
           className={collapsed ? '-rotate-90' : ''}
@@ -136,14 +138,14 @@ export default function DashPanel({
   return (
     <>
       <div className="flex min-h-[88px] h-full items-center justify-center rounded-xl border border-dashed border-grid/80 bg-base/30 p-3 text-center text-xs text-muted">
-        {title} is maximized — Esc restores it
+        {t('dashboard.panel.maximizedPlaceholder', { title })}
       </div>
       {createPortal(
         <div
           className="fixed inset-0 z-70 overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:p-6 animate-fade-in"
           role="dialog"
           aria-modal="true"
-          aria-label={`${title} — maximized`}
+          aria-label={t('dashboard.panel.maximizedAria', { title })}
           onClick={(e) => { if (e.target === e.currentTarget) onToggleMax?.(); }}
         >
           <div className="mx-auto max-w-6xl animate-scale-in">{card}</div>

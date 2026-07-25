@@ -13,6 +13,7 @@ import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { useAckAlert } from '../../lib/api.js';
 import { fmtNum } from '../../lib/format.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
 
 export const isOpenAlert = (a) => !/ack/i.test(String(a?.status || ''));
 export const sevRank = (s) => ({ critical: 3, high: 2, medium: 1 }[String(s || '').toLowerCase()] ?? 0);
@@ -25,17 +26,19 @@ const SEV_BORDER = {
   low: 'border-l-grid',
 };
 
-/** '2026-07-21' (or full ISO) → 'today' | 'yesterday' | '3d ago' | '2w ago' | '3mo ago'. */
-export function relTime(iso) {
+/** '2026-07-21' (or full ISO) → 'today' | 'yesterday' | '3d ago' | '2w ago' |
+ * '3mo ago', in the active language. `t` comes from the calling component's
+ * useT() — this module is plain JS, so it never calls the hook itself. */
+export function relTime(iso, t) {
   if (!iso) return '';
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return '';
-  const days = Math.floor((Date.now() - t) / 86400000);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days}d ago`;
-  if (days < 30) return `${Math.round(days / 7)}w ago`;
-  return `${Math.round(days / 30)}mo ago`;
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return '';
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if (days <= 0) return t('dashboard.rel.today');
+  if (days === 1) return t('dashboard.rel.yesterday');
+  if (days < 7) return t('dashboard.rel.days', { n: days });
+  if (days < 30) return t('dashboard.rel.weeks', { n: Math.round(days / 7) });
+  return t('dashboard.rel.months', { n: Math.round(days / 30) });
 }
 
 /** The 5 most severe open alerts (severity rank, then |z|). */
@@ -56,6 +59,8 @@ const AckIcon = (
 
 export default function AlertsFeed({ query, linkSearch = '' }) {
   const toast = useToast();
+  const t = useT();
+  const tName = useNames();
   const ack = useAckAlert();
   const [ackingId, setAckingId] = useState(null);
   const [sevFilter, setSevFilter] = useState('all');
@@ -65,9 +70,9 @@ export default function AlertsFeed({ query, linkSearch = '' }) {
     return (
       <EmptyState
         compact
-        title="Couldn't load alerts"
+        title={t('dashboard.alerts.error')}
         message={query.error.message}
-        action={<button type="button" className="btn" onClick={() => query.refetch()}>Retry</button>}
+        action={<button type="button" className="btn" onClick={() => query.refetch()}>{t('common.action.retry')}</button>}
       />
     );
   }
@@ -80,9 +85,10 @@ export default function AlertsFeed({ query, linkSearch = '' }) {
   const doAck = (a) => {
     if (!a.alertId || ack.isPending) return;
     setAckingId(a.alertId);
+    const name = tName('crimeHeads', a.crimeHeadId, a.headName) || a.headName || a.alertId;
     ack.mutate(a.alertId, {
-      onSuccess: () => toast.success(`Alert acknowledged — ${a.headName || a.alertId}`),
-      onError: (e) => toast.error(e?.message || 'Could not acknowledge the alert'),
+      onSuccess: () => toast.success(t('dashboard.alerts.acked', { name })),
+      onError: (e) => toast.error(e?.message || t('dashboard.alerts.ackFailed')),
       onSettled: () => setAckingId(null),
     });
   };
@@ -91,26 +97,29 @@ export default function AlertsFeed({ query, linkSearch = '' }) {
     <div className="space-y-2">
       {hasAny && (
         <SegmentedControl
-          ariaLabel="Alert severity filter"
+          ariaLabel={t('dashboard.alerts.sevAria')}
           value={sevFilter}
           onChange={setSevFilter}
           options={[
-            { value: 'all', label: 'All' },
-            { value: 'high', label: 'High+' },
-            { value: 'critical', label: 'Critical' },
+            { value: 'all', label: t('dashboard.alerts.sevAll') },
+            { value: 'high', label: t('dashboard.alerts.sevHighPlus') },
+            { value: 'critical', label: t('dashboard.alerts.sevCritical') },
           ]}
         />
       )}
       {!open.length ? (
         <EmptyState
           compact
-          title="No active alerts"
-          message={hasAny ? 'No open alerts at this severity.' : 'No anomalies flagged in the current window.'}
+          title={t('dashboard.alerts.empty')}
+          message={t(hasAny ? 'dashboard.alerts.emptyAtSeverity' : 'dashboard.alerts.emptyNone')}
         />
       ) : (
         <ul className="space-y-2">
           {open.map((a, i) => {
             const sev = String(a.severity || 'medium').toLowerCase();
+            const head = tName('crimeHeads', a.crimeHeadId, a.headName) || t('dashboard.alerts.anomaly');
+            const district = tName('districts', a.districtId, a.districtName || a.districtId)
+              || a.districtName || a.districtId;
             return (
               <li
                 key={a.alertId || i}
@@ -119,24 +128,26 @@ export default function AlertsFeed({ query, linkSearch = '' }) {
               >
                 <Link to={`/alerts${linkSearch}`} className="block min-w-0 flex-1 px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <Badge tone={SEV_TONE[sev] || 'neutral'} pulse={sev === 'critical'}>{sev}</Badge>
+                    <Badge tone={SEV_TONE[sev] || 'neutral'} pulse={sev === 'critical'}>{t(`dashboard.sev.${sev}`)}</Badge>
                     <span className="min-w-0 flex-1 truncate text-xs text-ink group-hover:text-amber transition-colors">
-                      {a.headName || 'Anomaly'} — {a.districtName || a.districtId}
+                      {head} — {district}
                     </span>
-                    <span className="num shrink-0 text-[11px] text-muted">z {fmtNum(a.zScore, 1)}</span>
+                    <span className="num shrink-0 text-[11px] text-muted">{t('dashboard.alerts.z', { v: fmtNum(a.zScore, 1) })}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-2">
                     <p className="min-w-0 flex-1 truncate text-[11px] text-muted">
-                      {a.narrative || `Observed above expected in ${a.districtName || 'district'}`}
+                      {a.narrative || t('dashboard.alerts.narrativeFallback', {
+                        district: district || t('dashboard.alerts.districtFallback'),
+                      })}
                     </p>
-                    <span className="num shrink-0 text-[10px] text-muted/80">{relTime(a.periodEnd)}</span>
+                    <span className="num shrink-0 text-[10px] text-muted/80">{relTime(a.periodEnd, t)}</span>
                   </div>
                 </Link>
                 {a.alertId && (
-                  <Tooltip label="Acknowledge alert">
+                  <Tooltip label={t('dashboard.alerts.ack')}>
                     <button
                       type="button"
-                      aria-label={`Acknowledge alert — ${a.headName || a.alertId}`}
+                      aria-label={t('dashboard.alerts.ackAria', { name: head })}
                       onClick={() => doAck(a)}
                       disabled={ackingId === a.alertId}
                       className="flex w-10 shrink-0 items-center justify-center rounded-r-lg border-l border-grid/60 text-muted

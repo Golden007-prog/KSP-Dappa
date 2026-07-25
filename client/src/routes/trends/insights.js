@@ -1,35 +1,40 @@
 // Trends — deterministic insight-sentence builders + festival-month calendar.
 // Pure functions over the normalized hook shapes (client/CONTRACT.md); every
 // sentence is templated straight from the data — no AI/LLM calls involved.
+// Each builder takes the `t` from useT() so the sentence is assembled from
+// locale templates instead of concatenated English (the {slots} carry the
+// numbers, which lib/format.js has already rendered in the active script).
 import { fmtInt, fmtNum, fmtPct, monthLabel } from '../../lib/format.js';
 
 // Months containing Ugadi / Dasara (Vijayadashami) / Deepavali, from the real
 // festival dates 2021–2026, at the chart's monthly grain. In some years Dasara
 // and Deepavali fall in the same calendar month and share one shaded band.
+// Values are `trends.festival.*` key suffixes — the chart translates them.
 export const FESTIVAL_MONTHS = {
-  '2021-04': 'Ugadi',
-  '2021-10': 'Dasara',
-  '2021-11': 'Deepavali',
-  '2022-04': 'Ugadi',
-  '2022-10': 'Dasara · Deepavali',
-  '2023-03': 'Ugadi',
-  '2023-10': 'Dasara',
-  '2023-11': 'Deepavali',
-  '2024-04': 'Ugadi',
-  '2024-10': 'Dasara · Deepavali',
-  '2025-03': 'Ugadi',
-  '2025-10': 'Dasara · Deepavali',
-  '2026-03': 'Ugadi',
-  '2026-10': 'Dasara',
-  '2026-11': 'Deepavali',
+  '2021-04': 'ugadi',
+  '2021-10': 'dasara',
+  '2021-11': 'deepavali',
+  '2022-04': 'ugadi',
+  '2022-10': 'dasaraDeepavali',
+  '2023-03': 'ugadi',
+  '2023-10': 'dasara',
+  '2023-11': 'deepavali',
+  '2024-04': 'ugadi',
+  '2024-10': 'dasaraDeepavali',
+  '2025-03': 'ugadi',
+  '2025-10': 'dasaraDeepavali',
+  '2026-03': 'ugadi',
+  '2026-10': 'dasara',
+  '2026-11': 'deepavali',
 };
 
 const pct = (v, digits = 1) => fmtPct(v, { fraction: false, digits });
 const hh = (h) => `${String(h).padStart(2, '0')}:00`;
 
 /** Seasonality heatmap → peak cell vs the hourly average + night-share. */
-export function seasonalityInsight(s) {
+export function seasonalityInsight(s, t, dayLabel) {
   if (!s || !s.max || !Array.isArray(s.matrix) || !s.matrix.length) return null;
+  if (!t) return null;
   let peak = { d: 0, h: 0, v: -1 };
   let total = 0;
   let cells = 0;
@@ -43,26 +48,37 @@ export function seasonalityInsight(s) {
   const nightHours = [21, 22, 23, 0, 1, 2, 3, 4];
   const night = s.matrix.reduce((a, row) => a + nightHours.reduce((b, h) => b + (row[h] || 0), 0), 0);
   const ratio = mean > 0 ? peak.v / mean : 0;
-  return `Peak window is ${s.days[peak.d]} ${hh(peak.h)}–${hh((peak.h + 1) % 24)} at `
-    + `${fmtNum(ratio, 1)}× the average hourly load; night hours (21:00–05:00) carry `
-    + `${pct((night / total) * 100, 0)} of cases.`;
+  return t('trends.insight.seasonality', {
+    day: dayLabel ? dayLabel(s.days[peak.d], peak.d) : s.days[peak.d],
+    from: hh(peak.h),
+    to: hh((peak.h + 1) % 24),
+    ratio: fmtNum(ratio, 1),
+    pct: pct((night / total) * 100, 0),
+  });
 }
 
-/** Monthly multi-line → leading head, latest MoM, festival-vs-normal delta. */
-export function monthlyInsight(months, series) {
-  if (!months?.length || !series?.length) return null;
+/** Monthly multi-line → leading head, latest MoM, festival-vs-normal delta.
+ * Series entries may carry a translated `label`; `name` is the API string. */
+export function monthlyInsight(months, series, t) {
+  if (!months?.length || !series?.length || !t) return null;
   const totals = months.map((_, i) => series.reduce((a, s) => a + (Number(s.data?.[i]) || 0), 0));
   const grand = totals.reduce((a, b) => a + b, 0);
   if (!grand) return null;
   const sums = series
-    .map((s) => ({ name: s.name, sum: (s.data || []).reduce((a, v) => a + (Number(v) || 0), 0) }))
+    .map((s) => ({
+      name: s.label || s.name,
+      sum: (s.data || []).reduce((a, v) => a + (Number(v) || 0), 0),
+    }))
     .sort((a, b) => b.sum - a.sum);
   const top = sums[0];
-  let text = `${top.name} leads with ${fmtInt(top.sum)} cases over this window.`;
+  let text = t('trends.insight.monthly.lead', { head: top.name, n: fmtInt(top.sum) });
   if (totals.length >= 2 && totals[totals.length - 2] > 0) {
     const prev = totals[totals.length - 2];
     const mom = ((totals[totals.length - 1] - prev) / prev) * 100;
-    text += ` ${monthLabel(months[months.length - 1])} is ${mom >= 0 ? 'up' : 'down'} ${pct(Math.abs(mom))} on the prior month.`;
+    text += ` ${t(mom >= 0 ? 'trends.insight.monthly.momUp' : 'trends.insight.monthly.momDown', {
+      month: monthLabel(months[months.length - 1]),
+      pct: pct(Math.abs(mom)),
+    })}`;
   }
   const fest = [];
   const rest = [];
@@ -72,29 +88,33 @@ export function monthlyInsight(months, series) {
     const restMean = mean(rest);
     if (restMean > 0) {
       const d = ((mean(fest) - restMean) / restMean) * 100;
-      text += ` Festival months run ${pct(Math.abs(d))} ${d >= 0 ? 'above' : 'below'} the non-festival average.`;
+      text += ` ${t(d >= 0 ? 'trends.insight.monthly.festAbove' : 'trends.insight.monthly.festBelow', {
+        pct: pct(Math.abs(d)),
+      })}`;
     }
   }
   return text;
 }
 
-/** Category-share donut → dominant head, top-3 concentration, fastest riser. */
-export function shareInsight(items) {
-  if (!items?.length) return null;
+/** Category-share donut → dominant head, top-3 concentration, fastest riser.
+ * `nameOf(item)` resolves the displayed head name (tName in the caller). */
+export function shareInsight(items, t, nameOf) {
+  if (!items?.length || !t) return null;
+  const label = (r) => (nameOf ? nameOf(r) : r.name);
   const sorted = [...items].sort((a, b) => b.count - a.count);
   const top = sorted[0];
   if (!top.count) return null;
   let text = Number.isFinite(top.sharePct)
-    ? `${top.name} is the largest head at ${pct(top.sharePct)} of cases`
-    : `${top.name} is the largest head with ${fmtInt(top.count)} cases`;
+    ? t('trends.insight.share.leadPct', { head: label(top), pct: pct(top.sharePct) })
+    : t('trends.insight.share.leadCount', { head: label(top), n: fmtInt(top.count) });
   if (sorted.length > 3) {
     const top3 = sorted.slice(0, 3).reduce((a, r) => a + (Number(r.sharePct) || 0), 0);
-    if (top3 > 0) text += `; the top 3 heads cover ${pct(top3, 0)} of the total`;
+    if (top3 > 0) text += t('trends.insight.share.top3', { pct: pct(top3, 0) });
   }
   const risers = sorted.filter((r) => Number.isFinite(Number(r.deltaPct)) && Number(r.deltaPct) > 0);
   if (risers.length) {
     const r = risers.sort((a, b) => Number(b.deltaPct) - Number(a.deltaPct))[0];
-    text += `. Fastest riser: ${r.name} (+${pct(Number(r.deltaPct))} MoM)`;
+    text += t('trends.insight.share.riser', { head: label(r), pct: pct(Number(r.deltaPct)) });
   }
   return `${text}.`;
 }
@@ -104,127 +124,170 @@ export function shareInsight(items) {
 // ---------------------------------------------------------------------------
 
 /** Overall trajectory: least-squares direction + last-3-vs-prior-3 momentum. */
-export function trendDirectionInsight(months, values, trend, recentPct) {
-  if (!months?.length || !trend) return null;
+export function trendDirectionInsight(months, values, trend, recentPct, t) {
+  if (!months?.length || !trend || !t) return null;
   const dir = Math.abs(trend.pctPerMonth) < 0.5 ? 'flat'
     : trend.pctPerMonth > 0 ? 'rising' : 'falling';
-  let text = dir === 'flat'
-    ? `The overall trajectory is flat across ${monthLabel(months[0])}–${monthLabel(months[months.length - 1])} (${fmtNum(Math.abs(trend.pctPerMonth), 1)}% per month drift).`
-    : `The overall trajectory is ${dir} at ~${fmtNum(Math.abs(trend.pctPerMonth), 1)}% per month across ${monthLabel(months[0])}–${monthLabel(months[months.length - 1])}.`;
+  let text = t(`trends.insight.trend.${dir}`, {
+    from: monthLabel(months[0]),
+    to: monthLabel(months[months.length - 1]),
+    pct: fmtNum(Math.abs(trend.pctPerMonth), 1),
+  });
   if (Number.isFinite(recentPct)) {
-    text += ` The last 3 months run ${pct(Math.abs(recentPct))} ${recentPct >= 0 ? 'above' : 'below'} the prior 3.`;
+    text += ` ${t(recentPct >= 0 ? 'trends.insight.trend.recentAbove' : 'trends.insight.trend.recentBelow', {
+      pct: pct(Math.abs(recentPct)),
+    })}`;
   }
   return text;
 }
 
 /** Seasonal profile from calendar-month means → peak + trough months. */
-export function seasonalPeakInsight(byMonth, monthNames) {
-  if (!byMonth?.some((v) => v !== null && v > 0)) return null;
+export function seasonalPeakInsight(byMonth, monthNames, t) {
+  if (!byMonth?.some((v) => v !== null && v > 0) || !t) return null;
   const known = byMonth.map((v, i) => ({ v, i })).filter((x) => x.v !== null);
   if (known.length < 4) return null;
   const mean = known.reduce((a, x) => a + x.v, 0) / known.length;
   if (mean <= 0) return null;
   const peak = known.reduce((a, x) => (x.v > a.v ? x : a));
   const trough = known.reduce((a, x) => (x.v < a.v ? x : a));
-  return `Seasonal peak is ${monthNames[peak.i]} at ${fmtNum(peak.v / mean, 1)}× the monthly average; `
-    + `${monthNames[trough.i]} is the quietest month (${pct((1 - trough.v / mean) * 100, 0)} below average).`;
+  return t('trends.insight.seasonalPeak', {
+    peak: monthNames[peak.i],
+    ratio: fmtNum(peak.v / mean, 1),
+    trough: monthNames[trough.i],
+    pct: pct((1 - trough.v / mean) * 100, 0),
+  });
 }
 
 /** Anomaly summary for the strip → count + the most recent flagged month. */
-export function anomalySummaryInsight(months, anomalies) {
-  if (!months?.length) return null;
-  if (!anomalies?.length) return 'No statistically anomalous months in this window (trailing z-score, |z| ≥ 2).';
+export function anomalySummaryInsight(months, anomalies, t) {
+  if (!months?.length || !t) return null;
+  if (!anomalies?.length) return t('trends.insight.anomaly.none');
   const last = anomalies[anomalies.length - 1];
-  const plural = anomalies.length === 1 ? 'month is' : 'months are';
-  return `${anomalies.length} ${plural} statistically anomalous (|z| ≥ 2 vs the trailing year); `
-    + `most recent: ${monthLabel(months[last.index])}, ${last.dir === 'up' ? 'a spike' : 'a drop'} at z = ${fmtNum(last.z, 1)}.`;
+  const vars = {
+    n: fmtInt(anomalies.length),
+    month: monthLabel(months[last.index]),
+    kind: t(last.dir === 'up' ? 'trends.insight.anomaly.spike' : 'trends.insight.anomaly.drop'),
+    z: fmtNum(last.z, 1),
+  };
+  return t(anomalies.length === 1 ? 'trends.insight.anomaly.one' : 'trends.insight.anomaly.many', vars);
 }
 
 /** Compared series → biggest riser + biggest faller (last 3 vs prior 3 months). */
-export function riserFallerInsight(cells) {
+export function riserFallerInsight(cells, t) {
   const rated = (cells || []).filter((c) => Number.isFinite(c.deltaPct) && c.total >= 10);
-  if (rated.length < 2) return null;
+  if (rated.length < 2 || !t) return null;
   const sorted = [...rated].sort((a, b) => b.deltaPct - a.deltaPct);
   const up = sorted[0];
   const down = sorted[sorted.length - 1];
-  let text = `Fastest riser among compared series: ${up.label} (${up.deltaPct >= 0 ? '+' : '−'}${pct(Math.abs(up.deltaPct))} last 3 months vs prior 3)`;
+  let text = t('trends.insight.riser.up', {
+    label: up.label,
+    delta: `${up.deltaPct >= 0 ? '+' : '−'}${pct(Math.abs(up.deltaPct))}`,
+  });
   if (down !== up && down.deltaPct < 0) {
-    text += `; biggest faller: ${down.label} (−${pct(Math.abs(down.deltaPct))})`;
+    text += t('trends.insight.riser.down', { label: down.label, pct: pct(Math.abs(down.deltaPct)) });
   }
   return `${text}.`;
 }
 
 /** Decomposition panel → strength split, seasonal peak month, level shifts. */
-export function decompositionInsight(months, dec, changepoints, monthNames) {
-  if (!months?.length || !dec) return null;
-  const seasonalPct = Math.round(dec.strengthSeasonal * 100);
-  const trendPct = Math.round(dec.strengthTrend * 100);
+export function decompositionInsight(months, dec, changepoints, monthNames, t) {
+  if (!months?.length || !dec || !t) return null;
   const peakM = dec.seasonalIdx.indexOf(Math.max(...dec.seasonalIdx));
-  let text = `Seasonality explains ~${seasonalPct}% and the underlying trend ~${trendPct}% of month-to-month variation; `
-    + `the recurring seasonal peak lands in ${monthNames[peakM]}.`;
+  let text = t('trends.insight.decomp.main', {
+    seasonal: Math.round(dec.strengthSeasonal * 100),
+    trend: Math.round(dec.strengthTrend * 100),
+    month: monthNames[peakM],
+  });
   if (changepoints?.length) {
     const last = changepoints[changepoints.length - 1];
     const step = Number.isFinite(last.shiftPct)
-      ? ` (${last.dir === 'up' ? '+' : '−'}${pct(Math.abs(last.shiftPct), 0)} step in the 6-month means)`
+      ? t('trends.insight.decomp.step', {
+        delta: `${last.dir === 'up' ? '+' : '−'}${pct(Math.abs(last.shiftPct), 0)}`,
+      })
       : '';
-    text += ` ${changepoints.length === 1 ? 'One level shift' : `${changepoints.length} level shifts`} detected — most recent around ${monthLabel(months[last.index])}${step}.`;
+    text += ` ${t(changepoints.length === 1 ? 'trends.insight.decomp.shiftOne' : 'trends.insight.decomp.shiftMany', {
+      n: fmtInt(changepoints.length),
+      month: monthLabel(months[last.index]),
+      step,
+    })}`;
   } else {
-    text += ' No structural level shifts detected in this window.';
+    text += ` ${t('trends.insight.decomp.noShift')}`;
   }
   if (dec.outliers?.length) {
     const o = dec.outliers[dec.outliers.length - 1];
-    text += ` After removing trend and season, ${monthLabel(months[o.index])} still stands out (residual z = ${fmtNum(o.z, 1)}).`;
+    text += ` ${t('trends.insight.decomp.outlier', {
+      month: monthLabel(months[o.index]),
+      z: fmtNum(o.z, 1),
+    })}`;
   }
   return text;
 }
 
 /** Changepoint toggle on the monthly lines → sentence per detected shift. */
-export function changepointInsight(months, changepoints) {
-  if (!months?.length) return null;
-  if (!changepoints?.length) return 'No statistically supported level shifts in this window (binary segmentation on squared error).';
+export function changepointInsight(months, changepoints, t) {
+  if (!months?.length || !t) return null;
+  if (!changepoints?.length) return t('trends.insight.changepoint.none');
   const parts = changepoints.map((c) => {
     const step = Number.isFinite(c.shiftPct)
-      ? ` — the 6-month mean steps ${c.dir === 'up' ? 'up' : 'down'} ${pct(Math.abs(c.shiftPct), 0)}`
+      ? t(c.dir === 'up' ? 'trends.insight.changepoint.stepUp' : 'trends.insight.changepoint.stepDown', {
+        pct: pct(Math.abs(c.shiftPct), 0),
+      })
       : '';
     return `${monthLabel(months[c.index])}${step}`;
   });
-  return `${changepoints.length === 1 ? 'Level shift' : 'Level shifts'} detected at ${parts.join('; ')}.`;
+  return t(changepoints.length === 1 ? 'trends.insight.changepoint.one' : 'trends.insight.changepoint.many', {
+    parts: parts.join('; '),
+  });
 }
 
 /** Socio-economic scatter → correlation strength + largest positive residual. */
-export function socioInsight(points, metricLabel, fit) {
-  if (!fit || !points?.length) return null;
+export function socioInsight(points, metricLabel, fit, t) {
+  if (!fit || !points?.length || !t) return null;
   const a = Math.abs(fit.r);
-  const strength = a >= 0.7 ? 'strongly' : a >= 0.4 ? 'moderately' : a >= 0.2 ? 'weakly' : 'barely';
-  let text = `Across ${points.length} districts, the case rate per lakh ${strength} `
-    + `${fit.r >= 0 ? 'rises' : 'falls'} with ${metricLabel} (r = ${fmtNum(fit.r, 2)}).`;
+  const word = a >= 0.7 ? 'strongly' : a >= 0.4 ? 'moderately' : a >= 0.2 ? 'weakly' : 'barely';
+  let text = t(fit.r >= 0 ? 'trends.insight.socio.rises' : 'trends.insight.socio.falls', {
+    n: fmtInt(points.length),
+    strength: t(`trends.insight.socio.${word}`),
+    metric: metricLabel,
+    r: fmtNum(fit.r, 2),
+  });
   const withResid = points
     .map((p) => ({ ...p, resid: p.y - (fit.slope * p.x + fit.intercept) }))
     .sort((x, y) => y.resid - x.resid);
   const top = withResid[0];
   if (top && top.resid > 0) {
-    text += ` ${top.name} sits furthest above the fitted line (+${fmtNum(top.resid, 1)} per lakh vs expected) — worth a closer look beyond demographics.`;
+    text += ` ${t('trends.insight.socio.resid', { name: top.name, value: fmtNum(top.resid, 1) })}`;
   }
   return text;
 }
 
-/** Crime-mix radar → most over- and under-indexed heads vs the state mix. */
-export function mixInsight(name, rows) {
+/** Crime-mix radar → most over- and under-indexed heads vs the state mix.
+ * Rows may carry a translated `headLabel`; `head` is the API string. */
+export function mixInsight(name, rows, t) {
   const rated = (rows || []).filter((r) => Number.isFinite(r.ratio) && r.base >= 1);
-  if (!rated.length) return null;
+  if (!rated.length || !t) return null;
+  const label = (r) => r.headLabel || r.head;
   const sorted = [...rated].sort((a, b) => b.ratio - a.ratio);
   const over = sorted[0];
   const under = sorted[sorted.length - 1];
-  let text = `${name}'s crime mix over-indexes on ${over.head} at ${fmtNum(over.ratio, 1)}× the state share`;
+  let text = t('trends.insight.mix.over', {
+    name,
+    head: label(over),
+    ratio: fmtNum(over.ratio, 1),
+  });
   if (under !== over && under.ratio < 1) {
-    text += `, while ${under.head} runs ${pct((1 - under.ratio) * 100, 0)} below the state share`;
+    text += t('trends.insight.mix.under', {
+      head: label(under),
+      pct: pct((1 - under.ratio) * 100, 0),
+    });
   }
   return `${text}.`;
 }
 
 /** District comparison bars → leader vs state median + sharpest MoM rise. */
-export function districtInsight(rows, metric) {
-  if (!rows?.length) return null;
+export function districtInsight(rows, metric, t, tName) {
+  if (!rows?.length || !t) return null;
+  const name = (r) => (tName ? tName('districts', r.districtId, r.districtName) : r.districtName);
   const val = metric === 'rate'
     ? (r) => Number(r.ratePerLakh) || 0
     : (r) => Number(r.caseCount) || 0;
@@ -233,13 +296,15 @@ export function districtInsight(rows, metric) {
   const top = sorted[0];
   const median = val(sorted[Math.floor(sorted.length / 2)]);
   let text = metric === 'rate'
-    ? `${top.districtName} has the highest rate at ${fmtNum(val(top), 1)} cases per lakh`
-    : `${top.districtName} registers the most cases (${fmtInt(val(top))})`;
-  if (median > 0 && sorted.length > 2) text += ` — ${fmtNum(val(top) / median, 1)}× the state median`;
+    ? t('trends.insight.district.rate', { name: name(top), value: fmtNum(val(top), 1) })
+    : t('trends.insight.district.cases', { name: name(top), value: fmtInt(val(top)) });
+  if (median > 0 && sorted.length > 2) {
+    text += t('trends.insight.district.median', { ratio: fmtNum(val(top) / median, 1) });
+  }
   const risers = rows.filter((r) => Number.isFinite(Number(r.momDeltaPct)) && Number(r.momDeltaPct) > 0);
   if (risers.length) {
     const r = [...risers].sort((a, b) => Number(b.momDeltaPct) - Number(a.momDeltaPct))[0];
-    text += `; sharpest MoM rise is ${r.districtName} (+${pct(Number(r.momDeltaPct))})`;
+    text += t('trends.insight.district.riser', { name: name(r), pct: pct(Number(r.momDeltaPct)) });
   }
   return `${text}.`;
 }

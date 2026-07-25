@@ -6,26 +6,28 @@
 import { useMemo, useState } from 'react';
 import Card from '../../components/Card.jsx';
 import { fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 import { readPref, writePref } from '../network/hooks.js';
 
 const OPEN_PREF = 'dappa-off-mo-matrix';
 const TAG_CAP = 8;
 
 export default function MoMatrix({ rows = [], selected = [], onPickPair }) {
+  const t = useT();
   const [open, setOpen] = useState(() => readPref(OPEN_PREF, '1') !== '0');
   const toggleOpen = () => setOpen((v) => { writePref(OPEN_PREF, v ? '0' : '1'); return !v; });
 
   const grid = useMemo(() => {
     const freq = new Map();
-    for (const r of rows) for (const t of r.moTags || []) freq.set(t, (freq.get(t) || 0) + 1);
+    for (const r of rows) for (const tag of r.moTags || []) freq.set(tag, (freq.get(tag) || 0) + 1);
     const tags = [...freq.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, TAG_CAP)
-      .map(([t]) => t);
-    const idx = new Map(tags.map((t, i) => [t, i]));
+      .map(([tag]) => tag);
+    const idx = new Map(tags.map((tag, i) => [tag, i]));
     const m = tags.map(() => tags.map(() => 0));
     for (const r of rows) {
-      const list = [...new Set(r.moTags || [])].filter((t) => idx.has(t));
+      const list = [...new Set(r.moTags || [])].filter((tag) => idx.has(tag));
       for (const a of list) for (const b of list) m[idx.get(a)][idx.get(b)] += 1;
     }
     let max = 0;
@@ -41,12 +43,12 @@ export default function MoMatrix({ rows = [], selected = [], onPickPair }) {
 
   return (
     <Card
-      title="MO co-occurrence"
-      subtitle="Offenders carrying BOTH tags — click a cell to filter the registry to that pair"
+      title={t('network.mo.title')}
+      subtitle={t('network.mo.subtitle')}
       padded={open}
       actions={(
         <button type="button" className="btn-ghost !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={toggleOpen} aria-expanded={open}>
-          {open ? 'Hide' : 'Show'}
+          {t(open ? 'network.legend.hide' : 'network.legend.show')}
         </button>
       )}
     >
@@ -56,15 +58,15 @@ export default function MoMatrix({ rows = [], selected = [], onPickPair }) {
             <thead>
               <tr>
                 <th aria-hidden="true" />
-                {grid.tags.map((t) => (
-                  <th key={t} scope="col" className="align-bottom pb-0.5">
+                {grid.tags.map((tag) => (
+                  <th key={tag} scope="col" className="align-bottom pb-0.5">
                     <button
                       type="button"
-                      className={`w-full max-w-[4.5rem] text-[9px] leading-tight text-muted hover:text-amber transition-colors break-words ${selected.includes(t) ? '!text-amber' : ''}`}
-                      onClick={() => onPickPair?.(t)}
-                      title={`Toggle the “${t}” filter`}
+                      className={`w-full max-w-[4.5rem] text-[9px] leading-tight text-muted hover:text-amber transition-colors break-words ${selected.includes(tag) ? '!text-amber' : ''}`}
+                      onClick={() => onPickPair?.(tag)}
+                      title={t('network.mo.toggleTag', { tag })}
                     >
-                      {t}
+                      {tag}
                     </button>
                   </th>
                 ))}
@@ -78,7 +80,7 @@ export default function MoMatrix({ rows = [], selected = [], onPickPair }) {
                       type="button"
                       className={`text-[10px] font-normal text-muted hover:text-amber transition-colors whitespace-nowrap ${selected.includes(rowTag) ? '!text-amber' : ''}`}
                       onClick={() => onPickPair?.(rowTag)}
-                      title={`Toggle the “${rowTag}” filter`}
+                      title={t('network.mo.toggleTag', { tag: rowTag })}
                     >
                       {rowTag}
                     </button>
@@ -97,8 +99,10 @@ export default function MoMatrix({ rows = [], selected = [], onPickPair }) {
                           style={diag || !v ? undefined : { background: `rgb(var(--t-amber) / ${(0.07 + 0.45 * (v / grid.max)).toFixed(2)})` }}
                           onClick={() => onPickPair?.(rowTag, diag ? undefined : colTag)}
                           title={diag
-                            ? `${rowTag}: ${fmtInt(v)} offender${v === 1 ? '' : 's'}`
-                            : `${rowTag} + ${colTag}: ${fmtInt(v)} offender${v === 1 ? '' : 's'} carry both`}
+                            ? t(v === 1 ? 'network.mo.diagTitle.one' : 'network.mo.diagTitle.other',
+                              { tag: rowTag, n: fmtInt(v) })
+                            : t(v === 1 ? 'network.mo.pairTitle.one' : 'network.mo.pairTitle.other',
+                              { a: rowTag, b: colTag, n: fmtInt(v) })}
                           aria-pressed={active}
                         >
                           {v || '·'}
@@ -110,7 +114,7 @@ export default function MoMatrix({ rows = [], selected = [], onPickPair }) {
               ))}
             </tbody>
           </table>
-          <p className="text-[11px] text-muted mt-1.5">Diagonal = offenders per tag · darker cell = stronger MO pairing</p>
+          <p className="text-[11px] text-muted mt-1.5">{t('network.mo.footnote')}</p>
         </div>
       )}
     </Card>

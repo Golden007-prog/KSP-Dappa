@@ -16,14 +16,17 @@ import ChartBody from './ChartBody.jsx';
 import InsightLine from './InsightLine.jsx';
 import { olsFit } from './analysis.js';
 import { socioInsight } from './insights.js';
-import { downloadCsv, slug } from './csv.js';
+import { downloadCsv } from './csv.js';
 import { fmtCompact, fmtNum } from '../../lib/format.js';
+import { useI18n } from '../../lib/i18n.jsx';
 
+// `slug` keeps the CSV filename stable across languages (slug() would drop a
+// Kannada/Devanagari label entirely); labelKey/shortKey resolve at render time.
 const METRICS = [
-  { key: 'urbanPct', label: 'Urbanization %', short: 'urban %' },
-  { key: 'literacyPct', label: 'Literacy %', short: 'literacy %' },
-  { key: 'densityPerKm2', label: 'Density /km²', short: 'density' },
-  { key: 'perCapitaIncomeIdx', label: 'Income index', short: 'income idx' },
+  { key: 'urbanPct', labelKey: 'urbanPct', shortKey: 'urbanPctShort', slug: 'urban' },
+  { key: 'literacyPct', labelKey: 'literacyPct', shortKey: 'literacyPctShort', slug: 'literacy' },
+  { key: 'densityPerKm2', labelKey: 'density', shortKey: 'densityShort', slug: 'density' },
+  { key: 'perCapitaIncomeIdx', labelKey: 'income', shortKey: 'incomeShort', slug: 'income-idx' },
 ];
 
 const median = (xs) => {
@@ -33,7 +36,8 @@ const median = (xs) => {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 };
 
-function corrWord(r) {
+/** Pearson |r| → a `trends.socio.*` key suffix. */
+function corrKey(r) {
   const a = Math.abs(r);
   return a >= 0.7 ? 'strong' : a >= 0.4 ? 'moderate' : a >= 0.2 ? 'weak' : 'none';
 }
@@ -42,8 +46,16 @@ export default function SocioScatter({
   geoRows, geoLoading, geoError, onRetryGeo, districtId, setFilter, accent, surface, isNarrow,
 }) {
   const toast = useToast();
+  const { t, tName } = useI18n();
   const [metricKey, setMetricKey] = useState('urbanPct');
-  const metric = METRICS.find((m) => m.key === metricKey) || METRICS[0];
+  const metricDef = METRICS.find((m) => m.key === metricKey) || METRICS[0];
+  // Memoised: the chart option keys off `metric`, so a fresh object every
+  // render would rebuild the whole ECharts option on unrelated state changes.
+  const metric = useMemo(() => ({
+    ...metricDef,
+    label: t(`trends.socio.${metricDef.labelKey}`),
+    short: t(`trends.socio.${metricDef.shortKey}`),
+  }), [metricDef, t]);
 
   const socio = useQuery({
     queryKey: ['meta-socio'],
@@ -61,7 +73,7 @@ export default function SocioScatter({
       if (!s || !Number.isFinite(x) || !Number.isFinite(y)) return null;
       return {
         districtId: String(r.districtId),
-        name: r.districtName,
+        name: tName('districts', r.districtId, r.districtName),
         x,
         y,
         pop: Number(s.population) || 0,
@@ -69,7 +81,7 @@ export default function SocioScatter({
         caseCount: Number(r.caseCount) || 0,
       };
     }).filter(Boolean);
-  }, [geoRows, socio.data, metricKey]);
+  }, [geoRows, socio.data, metricKey, tName]);
 
   const fit = useMemo(() => olsFit(points), [points]);
 
@@ -95,8 +107,9 @@ export default function SocioScatter({
           if (p.seriesType !== 'scatter') return '';
           const d = byKey.get(`${p.value[0]}|${p.value[1]}`);
           if (!d) return '';
-          return `<b>${d.name}</b><br/>${fmtNum(d.y, 1)} cases per lakh · ${metric.short} ${fmtNum(d.x, 1)}`
-            + `<br/>population ${fmtCompact(d.pop)} — click to focus`;
+          return `<b>${d.name}</b><br/>${t('trends.socio.tooltip', {
+            rate: fmtNum(d.y, 1), metric: metric.short, value: fmtNum(d.x, 1),
+          })}<br/>${t('trends.socio.tooltipPop', { pop: fmtCompact(d.pop) })}`;
         },
       },
       grid: { left: 44, right: 16, top: 26, bottom: 40 },
@@ -110,15 +123,15 @@ export default function SocioScatter({
       },
       yAxis: {
         type: 'value',
-        name: 'cases / lakh',
+        name: t('trends.socio.yAxis'),
         nameTextStyle: { color: surface.muted, fontSize: 10, align: 'left' },
         scale: true,
       },
       graphic: isNarrow ? undefined : [
-        quadLabel('high rate · low ' + metric.short, 48, 30, 'left'),
-        quadLabel('high rate · high ' + metric.short, '78%', 30, 'left'),
-        quadLabel('low rate · low ' + metric.short, 48, '78%', 'left'),
-        quadLabel('low rate · high ' + metric.short, '78%', '78%', 'left'),
+        quadLabel(t('trends.socio.quadHighLow', { metric: metric.short }), 48, 30, 'left'),
+        quadLabel(t('trends.socio.quadHighHigh', { metric: metric.short }), '78%', 30, 'left'),
+        quadLabel(t('trends.socio.quadLowLow', { metric: metric.short }), 48, '78%', 'left'),
+        quadLabel(t('trends.socio.quadLowHigh', { metric: metric.short }), '78%', '78%', 'left'),
       ],
       series: [
         {
@@ -144,7 +157,7 @@ export default function SocioScatter({
           z: 3,
         },
         ...(fit ? [{
-          name: 'OLS fit',
+          name: t('trends.socio.olsFit'),
           type: 'line',
           data: [
             [xMin, fit.slope * xMin + fit.intercept],
@@ -158,7 +171,7 @@ export default function SocioScatter({
         }] : []),
       ],
     };
-  }, [points, fit, metric, districtId, accent, surface, isNarrow]);
+  }, [points, fit, metric, districtId, accent, surface, isNarrow, t]);
 
   const onEvents = useMemo(() => ({
     click: (p) => {
@@ -169,12 +182,12 @@ export default function SocioScatter({
     },
   }), [points, districtId, setFilter]);
 
-  const insight = useMemo(() => socioInsight(points, metric.short, fit), [points, metric, fit]);
+  const insight = useMemo(() => socioInsight(points, metric.short, fit, t), [points, metric, fit, t]);
 
   const exportCsv = () => {
     if (!points.length) return;
     downloadCsv(
-      `dappa-socio-scatter_${slug(metric.short)}`,
+      `dappa-socio-scatter_${metric.slug}`,
       ['district', 'cases', 'rate_per_lakh', 'urban_pct', 'literacy_pct', 'density_per_km2', 'income_idx', 'population'],
       points.map((p) => [
         p.name, p.caseCount, fmtNum(p.y, 1),
@@ -182,7 +195,7 @@ export default function SocioScatter({
         p.socio.perCapitaIncomeIdx ?? '', p.pop || '',
       ]),
     );
-    toast.success('Socio-economic join exported');
+    toast.success(t('trends.toast.socio'));
   };
 
   const loading = geoLoading || socio.isLoading;
@@ -191,12 +204,12 @@ export default function SocioScatter({
   return (
     <div className="space-y-2">
       <Card
-        title="Socio-economic correlation"
-        subtitle="Case rate per lakh vs district indicators — bubble size is population; current period + crime-head filters apply"
+        title={t('trends.socio.title')}
+        subtitle={t('trends.socio.subtitle')}
         actions={(
           <div className="trends-no-print flex flex-wrap items-center justify-end gap-1.5">
             {fit && (
-              <Tooltip label={`Pearson correlation across ${fit.n} districts — ${corrWord(fit.r)}`}>
+              <Tooltip label={t('trends.socio.rTip', { n: fit.n, strength: t(`trends.socio.${corrKey(fit.r)}`) })}>
                 <span><Badge tone={Math.abs(fit.r) >= 0.4 ? 'teal' : 'slate'}>r = {fmtNum(fit.r, 2)}</Badge></span>
               </Tooltip>
             )}
@@ -204,11 +217,13 @@ export default function SocioScatter({
               className="input-dark !py-2 !px-2 text-xs max-w-[9.5rem] min-h-[40px]"
               value={metricKey}
               onChange={(e) => setMetricKey(e.target.value)}
-              aria-label="Socio-economic indicator on the x-axis"
+              aria-label={t('trends.socio.metricAria')}
             >
-              {METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              {METRICS.map((m) => (
+                <option key={m.key} value={m.key}>{t(`trends.socio.${m.labelKey}`)}</option>
+              ))}
             </select>
-            <Tooltip label="Download the district × indicator join">
+            <Tooltip label={t('trends.socio.csvTip')}>
               <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!points.length}>CSV</button>
             </Tooltip>
           </div>
@@ -220,14 +235,10 @@ export default function SocioScatter({
           loading={loading}
           error={error}
           onRetry={() => { if (geoError) onRetryGeo?.(); if (socio.error) socio.refetch(); }}
-          emptyMessage="No districts have both a case rate and this indicator."
+          emptyMessage={t('trends.socio.empty')}
           onEvents={onEvents}
         />
-        <p className="text-[11px] text-muted mt-2">
-          Correlation, not causation: indicators are district-level averages and the fit ignores
-          confounders (reporting practices, station density, migration). Use it to pick where to
-          ask questions — not as evidence on its own.
-        </p>
+        <p className="text-[11px] text-muted mt-2">{t('trends.socio.caveat')}</p>
       </Card>
       <InsightLine text={insight} loading={loading} />
     </div>

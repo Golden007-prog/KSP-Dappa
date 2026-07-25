@@ -13,6 +13,7 @@ import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import PulseDot from '../../components/PulseDot.jsx';
 import StatDelta from '../../components/StatDelta.jsx';
 import { fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const ACCENTS = { amber: 'border-l-amber', red: 'border-l-signal', teal: 'border-l-teal' };
 
@@ -48,16 +49,17 @@ function Spark({ data, baseline = false }) {
 }
 
 function ProgressBar({ pct, target }) {
+  const t = useT();
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
-  const t = Number(target);
+  const tgt = Number(target);
   return (
     <div className="relative mt-2 h-1.5 rounded-full bg-grid/50" aria-hidden="true">
       <div className="h-full rounded-full bg-teal/80" style={{ width: `${p}%` }} />
-      {Number.isFinite(t) && (
+      {Number.isFinite(tgt) && (
         <span
           className="absolute -top-[3px] h-3 w-0.5 rounded-sm bg-ink/70"
-          style={{ left: `${Math.max(0, Math.min(100, t))}%` }}
-          title={`Target ${t}%`}
+          style={{ left: `${Math.max(0, Math.min(100, tgt))}%` }}
+          title={t('dashboard.kpi.targetTitle', { n: tgt })}
         />
       )}
     </div>
@@ -69,6 +71,7 @@ export default function KpiLinkTile({
   accent = 'amber', pulse = false, hint, loading = false, spark,
   sparkBaseline = false, progress,
 }) {
+  const t = useT();
   const display = typeof value === 'number' ? fmtInt(value) : (value ?? '—');
   return (
     <Link
@@ -92,8 +95,8 @@ export default function KpiLinkTile({
       ) : (
         <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
           <span className="num text-2xl font-semibold tracking-tight text-ink">{display}</span>
-          {mom !== undefined && <StatDelta value={Number(mom)} positiveIsGood={positiveIsGood} label="MoM" />}
-          {yoy !== undefined && <StatDelta value={Number(yoy)} positiveIsGood={positiveIsGood} label="YoY" />}
+          {mom !== undefined && <StatDelta value={Number(mom)} positiveIsGood={positiveIsGood} label={t('dashboard.abbr.mom')} />}
+          {yoy !== undefined && <StatDelta value={Number(yoy)} positiveIsGood={positiveIsGood} label={t('dashboard.abbr.yoy')} />}
         </div>
       )}
       {hint && !loading && <p className="text-[11px] text-muted mt-1">{hint}</p>}

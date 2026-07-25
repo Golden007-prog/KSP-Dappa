@@ -6,14 +6,16 @@
 //   RecentRow     — recently-viewed offender chips from the localStorage ring.
 import { Link } from 'react-router-dom';
 import { fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const BAND_META = [
-  { id: 'high', label: 'High', dot: 'bg-signal', text: 'text-signal', chip: '!border-signal/60' },
-  { id: 'med', label: 'Med', dot: 'bg-amber', text: 'text-amber', chip: '!border-amber/60' },
-  { id: 'low', label: 'Low', dot: 'bg-teal', text: 'text-teal', chip: '!border-teal/60' },
+  { id: 'high', only: 'network.band.onlyHigh', dot: 'bg-signal', text: 'text-signal', chip: '!border-signal/60' },
+  { id: 'med', only: 'network.band.onlyMed', dot: 'bg-amber', text: 'text-amber', chip: '!border-amber/60' },
+  { id: 'low', only: 'network.band.onlyLow', dot: 'bg-teal', text: 'text-teal', chip: '!border-teal/60' },
 ];
 
 export function RiskBandStrip({ counts = {}, band = 'all', onBand }) {
+  const t = useT();
   const total = (counts.high || 0) + (counts.med || 0) + (counts.low || 0);
   if (!total) return null;
   return (
@@ -33,10 +35,10 @@ export function RiskBandStrip({ counts = {}, band = 'all', onBand }) {
               className={`chip !py-1 min-h-[36px] transition-colors hover:border-amber/50 ${active ? `${b.chip} ${b.text}` : ''}`}
               onClick={() => onBand?.(active ? 'all' : b.id)}
               aria-pressed={active}
-              title={active ? 'Clear the risk-band filter' : `Show only ${b.label.toLowerCase()}-risk offenders`}
+              title={t(active ? 'network.band.clearHint' : b.only)}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${b.dot}`} aria-hidden="true" />
-              {b.label}
+              {t(`network.band.${b.id}`)}
               <span className="num text-muted">{fmtInt(counts[b.id] || 0)}</span>
             </button>
           );
@@ -47,14 +49,15 @@ export function RiskBandStrip({ counts = {}, band = 'all', onBand }) {
 }
 
 export function MoTagChips({ tags = [], selected = [], onToggle }) {
+  const t = useT();
   if (!tags.length) return null;
   return (
     <div
       className="flex items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap sm:overflow-visible py-0.5"
       role="group"
-      aria-label="Filter by modus-operandi tag"
+      aria-label={t('network.mo.groupAria')}
     >
-      <span className="text-[10px] uppercase tracking-wide text-muted shrink-0">MO</span>
+      <span className="text-[10px] uppercase tracking-wide text-muted shrink-0">{t('network.mo.label')}</span>
       {tags.map(({ tag, count }) => {
         const active = selected.includes(tag);
         return (
@@ -64,7 +67,7 @@ export function MoTagChips({ tags = [], selected = [], onToggle }) {
             className={`chip !py-1 min-h-[36px] shrink-0 transition-colors hover:border-amber/50 ${active ? '!border-amber text-amber' : ''}`}
             onClick={() => onToggle?.(tag)}
             aria-pressed={active}
-            title={active ? `Stop filtering by “${tag}”` : `Only offenders tagged “${tag}”`}
+            title={t(active ? 'network.mo.stopFilter' : 'network.mo.onlyTagged', { tag })}
           >
             {tag}
             <span className="num text-muted">{fmtInt(count)}</span>
@@ -76,13 +79,14 @@ export function MoTagChips({ tags = [], selected = [], onToggle }) {
 }
 
 export function RecentRow({ items = [], onClear }) {
+  const t = useT();
   if (!items.length) return null;
   return (
     <div
       className="flex items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap sm:overflow-visible py-0.5"
-      aria-label="Recently viewed offenders"
+      aria-label={t('network.recent.aria')}
     >
-      <span className="text-[10px] uppercase tracking-wide text-muted shrink-0">Recent</span>
+      <span className="text-[10px] uppercase tracking-wide text-muted shrink-0">{t('network.recent.label')}</span>
       {items.map((r) => (
         <Link
           key={r.key}
@@ -98,7 +102,7 @@ export function RecentRow({ items = [], onClear }) {
         className="btn-ghost !px-2 !py-1 text-[11px] min-h-[36px] shrink-0"
         onClick={onClear}
       >
-        Clear
+        {t('common.action.clear')}
       </button>
     </div>
   );

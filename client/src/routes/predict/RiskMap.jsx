@@ -8,6 +8,7 @@ import MiniChoropleth from '../../components/MiniChoropleth.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 import { polygonForUnit } from '../../lib/districtGeoMap.js';
 
 // Legend gradients mirror MiniChoropleth's internal ramp per app theme —
@@ -18,6 +19,7 @@ const LEGEND_GRADIENT = {
 };
 
 export default function RiskMap({ rows, loading, error, onRetry, onPolygonClick }) {
+  const t = useT();
   const { theme } = useTheme();
   const values = useMemo(() => {
     const out = {};
@@ -32,15 +34,15 @@ export default function RiskMap({ rows, loading, error, onRetry, onPolygonClick 
 
   return (
     <Card
-      title="Risk surface — next 30 days"
-      subtitle="Peak station risk per census district (click to filter)"
+      title={t('trends.predict.map.title')}
+      subtitle={t('trends.predict.map.subtitle')}
     >
       {error ? (
         <EmptyState
           compact
-          title="Couldn't load the risk map"
+          title={t('trends.predict.map.errorTitle')}
           message={error.message}
-          action={<button type="button" className="btn" onClick={onRetry}>Retry</button>}
+          action={<button type="button" className="btn" onClick={onRetry}>{t('common.action.retry')}</button>}
         />
       ) : loading ? (
         <LoadingSkeleton height={300} />
@@ -49,13 +51,13 @@ export default function RiskMap({ rows, loading, error, onRetry, onPolygonClick 
           <MiniChoropleth
             values={values}
             height={300}
-            valueLabel="peak risk"
+            valueLabel={t('trends.predict.map.valueLabel')}
             onPolygonClick={onPolygonClick}
           />
           <div className="flex items-center gap-2 mt-2 text-[10px] text-muted">
-            <span>Low risk</span>
+            <span>{t('trends.predict.map.low')}</span>
             <span className="h-1.5 w-24 rounded-full" style={{ background: LEGEND_GRADIENT[theme] || LEGEND_GRADIENT.dark }} />
-            <span>High risk</span>
+            <span>{t('trends.predict.map.high')}</span>
           </div>
         </>
       )}

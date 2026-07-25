@@ -2,8 +2,11 @@
 // demo-question chips and a localStorage recent-searches row. `linkSearch`
 // (filterSearchString output) is appended so the copilot opens with the same
 // global filters. Pass `inputRef` so the '/' shortcut can focus the box.
+// The chips SHOW the question in the active language but SEND the English
+// canned utterance — the copilot's deterministic parser only speaks English.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useT } from '../../lib/i18n.jsx';
 import { CURATED_QUESTIONS } from './lib.js';
 
 const RECENT_KEY = 'dappa-omnibox-recent';
@@ -34,16 +37,17 @@ const ClockIcon = (
 
 export default function OmniBox({ inputRef, linkSearch = '', className = '' }) {
   const navigate = useNavigate();
+  const t = useT();
   const [q, setQ] = useState('');
   const [recents, setRecents] = useState(readRecents);
 
   const go = (text) => {
-    const t = String(text || '').trim();
-    if (!t) return;
-    saveRecent(t);
+    const query = String(text || '').trim();
+    if (!query) return;
+    saveRecent(query);
     setRecents(readRecents());
     const rest = linkSearch ? `&${linkSearch.slice(1)}` : '';
-    navigate(`/copilot?q=${encodeURIComponent(t)}${rest}`);
+    navigate(`/copilot?q=${encodeURIComponent(query)}${rest}`);
   };
 
   const submit = (e) => {
@@ -51,7 +55,9 @@ export default function OmniBox({ inputRef, linkSearch = '', className = '' }) {
     go(q);
   };
 
-  const suggestions = CURATED_QUESTIONS.filter((c) => !recents.includes(c));
+  const suggestions = CURATED_QUESTIONS
+    .map((query, i) => ({ query, label: t(`dashboard.omni.q${i + 1}`) }))
+    .filter((c) => !recents.includes(c.query));
 
   return (
     <div className={`space-y-2 ${className}`}>
@@ -63,18 +69,18 @@ export default function OmniBox({ inputRef, linkSearch = '', className = '' }) {
         <input
           ref={inputRef}
           className="input-dark w-full !pl-10 !pr-20 !py-3 !rounded-xl text-sm"
-          placeholder={`Ask DAPPA — e.g. “${CURATED_QUESTIONS[0]}”`}
+          placeholder={t('dashboard.omni.placeholder', { example: t('dashboard.omni.q1') })}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          aria-label="Ask DAPPA"
+          aria-label={t('dashboard.omni.aria')}
         />
         <button type="submit" className="btn-primary absolute right-1.5 top-1/2 -translate-y-1/2 min-h-[40px]">
-          Ask
+          {t('dashboard.omni.ask')}
         </button>
       </form>
       <div
         role="group"
-        aria-label="Suggested questions"
+        aria-label={t('dashboard.omni.suggestionsAria')}
         className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1"
       >
         {recents.map((r) => (
@@ -82,7 +88,7 @@ export default function OmniBox({ inputRef, linkSearch = '', className = '' }) {
             key={`recent-${r}`}
             type="button"
             onClick={() => go(r)}
-            title="Recent search — ask again"
+            title={t('dashboard.omni.recentTitle')}
             className="chip min-h-[40px] px-3 shrink-0 hover:border-amber/50 transition-colors"
           >
             {ClockIcon}
@@ -91,13 +97,13 @@ export default function OmniBox({ inputRef, linkSearch = '', className = '' }) {
         ))}
         {suggestions.map((c) => (
           <button
-            key={c}
+            key={c.query}
             type="button"
-            onClick={() => go(c)}
-            title="Ask this question"
+            onClick={() => go(c.query)}
+            title={t('dashboard.omni.askThis')}
             className="chip min-h-[40px] px-3 shrink-0 text-muted hover:text-ink hover:border-amber/50 transition-colors"
           >
-            <span className="truncate max-w-[14rem]">{c}</span>
+            <span className="truncate max-w-[14rem]">{c.label}</span>
           </button>
         ))}
       </div>

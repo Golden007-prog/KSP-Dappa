@@ -29,6 +29,7 @@ import { useEffect, useRef } from 'react';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
 import { useTheme } from '../../components/ThemeProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 cytoscape.use(fcose);
 
@@ -48,7 +49,9 @@ const THEME_TOKENS = {
   },
 };
 
-function buildStyle(t, showLabels) {
+// `tk` = the theme token bag above — not the i18n translator, which this file
+// only uses inside the component for the accessible graph label.
+function buildStyle(tk, showLabels) {
   return [
     {
       selector: 'node',
@@ -58,15 +61,15 @@ function buildStyle(t, showLabels) {
         height: 'data(size)',
         label: 'data(label)',
         'font-size': 9,
-        color: t.label,
+        color: tk.label,
         'text-opacity': showLabels ? 1 : 0,
         'text-valign': 'bottom',
         'text-margin-y': 4,
         'text-max-width': 90,
         'text-wrap': 'ellipsis',
         'border-width': 1.5,
-        'border-color': t.nodeBorder,
-        'overlay-color': t.amber,
+        'border-color': tk.nodeBorder,
+        'overlay-color': tk.amber,
         'overlay-opacity': 0,
       },
     },
@@ -76,7 +79,7 @@ function buildStyle(t, showLabels) {
         'curve-style': 'haystack',
         'haystack-radius': 0.2,
         width: 'data(width)',
-        'line-color': t.edge,
+        'line-color': tk.edge,
         opacity: 0.75,
       },
     },
@@ -85,25 +88,25 @@ function buildStyle(t, showLabels) {
     // Ego focus ring (teal) — under the amber selected/path rings in priority.
     {
       selector: 'node[isEgo = 1]',
-      style: { 'border-width': 3, 'border-color': t.teal, color: t.ink, 'text-opacity': 1 },
+      style: { 'border-width': 3, 'border-color': tk.teal, color: tk.ink, 'text-opacity': 1 },
     },
     { selector: '.dimmed', style: { opacity: 0.12, 'text-opacity': 0.1 } },
     // Bridge/broker highlight — dashed amber, defined after .dimmed so it wins.
     {
       selector: 'node.hl',
-      style: { 'border-width': 3, 'border-color': t.amber, 'border-style': 'dashed', color: t.ink, opacity: 1, 'text-opacity': 1 },
+      style: { 'border-width': 3, 'border-color': tk.amber, 'border-style': 'dashed', color: tk.ink, opacity: 1, 'text-opacity': 1 },
     },
-    { selector: 'edge.hl', style: { 'line-color': t.amber, 'line-style': 'dashed', opacity: 0.9 } },
+    { selector: 'edge.hl', style: { 'line-color': tk.amber, 'line-style': 'dashed', opacity: 0.9 } },
     {
       selector: 'node.selected',
-      style: { 'border-width': 3, 'border-color': t.amber, color: t.ink, 'font-size': 10, opacity: 1, 'text-opacity': 1 },
+      style: { 'border-width': 3, 'border-color': tk.amber, color: tk.ink, 'font-size': 10, opacity: 1, 'text-opacity': 1 },
     },
-    { selector: 'edge.selected', style: { 'line-color': t.amber, opacity: 1, width: 4 } },
+    { selector: 'edge.selected', style: { 'line-color': tk.amber, opacity: 1, width: 4 } },
     {
       selector: 'node.onpath',
-      style: { 'border-width': 3, 'border-color': t.amber, color: t.ink, opacity: 1, 'text-opacity': 1 },
+      style: { 'border-width': 3, 'border-color': tk.amber, color: tk.ink, opacity: 1, 'text-opacity': 1 },
     },
-    { selector: 'edge.onpath', style: { 'line-color': t.amber, opacity: 1, width: 3.5 } },
+    { selector: 'edge.onpath', style: { 'line-color': tk.amber, opacity: 1, width: 3.5 } },
   ];
 }
 
@@ -164,6 +167,7 @@ export default function CytoGraph({
   height = 560, className = '',
 }) {
   const { theme } = useTheme();
+  const t = useT();
   const elRef = useRef(null);
   const cyRef = useRef(null);
   const handlersRef = useRef({});
@@ -312,7 +316,7 @@ export default function CytoGraph({
     <div
       ref={elRef}
       role="img"
-      aria-label={ariaLabel || 'Co-accused network graph. Use the Find-person search or the Top connectors list for keyboard access to nodes.'}
+      aria-label={ariaLabel || t('network.graph.ariaDefault')}
       className={`w-full rounded-lg ${className}`}
       style={{ height, touchAction: 'none' }}
     />

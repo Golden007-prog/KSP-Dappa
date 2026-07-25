@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useStationRisk, useLookups } from '../lib/api.js';
+import { useT, useNames } from '../lib/i18n.jsx';
 import { useUrlFilters, filterSearchString } from '../lib/filters.js';
 import { normalizeUnitCode, unitsForPolygon } from '../lib/districtGeoMap.js';
 import FilterBar from '../components/FilterBar.jsx';
@@ -25,17 +26,23 @@ import ModelCards from './predict/ModelCards.jsx';
 
 export default function Predict() {
   const navigate = useNavigate();
+  const t = useT();
+  const tName = useNames();
   const [searchParams] = useSearchParams();
   const { districtId, crimeHeadId, setFilter } = useUrlFilters();
   const lookups = useLookups();
   const risk = useStationRisk(); // horizon 30 by default (hook contract)
   const [drawerRow, setDrawerRow] = useState(null);
 
+  // District names are translated once here, so the league table, the dossier
+  // drawer and every export downstream read the same localized label.
   const districtNames = useMemo(() => {
     const m = new Map();
-    for (const d of lookups.data?.districts || []) m.set(String(d.districtId), d.districtName);
+    for (const d of lookups.data?.districts || []) {
+      m.set(String(d.districtId), tName('districts', d.districtId, d.districtName));
+    }
     return m;
-  }, [lookups.data]);
+  }, [lookups.data, tName]);
 
   // Rank stations by risk desc; apply the shared district filter client-side
   // (the /risk/stations endpoint returns the full state).
@@ -67,14 +74,14 @@ export default function Predict() {
     <div className="space-y-4 max-w-[1500px] mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="page-title">Predict</h1>
-          <p className="page-subtitle">30-day station risk · live outcome scoring · district forecasts</p>
+          <h1 className="page-title">{t('trends.predict.page.title')}</h1>
+          <p className="page-subtitle">{t('trends.predict.page.subtitle')}</p>
         </div>
         <ModelCards />
       </div>
 
       <FilterBar show={['district']}>
-        <Badge tone="slate">station risk spans all crime heads</Badge>
+        <Badge tone="slate">{t('trends.predict.scopeBadge')}</Badge>
       </FilterBar>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">

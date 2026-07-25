@@ -33,6 +33,7 @@ import MiniChoropleth from '../components/MiniChoropleth.jsx';
 import { useTheme } from '../components/ThemeProvider.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt, fmtPct, fmtNum, monthLabel, dateLabel } from '../lib/format.js';
+import { useT, useNames } from '../lib/i18n.jsx';
 
 import DashPanel from './dashboard/DashPanel.jsx';
 import DashChart from './dashboard/DashChart.jsx';
@@ -67,38 +68,55 @@ import { buildDashboardPoster } from './dashboard/poster.js';
 
 const DETECTION_TARGET = 65; // state target, %
 
-function QueryFallback({ query, what }) {
+function QueryFallback({ query, title }) {
+  const t = useT();
   if (query.isLoading) return <LoadingSkeleton lines={4} />;
   return (
     <EmptyState
       compact
-      title={`Couldn't load ${what}`}
+      title={title}
       message={query.error?.message}
-      action={<button type="button" className="btn" onClick={() => query.refetch()}>Retry</button>}
+      action={<button type="button" className="btn" onClick={() => query.refetch()}>{t('common.action.retry')}</button>}
     />
   );
 }
 
 function RisingChips({ kpis, share, linkSearch = '' }) {
+  const t = useT();
+  const tName = useNames();
   const chips = useMemo(() => {
     const items = [];
     const top = kpis.data?.topRisingSubhead;
-    if (top?.name) items.push({ id: `kpi-${top.id}`, name: top.name, deltaPct: Number(top.deltaPct) });
+    if (top?.name) {
+      items.push({
+        id: `kpi-${top.id}`,
+        name: top.name,
+        label: tName('crimeSubHeads', top.id, top.name) || top.name,
+        deltaPct: Number(top.deltaPct),
+      });
+    }
     const withDelta = (share.data || []).filter((s) => Number.isFinite(Number(s.deltaPct)));
     const pool = withDelta.length ? withDelta : (share.data || []);
     const sorted = [...pool].sort((a, b) => (Number(b.deltaPct) || 0) - (Number(a.deltaPct) || 0) || b.count - a.count);
     for (const s of sorted) {
       if (items.length >= 5) break;
       if (items.some((it) => it.name === s.name)) continue;
-      items.push({ id: s.id, name: s.name, deltaPct: Number.isFinite(Number(s.deltaPct)) ? Number(s.deltaPct) : null });
+      items.push({
+        id: s.id,
+        name: s.name,
+        label: tName('crimeHeads', s.id, s.name) || s.name,
+        deltaPct: Number.isFinite(Number(s.deltaPct)) ? Number(s.deltaPct) : null,
+      });
     }
     return items.slice(0, 5);
-  }, [kpis.data, share.data]);
+  }, [kpis.data, share.data, tName]);
 
   // Skeleton while EITHER source is still loading — an early-empty second
   // query must not flash the empty state before the first one settles.
   if (kpis.isLoading || share.isLoading) return <LoadingSkeleton lines={2} />;
-  if (!chips.length) return <EmptyState compact title="No rising categories" message="Nothing trending upward in this window." />;
+  if (!chips.length) {
+    return <EmptyState compact title={t('dashboard.rising.empty')} message={t('dashboard.rising.emptyHint')} />;
+  }
   return (
     <div className="flex flex-wrap gap-2">
       {chips.map((c, i) => (
@@ -106,9 +124,9 @@ function RisingChips({ kpis, share, linkSearch = '' }) {
           key={c.id || i}
           to={`/trends${linkSearch}`}
           className="chip min-h-[40px] px-3 hover:border-amber/50 transition-colors"
-          title="Open Trends"
+          title={t('dashboard.rising.openTrends')}
         >
-          <span className="truncate max-w-[11rem]">{c.name}</span>
+          <span className="truncate max-w-[11rem]">{c.label}</span>
           {c.deltaPct !== null && Number.isFinite(c.deltaPct) && (
             <span className={`num font-semibold ${c.deltaPct >= 0 ? 'text-signal' : 'text-teal'}`}>
               {c.deltaPct >= 0 ? '▲' : '▼'}{fmtPct(Math.abs(c.deltaPct), { fraction: false, digits: 0 })}
@@ -159,23 +177,9 @@ function ToolBtn({ label, title, onClick, active = false, children }) {
 
 // ---- choropleth value modes ------------------------------------------------
 
-const CHORO_MODES = [
-  { value: 'cases', label: 'Cases' },
-  { value: 'rate', label: 'Per lakh' },
-  { value: 'mom', label: 'MoM' },
-  { value: 'pop', label: 'Population' },
-  { value: 'risk', label: 'Risk' },
-];
-const CHORO_SUB = {
-  cases: 'All police units, summed per census district',
-  rate: 'Average cases per lakh population',
-  mom: 'Positive month-over-month change (falling districts muted)',
-  pop: 'Socio-economic overlay — derived population per district',
-  risk: 'Socio-economic overlay — average predicted station risk (30d)',
-};
-const CHORO_LABEL = {
-  cases: 'cases', rate: 'per lakh (avg)', mom: '% MoM rise', pop: 'people (derived)', risk: 'avg station risk',
-};
+// Mode ids are the localStorage/preference contract; the visible label, the
+// panel subtitle and the map's value caption all come from the dictionary.
+const CHORO_MODE_IDS = ['cases', 'rate', 'mom', 'pop', 'risk'];
 
 function choroAggregate(rows, mode) {
   const acc = {};
@@ -199,12 +203,16 @@ function choroAggregate(rows, mode) {
 }
 
 const AUTO_INTERVALS = [30, 60, 300];
-const intervalLabel = (s) => (s >= 60 ? `${Math.round(s / 60)}m` : `${s}s`);
+const intervalLabel = (s, t) => (s >= 60
+  ? t('dashboard.unit.min', { n: Math.round(s / 60) })
+  : t('dashboard.unit.sec', { n: s }));
 
 // ---------------------------------------------------------------------------
 
 export default function Dashboard() {
   const toast = useToast();
+  const t = useT();
+  const tName = useNames();
   const { theme } = useTheme();
   const [searchParams] = useSearchParams();
   const search = filterSearchString(searchParams);
@@ -230,6 +238,29 @@ export default function Dashboard() {
   const riskQ = useStationRisk({});
   const forecastQ = useForecast(apiParams);
 
+  // Crime-head names arrive from the API in English while the chart, the
+  // compare strip and the insight sentences must render them in the active
+  // language. byName translates for display; byLabel maps a rendered series
+  // name back to its lookup row so an ECharts click still resolves a head.
+  const headMaps = useMemo(() => {
+    const byName = new Map();
+    const byLabel = new Map();
+    for (const h of lookups.data?.crimeHeads || []) {
+      const label = tName('crimeHeads', h.crimeHeadId, h.headName) || h.headName;
+      byName.set(h.headName, label);
+      byLabel.set(label, h);
+      byLabel.set(h.headName, h);
+    }
+    return { byName, byLabel };
+  }, [lookups.data, tName]);
+  const headLabel = useMemo(() => (name) => headMaps.byName.get(name) || name, [headMaps]);
+  // The seasonality normalizer emits English weekday abbreviations; they stay
+  // the data key and only the rendered label is translated.
+  const dayLabel = useMemo(() => {
+    const KEY = { Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat', Sun: 'sun' };
+    return (d) => (KEY[d] ? t(`dashboard.day.${KEY[d]}`) : d);
+  }, [t]);
+
   // ---- layout prefs / refresh / shortcuts ---------------------------------
   const { pinned, collapsed, togglePin, toggleCollapse, collapseAll, expandAll, resetLayout } = usePanelPrefs();
   const [autoInt, setAutoInt] = useLocalPref('dappa-dash-autoint', 60);
@@ -238,12 +269,12 @@ export default function Dashboard() {
   const [viewsOpen, setViewsOpen] = useState(false);
   const [maxPanelId, setMaxPanelId] = useState(null);
   const omniRef = useRef(null);
-  const manualRefresh = () => { auto.refreshNow(); toast.info('Dashboard refreshed'); };
+  const manualRefresh = () => { auto.refreshNow(); toast.info(t('dashboard.toast.refreshed')); };
   const cycleInterval = () => {
     const idx = AUTO_INTERVALS.indexOf(Number(autoInt));
     const next = AUTO_INTERVALS[(idx + 1) % AUTO_INTERVALS.length];
     setAutoInt(next);
-    toast.info(`Auto-refresh cadence: every ${intervalLabel(next)}`);
+    toast.info(t('dashboard.toast.cadence', { interval: intervalLabel(next, t) }));
   };
   useDashShortcuts({
     onRefresh: manualRefresh,
@@ -278,7 +309,11 @@ export default function Dashboard() {
     return prior > 0 ? ((cur - prior) / prior) * 100 : undefined;
   }, [monthlyTotals]);
 
-  const compareView = useMemo(() => buildCompareView(trends.data), [trends.data]);
+  const compareView = useMemo(() => {
+    const v = buildCompareView(trends.data);
+    if (!v) return null;
+    return { ...v, items: v.items.map((it) => ({ ...it, label: headLabel(it.name) })) };
+  }, [trends.data, headLabel]);
 
   // Next-month projection (model + confidence interval) for the 5th KPI tile.
   const fcNext = forecastQ.data?.forecast?.[0] || null;
@@ -297,6 +332,10 @@ export default function Dashboard() {
   const choroValues = useMemo(
     () => (choroMode === 'risk' ? riskPoly : choroAggregate(geo.data, choroMode)),
     [geo.data, choroMode, riskPoly],
+  );
+  const choroModes = useMemo(
+    () => CHORO_MODE_IDS.map((value) => ({ value, label: t(`dashboard.choro.mode.${value}`) })),
+    [t],
   );
   // Red zones: server anomaly flags UNION districts whose open alerts run
   // |z| ≥ 2 above their historical mean — both pulse on the map.
@@ -318,12 +357,12 @@ export default function Dashboard() {
       return {
         lat: u.lat,
         lng: u.lng,
-        label: u.name,
+        label: tName('districts', id, u.name) || u.name,
         value: choroMode === 'cases' ? row?.caseCount : undefined,
         unitId: id,
       };
     }).filter(Boolean);
-  }, [cityMarkersOn, geoAll.data, choroMode]);
+  }, [cityMarkersOn, geoAll.data, choroMode, tName]);
   const ramp = CHORO_RAMP[theme] || CHORO_RAMP.dark;
 
   // Polygon click opens the drill sheet (GeoIntel stays one tap away inside it).
@@ -343,10 +382,10 @@ export default function Dashboard() {
   );
   const trendOption = useMemo(() => {
     const opt = trendMode === 'total'
-      ? buildTotalTrendOption(trends.data, { narrow: isNarrow, forecast: forecastQ.data, spikes: totalSpikes })
-      : buildTrendOption(trends.data, trendMode, isNarrow);
+      ? buildTotalTrendOption(trends.data, { narrow: isNarrow, forecast: forecastQ.data, spikes: totalSpikes, t })
+      : buildTrendOption(trends.data, trendMode, isNarrow, headLabel);
     return brushOn ? withBrush(opt, isNarrow) : opt;
-  }, [trends.data, trendMode, isNarrow, forecastQ.data, totalSpikes, brushOn]);
+  }, [trends.data, trendMode, isNarrow, forecastQ.data, totalSpikes, brushOn, t, headLabel]);
   const trendRef = useRef(null);
 
   // months currently on the x-axis (actual data only, forecast excluded) — the
@@ -366,15 +405,17 @@ export default function Dashboard() {
 
   useEffect(() => { setPendingRange(null); }, [search, trendMode, brushOn]);
 
-  const focusHead = (name) => {
-    const head = (lookups.data?.crimeHeads || []).find((h) => h.headName === name);
+  // `label` is what the series renders as — headMaps.byLabel accepts both the
+  // translated label and the raw English name, so a click resolves either way.
+  const focusHead = (label) => {
+    const head = headMaps.byLabel.get(label);
     if (!head) return;
     if (String(crimeHeadId) === String(head.crimeHeadId)) {
       setFilter('crimeHeadId', '');
-      toast.info('Crime-head filter cleared');
+      toast.info(t('dashboard.toast.headCleared'));
     } else {
       setFilter('crimeHeadId', head.crimeHeadId);
-      toast.info(`Dashboard filtered to ${name}`);
+      toast.info(t('dashboard.toast.headFiltered', { name: label }));
     }
   };
   // echarts-for-react binds onEvents at chart init — route through refs so
@@ -411,16 +452,16 @@ export default function Dashboard() {
     const lastDay = new Date(y, m, 0).getDate();
     setFilters({ range: '', from: `${fromYm}-01`, to: `${toYm}-${String(lastDay).padStart(2, '0')}` });
     setPendingRange(null);
-    toast.success(`Date filter set to ${monthLabel(fromYm)} – ${monthLabel(toYm)}`);
+    toast.success(t('dashboard.toast.dateSet', { from: monthLabel(fromYm), to: monthLabel(toYm) }));
   };
 
   const exportTrendPng = () => {
     const url = trendRef.current?.toDataURL();
     if (url) {
       downloadDataUrl(url, `trend-12m-${stamp()}.png`);
-      toast.success('Trend chart downloaded');
+      toast.success(t('dashboard.toast.trendDownloaded'));
     } else {
-      toast.error('Chart is not ready yet');
+      toast.error(t('dashboard.toast.chartNotReady'));
     }
   };
 
@@ -432,14 +473,14 @@ export default function Dashboard() {
   }, [alerts, districtId]);
   const openFeed = useMemo(() => (feedQuery.data || []).filter(isOpenAlert), [feedQuery]);
 
-  const districtName = useMemo(
-    () => (lookups.data?.districts || []).find((d) => String(d.districtId) === String(districtId))?.districtName,
-    [lookups.data, districtId],
-  );
-  const headName = useMemo(
-    () => (lookups.data?.crimeHeads || []).find((h) => String(h.crimeHeadId) === String(crimeHeadId))?.headName,
-    [lookups.data, crimeHeadId],
-  );
+  const districtName = useMemo(() => {
+    const raw = (lookups.data?.districts || []).find((d) => String(d.districtId) === String(districtId))?.districtName;
+    return raw ? (tName('districts', districtId, raw) || raw) : undefined;
+  }, [lookups.data, districtId, tName]);
+  const headName = useMemo(() => {
+    const raw = (lookups.data?.crimeHeads || []).find((h) => String(h.crimeHeadId) === String(crimeHeadId))?.headName;
+    return raw ? (tName('crimeHeads', crimeHeadId, raw) || raw) : undefined;
+  }, [lookups.data, crimeHeadId, tName]);
 
   // ---- quick filters / leaderboard sources --------------------------------
   const topDistricts = useMemo(
@@ -460,55 +501,85 @@ export default function Dashboard() {
     hotspots: hotspots.data,
     correlation,
     detectionPct,
+    detectionTarget: DETECTION_TARGET,
     search,
+    t,
+    tName,
+    headLabel,
+    dayLabel,
   }), [compareView, geoAll.data, alerts.data, redZones, seasonality.data,
-    forecastQ.data, riskQ.data, hotspots.data, correlation, detectionPct, search]);
+    forecastQ.data, riskQ.data, hotspots.data, correlation, detectionPct, search,
+    t, tName, headLabel, dayLabel]);
 
   // ---- exports / share / print --------------------------------------------
+  // CSV column headers and the district / head names inside them follow the
+  // active language — the file is read by the same officer who exported it.
+  const districtLabel = (r) => tName('districts', r.districtId, r.districtName || r.districtId)
+    || r.districtName || r.districtId;
+  const yes = () => t('dashboard.csv.yes');
   const exportGeoCsv = () => downloadCsv(
     `district-density-${stamp()}.csv`,
-    ['District', 'Cases', 'Rate per lakh', 'MoM %', 'Population (derived)', 'Anomaly'],
-    (geo.data || []).map((r) => [r.districtName || r.districtId, r.caseCount, r.ratePerLakh, r.momDeltaPct, unitPopulation(r) || '', r.alert ? 'yes' : '']),
+    [t('dashboard.csv.district'), t('dashboard.csv.cases'), t('dashboard.csv.ratePerLakh'),
+      t('dashboard.csv.momPct'), t('dashboard.csv.population'), t('dashboard.csv.anomaly')],
+    (geo.data || []).map((r) => [districtLabel(r), r.caseCount, r.ratePerLakh, r.momDeltaPct, unitPopulation(r) || '', r.alert ? yes() : '']),
   );
   const exportLeaderboardCsv = () => downloadCsv(
     `district-leaderboard-${stamp()}.csv`,
-    ['District', 'Cases', 'MoM %', 'Anomaly'],
-    (geoAll.data || []).map((r) => [r.districtName || r.districtId, r.caseCount, r.momDeltaPct, r.alert ? 'yes' : '']),
+    [t('dashboard.csv.district'), t('dashboard.csv.cases'), t('dashboard.csv.momPct'), t('dashboard.csv.anomaly')],
+    (geoAll.data || []).map((r) => [districtLabel(r), r.caseCount, r.momDeltaPct, r.alert ? yes() : '']),
   );
   const exportShareCsv = () => downloadCsv(
     `category-share-${stamp()}.csv`,
-    ['Crime head', 'Cases', 'Share %', 'MoM %'],
-    (share.data || []).map((s) => [s.name, s.count, s.sharePct == null ? '' : Number(s.sharePct).toFixed(1), s.deltaPct == null ? '' : s.deltaPct]),
+    [t('dashboard.csv.crimeHead'), t('dashboard.csv.cases'), t('dashboard.csv.sharePct'), t('dashboard.csv.momPct')],
+    (share.data || []).map((s) => [tName('crimeHeads', s.id, s.name) || s.name, s.count, s.sharePct == null ? '' : Number(s.sharePct).toFixed(1), s.deltaPct == null ? '' : s.deltaPct]),
   );
   const exportCompareCsv = () => {
     if (!compareView) return;
     downloadCsv(
       `month-compare-${stamp()}.csv`,
-      ['Crime head', monthLabel(compareView.prevYm), monthLabel(compareView.curYm), 'Δ %'],
-      compareView.items.map((it) => [it.name, it.prev, it.cur, it.delta.toFixed(1)]),
+      [t('dashboard.csv.crimeHead'), monthLabel(compareView.prevYm), monthLabel(compareView.curYm), t('dashboard.csv.deltaPct')],
+      compareView.items.map((it) => [it.label || it.name, it.prev, it.cur, it.delta.toFixed(1)]),
     );
   };
   const exportAlertsCsv = () => downloadCsv(
     `alerts-${stamp()}.csv`,
-    ['Alert', 'District', 'Crime head', 'Severity', 'z-score', 'Status', 'Period end'],
-    (feedQuery.data || []).map((a) => [a.alertId, a.districtName || a.districtId, a.headName, a.severity, a.zScore, a.status, a.periodEnd]),
+    [t('dashboard.csv.alert'), t('dashboard.csv.district'), t('dashboard.csv.crimeHead'),
+      t('dashboard.csv.severity'), t('dashboard.csv.zScore'), t('dashboard.csv.status'), t('dashboard.csv.periodEnd')],
+    (feedQuery.data || []).map((a) => [
+      a.alertId,
+      districtLabel(a),
+      tName('crimeHeads', a.crimeHeadId, a.headName) || a.headName,
+      t(`dashboard.sev.${String(a.severity || 'medium').toLowerCase()}`),
+      a.zScore, a.status, a.periodEnd,
+    ]),
   );
   const exportHotspotsCsv = () => downloadCsv(
     `hotspot-windows-${stamp()}.csv`,
-    ['Cluster', 'Sub head', 'Police unit', 'Hour start', 'Hour end', 'Cases', 'Intensity'],
-    (hotspots.data || []).map((h) => [h.clusterId, h.subHeadName || h.label, unitInfo(h.districtId)?.name || h.districtId, h.hourBandStart, h.hourBandEnd, h.caseCount, h.intensity]),
+    [t('dashboard.csv.cluster'), t('dashboard.csv.subHead'), t('dashboard.csv.policeUnit'),
+      t('dashboard.csv.hourStart'), t('dashboard.csv.hourEnd'), t('dashboard.csv.cases'), t('dashboard.csv.intensity')],
+    (hotspots.data || []).map((h) => [
+      h.clusterId,
+      tName('crimeHeads', h.crimeHeadId, h.subHeadName || h.label) || h.subHeadName || h.label,
+      tName('districts', h.districtId, unitInfo(h.districtId)?.name || h.districtId) || h.districtId,
+      h.hourBandStart, h.hourBandEnd, h.caseCount, h.intensity,
+    ]),
   );
   const exportRiskCsv = () => downloadCsv(
     `station-risk-${stamp()}.csv`,
-    ['Station', 'District', 'Risk (30d)', 'Drivers'],
-    (riskQ.data || []).map((r) => [r.unitName || r.unitId, unitInfo(r.districtId)?.name || '', r.riskScore, Array.isArray(r.drivers) ? r.drivers.join('; ') : '']),
+    [t('dashboard.csv.station'), t('dashboard.csv.district'), t('dashboard.csv.risk30d'), t('dashboard.csv.drivers')],
+    (riskQ.data || []).map((r) => [
+      r.unitName || r.unitId,
+      tName('districts', r.districtId, unitInfo(r.districtId)?.name || '') || '',
+      r.riskScore,
+      Array.isArray(r.drivers) ? r.drivers.join('; ') : '',
+    ]),
   );
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
-      toast.success('Link copied — filters included');
+      toast.success(t('dashboard.toast.linkCopied'));
     } catch {
-      toast.error('Could not copy the link');
+      toast.error(t('dashboard.toast.linkFailed'));
     }
   };
 
@@ -521,30 +592,37 @@ export default function Dashboard() {
     }
     const sevBits = ['critical', 'high', 'medium', 'low']
       .filter((s) => sevCounts[s])
-      .map((s) => `${sevCounts[s]} ${s}`);
+      .map((s) => t('dashboard.poster.sevBit', { n: sevCounts[s], sev: t(`dashboard.sev.${s}`) }));
     const alertLine = [
-      sevBits.length ? `Open alerts — ${sevBits.join(' · ')}` : 'No open alerts',
-      redZones.length ? `${redZones.length} red-zone district${redZones.length > 1 ? 's' : ''} at z ≥ 2` : '',
+      sevBits.length
+        ? t('dashboard.poster.openAlerts', { bits: sevBits.join(' · ') })
+        : t('dashboard.poster.noOpenAlerts'),
+      redZones.length
+        ? t(redZones.length > 1 ? 'dashboard.poster.redZoneMany' : 'dashboard.poster.redZoneOne', { n: redZones.length })
+        : '',
     ].filter(Boolean).join(' · ');
     const movers = [...(geoAll.data || [])]
       .filter((r) => Number.isFinite(Number(r.momDeltaPct)))
       .sort((a, b) => Number(b.momDeltaPct) - Number(a.momDeltaPct))
       .slice(0, 5)
-      .map((r) => ({ name: r.districtName || r.districtId, deltaPct: Number(r.momDeltaPct), caseCount: fmtInt(r.caseCount) }));
+      .map((r) => ({ name: districtLabel(r), deltaPct: Number(r.momDeltaPct), caseCount: fmtInt(r.caseCount) }));
     const url = await buildDashboardPoster({
+      t,
       filterSummary,
       generatedAt: dateLabel(new Date().toISOString().slice(0, 10)),
       kpis: [
         {
-          label: 'FIRs this month',
+          label: t('dashboard.kpi.firs'),
           value: fmtInt(k.totalFirs),
-          delta: momPct !== undefined ? `${momPct >= 0 ? '▲' : '▼'}${Math.abs(momPct).toFixed(1)}% MoM` : '',
+          delta: momPct !== undefined
+            ? t('dashboard.poster.momDelta', { arrow: momPct >= 0 ? '▲' : '▼', pct: Math.abs(momPct).toFixed(1) })
+            : '',
           tone: 'amber',
         },
-        { label: 'Heinous cases', value: fmtInt(k.heinousCount), tone: 'red' },
-        { label: 'Detection rate', value: detectionPct == null ? '—' : `${detectionPct.toFixed(1)}%`, tone: 'teal' },
-        { label: 'Active alerts', value: fmtInt(k.activeAlerts), tone: 'red' },
-        ...(fcNext ? [{ label: 'Next-month proj.', value: fmtInt(fcNext.predicted), tone: 'amber' }] : []),
+        { label: t('dashboard.kpi.heinous'), value: fmtInt(k.heinousCount), tone: 'red' },
+        { label: t('dashboard.kpi.detection'), value: detectionPct == null ? '—' : fmtPct(detectionPct), tone: 'teal' },
+        { label: t('dashboard.kpi.alerts'), value: fmtInt(k.activeAlerts), tone: 'red' },
+        ...(fcNext ? [{ label: t('dashboard.poster.nextMonth'), value: fmtInt(fcNext.predicted), tone: 'amber' }] : []),
       ],
       trendImg: trendRef.current?.toDataURL() || null,
       donutImg: donutRef.current?.toDataURL() || null,
@@ -553,9 +631,9 @@ export default function Dashboard() {
     });
     if (url) {
       downloadDataUrl(url, `dashboard-poster-${stamp()}.png`);
-      toast.success('Situation poster downloaded');
+      toast.success(t('dashboard.toast.posterDownloaded'));
     } else {
-      toast.error('Could not build the poster');
+      toast.error(t('dashboard.toast.posterFailed'));
     }
   };
 
@@ -567,11 +645,11 @@ export default function Dashboard() {
 
   const filterSummary = useMemo(() => {
     const bits = [];
-    if (districtId) bits.push(districtName || `District ${districtId}`);
-    if (crimeHeadId) bits.push(headName || `Head ${crimeHeadId}`);
+    if (districtId) bits.push(districtName || t('dashboard.filters.district', { id: districtId }));
+    if (crimeHeadId) bits.push(headName || t('dashboard.filters.head', { id: crimeHeadId }));
     if (from || to) bits.push(`${from ? dateLabel(from) : '…'} → ${to ? dateLabel(to) : '…'}`);
-    return bits.length ? bits.join(' · ') : 'Statewide · all crime heads · all time';
-  }, [districtId, districtName, crimeHeadId, headName, from, to]);
+    return bits.length ? bits.join(' · ') : t('dashboard.filters.none');
+  }, [districtId, districtName, crimeHeadId, headName, from, to, t]);
 
   // ---- panels (pinned first, spans preserved) -----------------------------
   const panelProps = (id) => ({
@@ -591,39 +669,41 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('choropleth')}
-          title="Karnataka — case density"
-          subtitle={districtId ? 'Filtered district highlighted by volume' : CHORO_SUB[choroMode]}
+          title={t('dashboard.panel.choropleth.title')}
+          subtitle={districtId
+            ? t('dashboard.panel.choropleth.subFiltered')
+            : t(`dashboard.choro.sub.${choroMode}`)}
           headerExtra={(
             <Link to={`/map${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
-              GeoIntel →
+              {t('dashboard.link.geointel')}
             </Link>
           )}
           onExportCsv={geo.data?.length ? exportGeoCsv : undefined}
         >
           {geo.error ? (
-            <QueryFallback query={geo} what="the choropleth" />
+            <QueryFallback query={geo} title={t('dashboard.fallback.choropleth')} />
           ) : choroLoading ? (
             <LoadingSkeleton height={300} />
           ) : (
             <>
               <div className="mb-2 flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
                 <SegmentedControl
-                  ariaLabel="Choropleth value mode"
+                  ariaLabel={t('dashboard.choro.modeAria')}
                   value={choroMode}
                   onChange={setChoroMode}
-                  options={CHORO_MODES}
+                  options={choroModes}
                   className="shrink-0"
                 />
                 <button
                   type="button"
                   aria-pressed={cityMarkersOn}
-                  title="Show the five city commissionerate markers"
+                  title={t('dashboard.choro.cityUnitsTitle')}
                   onClick={() => setCityMarkersOn(!cityMarkersOn)}
                   className={`chip min-h-[36px] px-2.5 shrink-0 transition-colors ${
                     cityMarkersOn ? '!border-amber/60 !text-amber bg-amber/5' : 'hover:border-amber/40'
                   }`}
                 >
-                  City units
+                  {t('dashboard.choro.cityUnits')}
                 </button>
               </div>
               <MiniChoropleth
@@ -631,35 +711,41 @@ export default function Dashboard() {
                 alerts={alertPolygons}
                 markers={cityMarkers}
                 height={272}
-                valueLabel={CHORO_LABEL[choroMode]}
+                valueLabel={t(`dashboard.choro.label.${choroMode}`)}
                 onPolygonClick={onPolygonClick}
                 onMarkerClick={onMarkerClick}
               />
               <div className="mt-2 flex items-center gap-2 text-[10px] text-muted">
-                <span>Low</span>
+                <span>{t('dashboard.choro.legendLow')}</span>
                 <span
                   className="h-1.5 w-24 rounded-full"
                   style={{ background: `linear-gradient(90deg, ${ramp.low}, ${ramp.high})` }}
                 />
-                <span>High</span>
+                <span>{t('dashboard.choro.legendHigh')}</span>
                 {alertPolygons.length > 0 && (
                   <span className="ml-auto inline-flex items-center gap-1.5">
                     <PulseDot />
                     {redZones.length
-                      ? `${alertPolygons.length} anomaly · ${redZones.length} red zone${redZones.length > 1 ? 's' : ''} (z ≥ 2)`
-                      : 'anomaly district'}
+                      ? [
+                        t('dashboard.choro.anomalyCount', { n: alertPolygons.length }),
+                        `${t(redZones.length > 1 ? 'dashboard.choro.redZones' : 'dashboard.choro.redZone', { n: redZones.length })} ${t('dashboard.choro.redZoneSuffix')}`,
+                      ].join(' · ')
+                      : t('dashboard.choro.anomalyDistrict')}
                   </span>
                 )}
               </div>
               {correlation && (
                 <p className="mt-1.5 text-[10px] text-muted">
-                  Cases vs population: r = <span className="num text-ink">{correlation.r.toFixed(2)}</span> across{' '}
-                  {correlation.n} units — {Math.abs(correlation.r) >= 0.6
-                    ? 'volume largely tracks population; Per lakh isolates the true outliers'
-                    : 'volume diverges from population — worth a Per lakh look'}
+                  {t('dashboard.choro.corr', {
+                    r: fmtNum(correlation.r, 2),
+                    n: correlation.n,
+                    verdict: t(Math.abs(correlation.r) >= 0.6
+                      ? 'dashboard.choro.corrStrong'
+                      : 'dashboard.choro.corrWeak', { mode: t('dashboard.choro.mode.rate') }),
+                  })}
                 </p>
               )}
-              <p className="mt-1 text-[10px] text-muted">Click a district for the drill sheet</p>
+              <p className="mt-1 text-[10px] text-muted">{t('dashboard.choro.drillHint')}</p>
             </>
           )}
         </DashPanel>
@@ -671,37 +757,37 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('trend')}
-          title="12-month trend by crime head"
+          title={t('dashboard.panel.trend.title')}
           subtitle={trendMode === 'total'
-            ? 'Full history — total FIRs, 3-month mean, 2σ spikes and forecast band'
+            ? t('dashboard.panel.trend.subTotal')
             : crimeHeadId
-              ? `Focused on ${headName || 'one head'} — click the series again to clear`
-              : 'Click a series to focus the whole dashboard on that head'}
+              ? t('dashboard.panel.trend.subFocused', { head: headName || t('dashboard.panel.trend.oneHead') })
+              : t('dashboard.panel.trend.subDefault')}
           onExportPng={trendOption ? exportTrendPng : undefined}
         >
           <div className="mb-2 flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
             <SegmentedControl
-              ariaLabel="Trend chart mode"
+              ariaLabel={t('dashboard.trend.modeAria')}
               value={trendMode}
               onChange={setTrendMode}
               options={[
-                { value: 'stacked', label: 'Stacked' },
-                { value: 'share', label: '100%' },
-                { value: 'line', label: 'Line' },
-                { value: 'total', label: 'Total+F' },
+                { value: 'stacked', label: t('dashboard.trend.mode.stacked') },
+                { value: 'share', label: t('dashboard.trend.mode.share') },
+                { value: 'line', label: t('dashboard.trend.mode.line') },
+                { value: 'total', label: t('dashboard.trend.mode.total') },
               ]}
               className="shrink-0"
             />
             <button
               type="button"
               aria-pressed={brushOn}
-              title="Toggle the month-range brush"
+              title={t('dashboard.trend.brushTitle')}
               onClick={() => setBrushOn(!brushOn)}
               className={`chip min-h-[36px] px-2.5 shrink-0 transition-colors ${
                 brushOn ? '!border-amber/60 !text-amber bg-amber/5' : 'hover:border-amber/40'
               }`}
             >
-              Brush
+              {t('dashboard.trend.brush')}
             </button>
             {pendingRange && (
               <>
@@ -709,14 +795,16 @@ export default function Dashboard() {
                   type="button"
                   onClick={applyBrushRange}
                   className="chip min-h-[36px] px-2.5 shrink-0 !border-teal/60 !text-teal bg-teal/5 transition-colors"
-                  title="Set the global date filter to the brushed months"
+                  title={t('dashboard.trend.applyTitle')}
                 >
-                  Apply {monthLabel(pendingRange.fromYm)} – {monthLabel(pendingRange.toYm)}
+                  {t('dashboard.trend.applyRange', {
+                    from: monthLabel(pendingRange.fromYm), to: monthLabel(pendingRange.toYm),
+                  })}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPendingRange(null)}
-                  aria-label="Discard the brushed range"
+                  aria-label={t('dashboard.trend.discardAria')}
                   className="chip min-h-[36px] px-2.5 shrink-0 hover:border-signal/50"
                 >
                   ✕
@@ -729,17 +817,20 @@ export default function Dashboard() {
           ) : !trendOption ? (
             <EmptyState
               compact
-              title="No data"
-              message={trends.error?.message || 'No monthly aggregates for the current filters.'}
+              title={t('common.state.empty')}
+              message={trends.error?.message || t('dashboard.trend.emptyHint')}
             />
           ) : (
             <DashChart ref={trendRef} option={trendOption} height={isNarrow ? 250 : 300} onEvents={trendEvents} />
           )}
           {trendMode === 'total' && forecastQ.data?.model && (
             <p className="mt-1 text-[10px] text-muted">
-              Forecast: {forecastQ.data.model}
-              {forecastQ.data.mape != null && ` · MAPE ${fmtNum(forecastQ.data.mape, 1)}%`}
-              {' '}· dashed line + shaded confidence band
+              {t('dashboard.trend.forecastNote', {
+                model: forecastQ.data.model,
+                mape: forecastQ.data.mape != null
+                  ? t('dashboard.trend.mape', { v: fmtNum(forecastQ.data.mape, 1) })
+                  : '',
+              })}
             </p>
           )}
         </DashPanel>
@@ -751,10 +842,12 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('compare')}
-          title="This month vs last"
+          title={t('dashboard.panel.compare.title')}
           subtitle={compareView
-            ? `${monthLabel(compareView.curYm)} against ${monthLabel(compareView.prevYm)} · biggest risers first`
-            : 'Month-over-month comparison by crime head'}
+            ? t('dashboard.panel.compare.sub', {
+              cur: monthLabel(compareView.curYm), prev: monthLabel(compareView.prevYm),
+            })
+            : t('dashboard.panel.compare.subDefault')}
           onExportCsv={compareView ? exportCompareCsv : undefined}
         >
           <CompareStrip view={compareView} loading={trends.isLoading} linkSearch={search} />
@@ -767,8 +860,8 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('rising')}
-          title="Rising crime subheads"
-          subtitle="Largest month-over-month increases"
+          title={t('dashboard.panel.rising.title')}
+          subtitle={t('dashboard.panel.rising.sub')}
         >
           <RisingChips kpis={kpis} share={share} linkSearch={search} />
         </DashPanel>
@@ -780,11 +873,16 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('alerts')}
-          title="Live alerts"
-          subtitle={`${districtId ? (districtName || 'Filtered district') : 'Statewide'} · ${fmtInt(openFeed.length)} open`}
+          title={t('dashboard.panel.alerts.title')}
+          subtitle={t('dashboard.panel.alerts.sub', {
+            scope: districtId
+              ? (districtName || t('dashboard.panel.alerts.filteredDistrict'))
+              : t('dashboard.panel.alerts.statewide'),
+            n: fmtInt(openFeed.length),
+          })}
           headerExtra={(
             <Link to={`/alerts${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
-              All →
+              {t('dashboard.link.all')}
             </Link>
           )}
           onExportCsv={feedQuery.data?.length ? exportAlertsCsv : undefined}
@@ -800,8 +898,8 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('share')}
-          title="Category share"
-          subtitle="Share of FIRs by crime head"
+          title={t('dashboard.panel.share.title')}
+          subtitle={t('dashboard.panel.share.sub')}
           onExportCsv={share.data?.length ? exportShareCsv : undefined}
         >
           <CategoryDonut query={share} linkSearch={search} chartRef={donutRef} />
@@ -814,8 +912,8 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('seasonality')}
-          title="Seasonality — day × hour"
-          subtitle="When incidents happen across the week"
+          title={t('dashboard.panel.seasonality.title')}
+          subtitle={t('dashboard.panel.seasonality.sub')}
         >
           <SeasonalityPanel query={seasonality} />
         </DashPanel>
@@ -827,12 +925,12 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('leaderboard')}
-          title="District movers"
-          subtitle="Risers, fallers and the busiest districts"
+          title={t('dashboard.panel.leaderboard.title')}
+          subtitle={t('dashboard.panel.leaderboard.sub')}
           onExportCsv={geoAll.data?.length ? exportLeaderboardCsv : undefined}
         >
           {geoAll.error ? (
-            <QueryFallback query={geoAll} what="district movers" />
+            <QueryFallback query={geoAll} title={t('dashboard.fallback.districtMovers')} />
           ) : (
             <Leaderboard
               rows={geoAll.data || []}
@@ -851,11 +949,11 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('districts')}
-          title="Compare districts"
-          subtitle="Any two districts, side by side"
+          title={t('dashboard.panel.districts.title')}
+          subtitle={t('dashboard.panel.districts.sub')}
         >
           {geoAll.error ? (
-            <QueryFallback query={geoAll} what="district comparison" />
+            <QueryFallback query={geoAll} title={t('dashboard.fallback.districtComparison')} />
           ) : (
             <CompareDistricts rows={geoAll.data || []} loading={geoAll.isLoading} />
           )}
@@ -868,11 +966,11 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('hotspots')}
-          title="Hotspot windows"
-          subtitle="Spatiotemporal clusters — where and when they burn"
+          title={t('dashboard.panel.hotspots.title')}
+          subtitle={t('dashboard.panel.hotspots.sub')}
           headerExtra={(
             <Link to={`/map${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
-              Map →
+              {t('dashboard.link.map')}
             </Link>
           )}
           onExportCsv={hotspots.data?.length ? exportHotspotsCsv : undefined}
@@ -887,11 +985,11 @@ export default function Dashboard() {
       node: (
         <DashPanel
           {...panelProps('risk')}
-          title="Station risk watchlist"
-          subtitle="Predicted 30-day station risk"
+          title={t('dashboard.panel.risk.title')}
+          subtitle={t('dashboard.panel.risk.sub')}
           headerExtra={(
             <Link to={`/predict${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
-              Predict →
+              {t('dashboard.link.predict')}
             </Link>
           )}
           onExportCsv={riskQ.data?.length ? exportRiskCsv : undefined}
@@ -916,74 +1014,83 @@ export default function Dashboard() {
     <div className="space-y-4 max-w-[1500px] mx-auto">
       {/* print-only brief header (window.print → one-page situation brief) */}
       <div className="hidden print:block border-b border-grid pb-2">
-        <h1 className="text-lg font-bold text-ink">DAPPA — Command Dashboard situation brief</h1>
+        <h1 className="text-lg font-bold text-ink">{t('dashboard.print.title')}</h1>
         <p className="text-xs text-muted">
-          Generated {dateLabel(new Date().toISOString().slice(0, 10))} · {filterSummary} · synthetic demonstration data
+          {t('dashboard.print.meta', {
+            date: dateLabel(new Date().toISOString().slice(0, 10)),
+            filters: filterSummary,
+          })}
         </p>
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="page-title">Command Dashboard</h1>
-          <p className="page-subtitle">Statewide crime intelligence at a glance</p>
+          <h1 className="page-title">{t('dashboard.title')}</h1>
+          <p className="page-subtitle">{t('dashboard.subtitle')}</p>
         </div>
         <FilterBar className="!bg-transparent !border-0 !px-0 !py-0 print:hidden" />
       </div>
 
       {/* toolbar — refresh / auto / views / share / print / poster / layout / help */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 print:hidden" role="toolbar" aria-label="Dashboard tools">
-        <ToolBtn label="Refresh all panels" title="Refresh now (r)" onClick={manualRefresh}>
-          {ICON.refresh}<span className="hidden sm:inline">Refresh</span>
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 print:hidden" role="toolbar" aria-label={t('dashboard.toolbar.label')}>
+        <ToolBtn label={t('dashboard.toolbar.refreshAria')} title={t('dashboard.toolbar.refreshTitle')} onClick={manualRefresh}>
+          {ICON.refresh}<span className="hidden sm:inline">{t('dashboard.toolbar.refresh')}</span>
         </ToolBtn>
         <ToolBtn
-          label={auto.enabled ? 'Turn off auto-refresh' : `Turn on ${intervalLabel(Number(autoInt) || 60)} auto-refresh`}
-          title="Toggle auto-refresh (a)"
+          label={auto.enabled
+            ? t('dashboard.toolbar.autoDisable')
+            : t('dashboard.toolbar.autoEnable', { interval: intervalLabel(Number(autoInt) || 60, t) })}
+          title={t('dashboard.toolbar.autoTitle')}
           onClick={auto.toggle}
           active={auto.enabled}
         >
           <PulseDot color={auto.enabled ? 'teal' : 'amber'} />
-          <span className="num">{auto.enabled ? `Auto ${auto.remaining}s` : 'Auto off'}</span>
+          <span className="num">
+            {auto.enabled ? t('dashboard.toolbar.autoOn', { s: auto.remaining }) : t('dashboard.toolbar.autoOff')}
+          </span>
         </ToolBtn>
         <ToolBtn
-          label="Cycle the auto-refresh interval"
-          title={`Auto-refresh every ${intervalLabel(Number(autoInt) || 60)} — click to change`}
+          label={t('dashboard.toolbar.cycleAria')}
+          title={t('dashboard.toolbar.cycleTitle', { interval: intervalLabel(Number(autoInt) || 60, t) })}
           onClick={cycleInterval}
         >
-          <span className="num">every {intervalLabel(Number(autoInt) || 60)}</span>
+          <span className="num">{t('dashboard.toolbar.every', { interval: intervalLabel(Number(autoInt) || 60, t) })}</span>
         </ToolBtn>
         {lastUpdated > 0 && (
           <span className="num shrink-0 px-1 text-[11px] text-muted">
-            Updated {format(new Date(lastUpdated), 'HH:mm:ss')}
+            {t('dashboard.toolbar.updatedAt', { time: format(new Date(lastUpdated), 'HH:mm:ss') })}
           </span>
         )}
         <span className="h-4 w-px shrink-0 bg-grid mx-0.5" aria-hidden="true" />
-        <ToolBtn label="Saved views" title="Saved views (v)" onClick={() => setViewsOpen(true)}>
-          {ICON.views}<span>Views</span>
+        <ToolBtn label={t('dashboard.toolbar.viewsAria')} title={t('dashboard.toolbar.viewsTitle')} onClick={() => setViewsOpen(true)}>
+          {ICON.views}<span>{t('dashboard.toolbar.views')}</span>
         </ToolBtn>
-        <ToolBtn label="Copy a shareable link with the current filters" onClick={copyLink}>
-          {ICON.link}<span className="hidden sm:inline">Copy link</span>
+        <ToolBtn label={t('dashboard.toolbar.copyLinkAria')} onClick={copyLink}>
+          {ICON.link}<span className="hidden sm:inline">{t('dashboard.toolbar.copyLink')}</span>
         </ToolBtn>
-        <ToolBtn label="Print a one-page situation brief" title="Print brief (b)" onClick={() => window.print()}>
-          {ICON.print}<span className="hidden sm:inline">Print brief</span>
+        <ToolBtn label={t('dashboard.toolbar.printBriefAria')} title={t('dashboard.toolbar.printBriefTitle')} onClick={() => window.print()}>
+          {ICON.print}<span className="hidden sm:inline">{t('dashboard.toolbar.printBrief')}</span>
         </ToolBtn>
-        <ToolBtn label="Download the dashboard as a PNG situation poster" onClick={exportPoster}>
-          {ICON.poster}<span className="hidden sm:inline">Poster</span>
+        <ToolBtn label={t('dashboard.toolbar.posterAria')} onClick={exportPoster}>
+          {ICON.poster}<span className="hidden sm:inline">{t('dashboard.toolbar.poster')}</span>
         </ToolBtn>
         <span className="h-4 w-px shrink-0 bg-grid mx-0.5" aria-hidden="true" />
         <ToolBtn
-          label={allCollapsed ? 'Expand all panels' : 'Collapse all panels'}
+          label={t(allCollapsed ? 'dashboard.toolbar.expandAllAria' : 'dashboard.toolbar.collapseAllAria')}
           onClick={() => (allCollapsed ? expandAll() : collapseAll(PANEL_IDS))}
         >
           {allCollapsed ? ICON.expand : ICON.collapse}
-          <span className="hidden sm:inline">{allCollapsed ? 'Expand all' : 'Collapse all'}</span>
+          <span className="hidden sm:inline">
+            {t(allCollapsed ? 'dashboard.toolbar.expandAll' : 'dashboard.toolbar.collapseAll')}
+          </span>
         </ToolBtn>
         <ToolBtn
-          label="Reset dashboard layout (clears pins and collapsed panels)"
-          onClick={() => { resetLayout(); setMaxPanelId(null); toast.info('Dashboard layout reset'); }}
+          label={t('dashboard.toolbar.resetAria')}
+          onClick={() => { resetLayout(); setMaxPanelId(null); toast.info(t('dashboard.toast.layoutReset')); }}
         >
-          {ICON.reset}<span className="hidden sm:inline">Reset</span>
+          {ICON.reset}<span className="hidden sm:inline">{t('dashboard.toolbar.reset')}</span>
         </ToolBtn>
-        <ToolBtn label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick={() => setShortcutsOpen(true)}>
+        <ToolBtn label={t('dashboard.toolbar.shortcutsAria')} title={t('dashboard.toolbar.shortcutsTitle')} onClick={() => setShortcutsOpen(true)}>
           {ICON.help}
         </ToolBtn>
       </div>
@@ -1000,60 +1107,64 @@ export default function Dashboard() {
       <div className={`grid grid-cols-2 gap-3 ${showForecastTile ? 'md:grid-cols-3 xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
         <KpiLinkTile
           to={`/cases${search}`}
-          label="FIRs this month"
+          label={t('dashboard.kpi.firs')}
           value={k.totalFirs}
           mom={momPct}
           yoy={yoyPct}
           positiveIsGood={false}
           loading={kpis.isLoading}
-          hint={firAvg12 ? `12-mo avg ${fmtInt(firAvg12)} (dashed) · tap for cases` : 'vs previous month · tap for cases'}
+          hint={firAvg12
+            ? t('dashboard.kpi.firsHint', { avg: fmtInt(firAvg12) })
+            : t('dashboard.kpi.firsHintPlain')}
           spark={firSpark}
           sparkBaseline
         />
         <KpiLinkTile
           to={`/cases${search}`}
-          label="Heinous cases"
+          label={t('dashboard.kpi.heinous')}
           value={k.heinousCount}
           accent="red"
           loading={kpis.isLoading}
-          hint="gravity: heinous"
+          hint={t('dashboard.kpi.heinousHint')}
         />
         <KpiLinkTile
           to={`/predict${search}`}
-          label="Detection rate"
-          value={detectionPct == null ? '—' : `${detectionPct.toFixed(1)}%`}
+          label={t('dashboard.kpi.detection')}
+          value={detectionPct == null ? '—' : fmtPct(detectionPct)}
           accent="teal"
           loading={kpis.isLoading}
-          hint={`chargesheet A / (A + C) · target ${DETECTION_TARGET}%`}
+          hint={t('dashboard.kpi.detectionHint', { target: DETECTION_TARGET })}
           progress={detectionPct == null ? undefined : { pct: detectionPct, target: DETECTION_TARGET }}
         />
         <KpiLinkTile
           to={`/alerts${search}`}
-          label="Active alerts"
+          label={t('dashboard.kpi.alerts')}
           value={k.activeAlerts}
           accent="red"
           pulse={Number(k.activeAlerts) > 0}
           loading={kpis.isLoading}
-          hint="unacknowledged anomalies"
+          hint={t('dashboard.kpi.alertsHint')}
         />
         {showForecastTile && (
           <KpiLinkTile
             to={`/predict${search}`}
-            label="Next-month projection"
+            label={t('dashboard.kpi.forecast')}
             value={fcNext ? Math.round(Number(fcNext.predicted) || 0) : '—'}
             mom={fcDeltaPct}
             positiveIsGood={false}
             loading={forecastQ.isLoading}
             hint={fcNext
-              ? `${forecastQ.data?.model || 'model'}${Number.isFinite(Number(fcNext.lo)) && Number.isFinite(Number(fcNext.hi))
-                ? ` · CI ${fmtInt(fcNext.lo)}–${fmtInt(fcNext.hi)}` : ''}${forecastQ.data?.mape != null
-                ? ` · MAPE ${fmtNum(forecastQ.data.mape, 1)}%` : ''}`
-              : 'no forecast for this selection'}
+              ? `${forecastQ.data?.model || t('dashboard.kpi.forecastModel')}${
+                Number.isFinite(Number(fcNext.lo)) && Number.isFinite(Number(fcNext.hi))
+                  ? t('dashboard.kpi.forecastCi', { lo: fmtInt(fcNext.lo), hi: fmtInt(fcNext.hi) }) : ''}${
+                forecastQ.data?.mape != null
+                  ? t('dashboard.kpi.forecastMape', { v: fmtNum(forecastQ.data.mape, 1) }) : ''}`
+              : t('dashboard.kpi.forecastNone')}
           />
         )}
       </div>
       {kpis.error && (
-        <Card><QueryFallback query={kpis} what="headline KPIs" /></Card>
+        <Card><QueryFallback query={kpis} title={t('dashboard.fallback.kpis')} /></Card>
       )}
 
       {/* panels — pinned first */}
@@ -1079,7 +1190,7 @@ export default function Dashboard() {
           onFilterDistrict={(id) => {
             setFilter('districtId', id);
             setDrillPolygon(null);
-            toast.info(id ? 'Dashboard filtered to the district' : 'District filter cleared');
+            toast.info(t(id ? 'dashboard.toast.districtFiltered' : 'dashboard.toast.districtCleared'));
           }}
         />
       )}

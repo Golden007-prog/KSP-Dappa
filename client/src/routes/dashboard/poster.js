@@ -46,14 +46,18 @@ function truncate(ctx, text, maxWidth) {
 
 /**
  * buildDashboardPoster(input) → Promise<dataURL|null>.
- * input: { filterSummary, generatedAt, kpis:[{label, value, delta?, tone?}],
+ * input: { t, filterSummary, generatedAt, kpis:[{label, value, delta?, tone?}],
  *   trendImg?, donutImg?, movers:[{name, deltaPct, caseCount}],
  *   alertLine?, footnote? }
+ * `t` is the caller's useT() translator — every heading on the canvas is UI
+ * copy, and this module is plain JS that must not call a hook itself. Labels
+ * that arrive inside `kpis` / `movers` / `alertLine` are already translated.
  */
 export async function buildDashboardPoster({
-  filterSummary = '', generatedAt = '', kpis = [], trendImg = null, donutImg = null,
-  movers = [], alertLine = '', footnote = 'Synthetic demonstration data',
+  t = (k) => k, filterSummary = '', generatedAt = '', kpis = [], trendImg = null,
+  donutImg = null, movers = [], alertLine = '', footnote = '',
 } = {}) {
+  const foot = footnote || t('dashboard.poster.footnote');
   const W = 1200;
   const PAD = 48;
   const innerW = W - PAD * 2;
@@ -88,7 +92,7 @@ export async function buildDashboardPoster({
   ctx.fillRect(PAD, 58, 5, 46);
   ctx.fillStyle = C.ink;
   ctx.font = `700 34px ${FONT}`;
-  ctx.fillText('KSP DAPPA — Command Dashboard', PAD + 20, 92);
+  ctx.fillText(t('dashboard.poster.title'), PAD + 20, 92);
   ctx.font = `400 16px ${FONT}`;
   ctx.fillStyle = C.muted;
   ctx.fillText(truncate(ctx, filterSummary, innerW - 240), PAD + 20, 122);
@@ -140,7 +144,7 @@ export async function buildDashboardPoster({
 
   // trend chart
   if (trend) {
-    sectionLabel('12-month trend by crime head', y + 6);
+    sectionLabel(t('dashboard.poster.sectionTrend'), y + 6);
     ctx.drawImage(trend, PAD, y + 18, innerW, trendH);
     ctx.strokeStyle = C.grid;
     ctx.strokeRect(PAD, y + 18, innerW, trendH);
@@ -151,14 +155,14 @@ export async function buildDashboardPoster({
   if (donut || movers.length) {
     const rowTop = y;
     if (donut) {
-      sectionLabel('Category share', rowTop + 6);
+      sectionLabel(t('dashboard.poster.sectionShare'), rowTop + 6);
       ctx.drawImage(donut, PAD, rowTop + 18, donutW, donutH);
       ctx.strokeStyle = C.grid;
       ctx.strokeRect(PAD, rowTop + 18, donutW, donutH);
     }
     if (movers.length) {
       const mx = donut ? PAD + donutW + 40 : PAD;
-      sectionLabel('District movers — month over month', rowTop + 6);
+      sectionLabel(t('dashboard.poster.sectionMovers'), rowTop + 6);
       ctx.font = `400 15px ${FONT}`;
       movers.forEach((m, i) => {
         const my = rowTop + 44 + i * 30;
@@ -201,11 +205,11 @@ export async function buildDashboardPoster({
   ctx.stroke();
   ctx.fillStyle = C.muted;
   ctx.font = `400 13px ${FONT}`;
-  ctx.fillText(`Generated ${generatedAt} · ${footnote}`, PAD, H - 26);
+  ctx.fillText(t('dashboard.poster.generated', { date: generatedAt, footnote: foot }), PAD, H - 26);
   ctx.textAlign = 'right';
   ctx.fillStyle = C.amber;
   ctx.font = `700 13px ${FONT}`;
-  ctx.fillText('DAPPA · Strategic Intelligence Hub', W - PAD, H - 26);
+  ctx.fillText(t('dashboard.poster.brand'), W - PAD, H - 26);
   ctx.textAlign = 'left';
 
   try {

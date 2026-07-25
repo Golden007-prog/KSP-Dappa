@@ -2,8 +2,8 @@
 // Pick a case profile (or a one-tap preset) → POST /predict/outcome →
 // probability gauge labeled with the model source badge (meta.source: QuickML
 // endpoint vs embedded logistic fallback) and the model's ROC-AUC. Re-scoring
-// shows a what-if delta against the previous run. Caste/religion are never
-// inputs here. The gauge chrome resolves per app theme.
+// shows a what-if delta against the previous run. Protected identity fields are
+// never inputs here. The gauge chrome resolves per app theme.
 import { useEffect, useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
@@ -16,15 +16,12 @@ import EmptyState from '../../components/EmptyState.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import StatDelta from '../../components/StatDelta.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
+import { useT, useNames } from '../../lib/i18n.jsx';
 import { fmtNum, fmtPct } from '../../lib/format.js';
 import SensitivityPanel from './SensitivityPanel.jsx';
 
-const HOUR_BANDS = [
-  { value: 'night', label: 'Night (22:00–05:00)' },
-  { value: 'morning', label: 'Morning (05:00–12:00)' },
-  { value: 'day', label: 'Afternoon (12:00–17:00)' },
-  { value: 'evening', label: 'Evening (17:00–22:00)' },
-];
+// Values are the API contract; the visible label comes from predict.band.*.
+const HOUR_BANDS = ['night', 'morning', 'day', 'evening'];
 const COUNTS = [1, 2, 3, 4, 5, 6];
 const FALLBACK_GRAVITIES = [{ id: '1', name: 'Heinous' }, { id: '2', name: 'Non-Heinous' }];
 
@@ -32,19 +29,19 @@ const FALLBACK_GRAVITIES = [{ id: '1', name: 'Heinous' }, { id: '2', name: 'Non-
 // preset keeps whatever district is currently selected.
 const PRESETS = [
   {
-    label: 'Night vehicle theft',
+    key: 'nightVehicleTheft',
     patch: { crimeSubHeadId: '306', gravity: 'Non-Heinous', hourBand: 'night', victimCount: 1, accusedCount: 1, sectionCount: 2, arrestWithin7d: false },
   },
   {
-    label: 'Daytime chain snatching',
+    key: 'chainSnatching',
     patch: { crimeSubHeadId: '307', gravity: 'Non-Heinous', hourBand: 'day', victimCount: 1, accusedCount: 1, sectionCount: 2, arrestWithin7d: false },
   },
   {
-    label: 'Heinous · early arrest',
+    key: 'heinousArrest',
     patch: { crimeSubHeadId: '101', gravity: 'Heinous', hourBand: 'night', victimCount: 1, accusedCount: 2, sectionCount: 4, arrestWithin7d: true },
   },
   {
-    label: 'Online fraud',
+    key: 'onlineFraud',
     patch: { crimeSubHeadId: '501', gravity: 'Non-Heinous', hourBand: 'evening', victimCount: 1, accusedCount: 1, sectionCount: 3, arrestWithin7d: false },
   },
 ];
@@ -74,7 +71,7 @@ function Field({ label, children }) {
   );
 }
 
-function gaugeOption(probability, t) {
+function gaugeOption(probability, tok, t) {
   const pct = Math.round((Number(probability) || 0) * 1000) / 10;
   return {
     series: [{
@@ -89,29 +86,31 @@ function gaugeOption(probability, t) {
         lineStyle: {
           width: 16,
           // Semantic zones: red (unlikely), amber (uncertain), teal (likely detected).
-          color: t.zones,
+          color: tok.zones,
         },
       },
-      pointer: { length: '58%', width: 4, itemStyle: { color: t.pointer } },
-      anchor: { show: true, size: 7, itemStyle: { color: t.pointer, borderColor: t.anchorRing, borderWidth: 2 } },
-      axisTick: { distance: -16, length: 4, lineStyle: { color: t.tick, width: 1 } },
-      splitLine: { distance: -16, length: 16, lineStyle: { color: t.tick, width: 2 } },
-      axisLabel: { distance: 22, color: t.label, fontSize: 10, formatter: (v) => (v % 50 === 0 ? `${v}%` : '') },
+      pointer: { length: '58%', width: 4, itemStyle: { color: tok.pointer } },
+      anchor: { show: true, size: 7, itemStyle: { color: tok.pointer, borderColor: tok.anchorRing, borderWidth: 2 } },
+      axisTick: { distance: -16, length: 4, lineStyle: { color: tok.tick, width: 1 } },
+      splitLine: { distance: -16, length: 16, lineStyle: { color: tok.tick, width: 2 } },
+      axisLabel: { distance: 22, color: tok.label, fontSize: 10, formatter: (v) => (v % 50 === 0 ? `${v}%` : '') },
       detail: {
         valueAnimation: true,
         formatter: (v) => `${fmtNum(v, 1)}%`,
-        color: t.detail,
+        color: tok.detail,
         fontSize: 26,
         fontWeight: 700,
         offsetCenter: [0, '32%'],
       },
-      title: { color: t.title, fontSize: 11, offsetCenter: [0, '60%'] },
-      data: [{ value: pct, name: 'P(A-final · detected)' }],
+      title: { color: tok.title, fontSize: 11, offsetCenter: [0, '60%'] },
+      data: [{ value: pct, name: t('trends.predict.gauge.name') }],
     }],
   };
 }
 
 export default function OutcomePanel() {
+  const t = useT();
+  const tName = useNames();
   const lookups = useLookups();
   const predict = usePredictOutcome();
   const { theme } = useTheme();
@@ -197,7 +196,10 @@ export default function OutcomePanel() {
     setProfile((p) => ({ ...p, ...preset.patch }));
   };
 
-  const option = useMemo(() => (result ? gaugeOption(result.probability, tokens) : null), [result, tokens]);
+  const option = useMemo(
+    () => (result ? gaugeOption(result.probability, tokens, t) : null),
+    [result, tokens, t],
+  );
   const probA = result?.probabilities?.[result?.classes?.[0] ?? 'A'];
   const probC = result?.probabilities?.[result?.classes?.[1] ?? 'C'];
   const deltaPts = result && prevProb !== null && Number.isFinite(Number(result.probability))
@@ -206,65 +208,75 @@ export default function OutcomePanel() {
 
   return (
     <Card
-      title="Live outcome prediction"
-      subtitle="Will this FIR profile end in an A-final (detected) chargesheet? Scored by QuickML, or the embedded logistic model when the flag is off."
+      title={t('trends.predict.outcome.title')}
+      subtitle={t('trends.predict.outcome.subtitle')}
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* --- case profile form ------------------------------------------ */}
         <div>
-          <div className="flex flex-wrap items-center gap-1.5 mb-3" role="group" aria-label="Preset case profiles">
-            <span className="text-[11px] text-muted mr-1">Presets:</span>
+          <div className="flex flex-wrap items-center gap-1.5 mb-3" role="group" aria-label={t('trends.predict.outcome.presetsAria')}>
+            <span className="text-[11px] text-muted mr-1">{t('trends.predict.outcome.presets')}</span>
             {PRESETS.map((p) => (
               <button
-                key={p.label}
+                key={p.key}
                 type="button"
                 className="chip !px-3 min-h-[40px] hover:border-amber/40 hover:text-amber transition-colors"
                 onClick={() => applyPreset(p)}
               >
-                {p.label}
+                {t(`trends.predict.preset.${p.key}`)}
               </button>
             ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="District">
+            <Field label={t('common.filter.district')}>
               <select className="input-dark w-full !py-2" value={profile.districtId} onChange={set('districtId')} disabled={lookups.isLoading}>
-                {lookups.isLoading && <option>Loading…</option>}
-                {districts.map((d) => <option key={d.districtId} value={d.districtId}>{d.districtName}</option>)}
+                {lookups.isLoading && <option>{t('common.state.loading')}</option>}
+                {districts.map((d) => (
+                  <option key={d.districtId} value={d.districtId}>
+                    {tName('districts', d.districtId, d.districtName)}
+                  </option>
+                ))}
               </select>
             </Field>
-            <Field label="Crime subhead">
+            <Field label={t('trends.predict.field.subhead')}>
               <select className="input-dark w-full !py-2" value={profile.crimeSubHeadId} onChange={set('crimeSubHeadId')} disabled={lookups.isLoading}>
-                {lookups.isLoading && <option>Loading…</option>}
+                {lookups.isLoading && <option>{t('common.state.loading')}</option>}
                 {crimeHeads.map((h) => (
-                  <optgroup key={h.crimeHeadId} label={h.headName}>
+                  <optgroup key={h.crimeHeadId} label={tName('crimeHeads', h.crimeHeadId, h.headName)}>
                     {subHeads.filter((s) => s.crimeHeadId === h.crimeHeadId).map((s) => (
-                      <option key={s.crimeSubHeadId} value={s.crimeSubHeadId}>{s.subHeadName}</option>
+                      <option key={s.crimeSubHeadId} value={s.crimeSubHeadId}>
+                        {tName('crimeSubHeads', s.crimeSubHeadId, s.subHeadName)}
+                      </option>
                     ))}
                   </optgroup>
                 ))}
               </select>
             </Field>
-            <Field label="Gravity">
+            <Field label={t('trends.predict.field.gravity')}>
               <select className="input-dark w-full !py-2" value={profile.gravity} onChange={set('gravity')}>
-                {gravities.map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
+                {gravities.map((g) => (
+                  <option key={g.id} value={g.name}>{tName('gravities', g.id, g.name)}</option>
+                ))}
               </select>
             </Field>
-            <Field label="Hour band">
+            <Field label={t('trends.predict.field.hourBand')}>
               <select className="input-dark w-full !py-2" value={profile.hourBand} onChange={set('hourBand')}>
-                {HOUR_BANDS.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
+                {HOUR_BANDS.map((band) => (
+                  <option key={band} value={band}>{t(`trends.predict.band.${band}`)}</option>
+                ))}
               </select>
             </Field>
-            <Field label="Victims">
+            <Field label={t('trends.predict.field.victims')}>
               <select className="input-dark w-full !py-2" value={profile.victimCount} onChange={set('victimCount')}>
                 {COUNTS.map((n) => <option key={n} value={n}>{n === 6 ? '6+' : n}</option>)}
               </select>
             </Field>
-            <Field label="Accused">
+            <Field label={t('trends.predict.field.accused')}>
               <select className="input-dark w-full !py-2" value={profile.accusedCount} onChange={set('accusedCount')}>
                 {COUNTS.map((n) => <option key={n} value={n}>{n === 6 ? '6+' : n}</option>)}
               </select>
             </Field>
-            <Field label="Sections invoked">
+            <Field label={t('trends.predict.field.sections')}>
               <select className="input-dark w-full !py-2" value={profile.sectionCount} onChange={set('sectionCount')}>
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
@@ -276,7 +288,7 @@ export default function OutcomePanel() {
                 checked={profile.arrestWithin7d}
                 onChange={set('arrestWithin7d')}
               />
-              Arrest within 7 days
+              {t('trends.predict.field.arrest7d')}
             </label>
           </div>
           <button
@@ -285,10 +297,10 @@ export default function OutcomePanel() {
             onClick={run}
             disabled={predict.isPending || lookups.isLoading}
           >
-            {predict.isPending ? 'Scoring…' : 'Predict outcome'}
+            {predict.isPending ? t('trends.predict.outcome.scoring') : t('trends.predict.outcome.run')}
           </button>
           <p className="text-[11px] text-muted mt-2">
-            Synthetic model inputs only — caste/religion fields are never part of any feature set.
+            {t('trends.predict.outcome.note')}
           </p>
         </div>
 
@@ -299,15 +311,15 @@ export default function OutcomePanel() {
           ) : predict.error ? (
             <EmptyState
               compact
-              title="Prediction failed"
+              title={t('trends.predict.outcome.failed')}
               message={predict.error.message}
-              action={<button type="button" className="btn" onClick={run}>Retry</button>}
+              action={<button type="button" className="btn" onClick={run}>{t('common.action.retry')}</button>}
             />
           ) : !result ? (
             <EmptyState
               compact
-              title="No prediction yet"
-              message="Configure a case profile on the left (or tap a preset) and press Predict outcome."
+              title={t('trends.predict.outcome.noneTitle')}
+              message={t('trends.predict.outcome.noneMsg')}
             />
           ) : (
             <div>
@@ -322,29 +334,38 @@ export default function OutcomePanel() {
               />
               <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
                 <Badge tone={result.predictedClass === 'A' ? 'teal' : 'red'}>
-                  Predicted: {result.predictedClass} — {result.predictedClass === 'A' ? 'detected' : 'undetected'}
+                  {t('trends.predict.outcome.predicted', {
+                    cls: result.predictedClass,
+                    label: t(result.predictedClass === 'A'
+                      ? 'trends.predict.outcome.detected'
+                      : 'trends.predict.outcome.undetected'),
+                  })}
                 </Badge>
                 <span title={`meta.source: ${source}`}>
                   <Badge tone={source === 'fallback-local' ? 'slate' : 'amber'}>
-                    {source === 'fallback-local' ? 'Embedded logistic · local fallback' : 'QuickML · live endpoint'}
+                    {source === 'fallback-local'
+                      ? t('trends.predict.outcome.sourceFallback')
+                      : t('trends.predict.outcome.sourceLive')}
                   </Badge>
                 </span>
                 {result.modelAuc != null && (
-                  <Badge tone="teal">ROC-AUC {fmtNum(result.modelAuc, 2)}</Badge>
+                  <Badge tone="teal">{t('trends.predict.outcome.auc', { value: fmtNum(result.modelAuc, 2) })}</Badge>
                 )}
                 {deltaPts !== null && (
-                  <span title="Change in detection probability vs the previous run">
+                  <span title={t('trends.predict.outcome.deltaTip')}>
                     <Badge tone={Math.abs(deltaPts) < 0.05 ? 'slate' : deltaPts > 0 ? 'teal' : 'red'}>
-                      {deltaPts >= 0 ? '+' : '−'}{fmtNum(Math.abs(deltaPts), 1)} pts vs last run
+                      {t('trends.predict.outcome.deltaBadge', {
+                        delta: `${deltaPts >= 0 ? '+' : '−'}${fmtNum(Math.abs(deltaPts), 1)}`,
+                      })}
                     </Badge>
                   </span>
                 )}
               </div>
               {Number.isFinite(Number(probA)) && Number.isFinite(Number(probC)) && (
                 <p className="text-center text-[11px] text-muted mt-2 num">
-                  A (detected) {fmtPct(Number(probA) * 100, { digits: 1, fraction: false })}
+                  {t('trends.predict.outcome.classA', { p: fmtPct(Number(probA) * 100, { digits: 1, fraction: false }) })}
                   {' · '}
-                  C (undetected) {fmtPct(Number(probC) * 100, { digits: 1, fraction: false })}
+                  {t('trends.predict.outcome.classC', { p: fmtPct(Number(probC) * 100, { digits: 1, fraction: false }) })}
                 </p>
               )}
             </div>
@@ -359,9 +380,9 @@ export default function OutcomePanel() {
       {runLog.length >= 2 && (
         <div className="mt-4 border-t border-grid/60 pt-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted">Run history — this session</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted">{t('trends.predict.runlog.title')}</p>
             <button type="button" className="btn-ghost !px-2.5 !py-1.5 text-[11px]" onClick={() => setRunLog([])}>
-              Clear
+              {t('common.action.clear')}
             </button>
           </div>
           <ul className="mt-2 flex flex-wrap gap-1.5">
@@ -372,7 +393,11 @@ export default function OutcomePanel() {
                 <li
                   key={r.t.getTime()}
                   className="inline-flex items-center gap-1.5 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted"
-                  title={`Scored by ${r.source === 'fallback-local' ? 'embedded logistic fallback' : 'QuickML endpoint'}`}
+                  title={t('trends.predict.runlog.scoredBy', {
+                    source: t(r.source === 'fallback-local'
+                      ? 'trends.predict.runlog.sourceFallback'
+                      : 'trends.predict.runlog.sourceLive'),
+                  })}
                 >
                   <span className="num">{r.t.toLocaleTimeString('en-IN', { hour12: false })}</span>
                   <span className="num font-semibold text-ink">{fmtNum(r.prob * 100, 1)}%</span>

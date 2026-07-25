@@ -3,6 +3,7 @@
 // strip hides until there is at least one view or the user starts saving.
 import { useState } from 'react';
 import { useToast } from '../../components/ToastProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 import { readPref, writePref } from './hooks.js';
 
 const VIEWS_PREF = 'dappa-net-views';
@@ -19,6 +20,7 @@ function readViews() {
 
 export default function SavedViews({ currentQuery = '', onApply }) {
   const toast = useToast();
+  const t = useT();
   const [views, setViews] = useState(readViews);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
@@ -26,12 +28,12 @@ export default function SavedViews({ currentQuery = '', onApply }) {
   const persist = (next) => { setViews(next); writePref(VIEWS_PREF, JSON.stringify(next)); };
 
   const save = () => {
-    const n = (name.trim() || `View ${views.length + 1}`).slice(0, 40);
+    const n = (name.trim() || t('network.views.defaultName', { n: views.length + 1 })).slice(0, 40);
     const next = [...views.filter((v) => v.name !== n), { name: n, qs: currentQuery }].slice(-MAX_VIEWS);
     persist(next);
     setNaming(false);
     setName('');
-    toast.success(`Saved “${n}” — filters, ego focus and layout state included.`);
+    toast.success(t('network.views.saved', { name: n }));
   };
 
   const remove = (n) => persist(views.filter((v) => v.name !== n));
@@ -44,7 +46,7 @@ export default function SavedViews({ currentQuery = '', onApply }) {
           className="btn-ghost !px-2.5 !py-1.5 text-[11px] min-h-[40px]"
           onClick={() => setNaming(true)}
         >
-          ☆ Save this view
+          {t('network.views.saveThis')}
         </button>
       </div>
     );
@@ -52,7 +54,7 @@ export default function SavedViews({ currentQuery = '', onApply }) {
 
   return (
     <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap sm:overflow-visible py-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-muted shrink-0">Views</span>
+      <span className="text-[10px] uppercase tracking-wide text-muted shrink-0">{t('network.views.label')}</span>
       {views.map((v) => {
         const active = v.qs === currentQuery;
         return (
@@ -62,7 +64,7 @@ export default function SavedViews({ currentQuery = '', onApply }) {
               className="min-h-[36px] px-0.5 hover:text-amber transition-colors"
               onClick={() => onApply?.(v.qs)}
               aria-pressed={active}
-              title="Apply this saved view"
+              title={t('network.views.applyHint')}
             >
               {v.name}
             </button>
@@ -70,7 +72,7 @@ export default function SavedViews({ currentQuery = '', onApply }) {
               type="button"
               className="flex h-9 w-7 -my-2 -mr-1.5 items-center justify-center text-muted hover:text-signal transition-colors"
               onClick={() => remove(v.name)}
-              aria-label={`Delete saved view ${v.name}`}
+              aria-label={t('network.views.deleteAria', { name: v.name })}
             >
               ✕
             </button>
@@ -84,18 +86,18 @@ export default function SavedViews({ currentQuery = '', onApply }) {
         >
           <input
             className="input-dark !py-1.5 w-32 text-xs"
-            placeholder="View name…"
+            placeholder={t('network.views.namePlaceholder')}
             value={name}
             maxLength={40}
             onChange={(e) => setName(e.target.value)}
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             onKeyDown={(e) => { if (e.key === 'Escape') { setNaming(false); setName(''); } }}
-            aria-label="Name for the saved view"
+            aria-label={t('network.views.nameAria')}
           />
-          <button type="submit" className="btn !py-1.5 !px-2.5 text-xs min-h-[36px]">Save</button>
+          <button type="submit" className="btn !py-1.5 !px-2.5 text-xs min-h-[36px]">{t('common.action.save')}</button>
           <button type="button" className="btn-ghost !py-1.5 !px-2 text-xs min-h-[36px]" onClick={() => { setNaming(false); setName(''); }}>
-            Cancel
+            {t('common.action.cancel')}
           </button>
         </form>
       ) : (
@@ -104,7 +106,7 @@ export default function SavedViews({ currentQuery = '', onApply }) {
           className="btn-ghost !px-2 !py-1.5 text-[11px] min-h-[36px] shrink-0"
           onClick={() => setNaming(true)}
         >
-          ☆ Save
+          {t('network.views.save')}
         </button>
       )}
     </div>

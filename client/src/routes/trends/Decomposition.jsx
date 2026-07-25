@@ -11,14 +11,16 @@ import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import ChartBody from './ChartBody.jsx';
 import InsightLine from './InsightLine.jsx';
-import { decomposeSeries, detectChangepoints, MONTH_SHORT } from './analysis.js';
+import { decomposeSeries, detectChangepoints, monthShortNames } from './analysis.js';
 import { decompositionInsight } from './insights.js';
 import { downloadCsv, slug } from './csv.js';
 import { fmtNum, monthLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const MIN_MONTHS = 18;
 
-function strengthWord(v) {
+/** Hyndman F-strength → a `trends.decomp.*` key suffix. */
+function strengthKey(v) {
   return v >= 0.66 ? 'strong' : v >= 0.33 ? 'moderate' : 'weak';
 }
 
@@ -27,6 +29,7 @@ export default function Decomposition({
   scope, colors, surface, anomalyColor, isNarrow,
 }) {
   const toast = useToast();
+  const t = useT();
 
   const dec = useMemo(() => decomposeSeries(months, values), [months, values]);
   const changepoints = useMemo(
@@ -51,9 +54,9 @@ export default function Decomposition({
       },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
       title: [
-        { text: 'OBSERVED + TREND', left: 0, top: 4, textStyle: titleStyle },
-        { text: 'SEASONAL', left: 0, top: '42.5%', textStyle: titleStyle },
-        { text: 'RESIDUAL', left: 0, top: '68.5%', textStyle: titleStyle },
+        { text: t('trends.decomp.observedTrend'), left: 0, top: 4, textStyle: titleStyle },
+        { text: t('trends.decomp.seasonalPanel'), left: 0, top: '42.5%', textStyle: titleStyle },
+        { text: t('trends.decomp.residualPanel'), left: 0, top: '68.5%', textStyle: titleStyle },
       ],
       grid: grids.map((g) => ({ left: 46, right: 12, ...g })),
       xAxis: grids.map((_, i) => ({
@@ -71,7 +74,7 @@ export default function Decomposition({
       })),
       series: [
         {
-          name: 'Observed',
+          name: t('trends.decomp.observed'),
           type: 'line',
           xAxisIndex: 0,
           yAxisIndex: 0,
@@ -89,7 +92,7 @@ export default function Decomposition({
                 show: true,
                 formatter: Number.isFinite(c.shiftPct)
                   ? `${c.dir === 'up' ? '+' : '−'}${Math.round(Math.abs(c.shiftPct))}%`
-                  : 'shift',
+                  : t('trends.monthly.shift'),
                 color: colors[1],
                 fontSize: 9,
                 position: 'insideEndTop',
@@ -98,7 +101,7 @@ export default function Decomposition({
           } : undefined,
         },
         {
-          name: 'Trend',
+          name: t('trends.decomp.trend'),
           type: 'line',
           xAxisIndex: 0,
           yAxisIndex: 0,
@@ -109,7 +112,7 @@ export default function Decomposition({
           itemStyle: { color: colors[0] },
         },
         {
-          name: 'Seasonal',
+          name: t('trends.decomp.seasonal'),
           type: 'line',
           xAxisIndex: 1,
           yAxisIndex: 1,
@@ -120,7 +123,7 @@ export default function Decomposition({
           itemStyle: { color: colors[2] },
         },
         {
-          name: 'Residual',
+          name: t('trends.decomp.residual'),
           type: 'bar',
           xAxisIndex: 2,
           yAxisIndex: 2,
@@ -129,7 +132,7 @@ export default function Decomposition({
           itemStyle: { color: surface.muted, opacity: 0.65, borderRadius: 1 },
         },
         {
-          name: 'Residual outlier',
+          name: t('trends.decomp.outlier'),
           type: 'scatter',
           xAxisIndex: 2,
           yAxisIndex: 2,
@@ -137,17 +140,20 @@ export default function Decomposition({
           symbolSize: 7,
           itemStyle: { color: anomalyColor },
           tooltip: {
-            formatter: (p) => `${labels[p.value[0]]} — residual ${fmtNum(p.value[1], 1)} (|z| ≥ 2)`,
+            formatter: (p) => t('trends.decomp.outlierTooltip', {
+              month: labels[p.value[0]],
+              value: fmtNum(p.value[1], 1),
+            }),
           },
           z: 5,
         },
       ],
     };
-  }, [dec, changepoints, months, values, colors, surface, anomalyColor, isNarrow]);
+  }, [dec, changepoints, months, values, colors, surface, anomalyColor, isNarrow, t]);
 
   const insight = useMemo(
-    () => (dec ? decompositionInsight(months, dec, changepoints, MONTH_SHORT) : null),
-    [dec, months, changepoints],
+    () => (dec ? decompositionInsight(months, dec, changepoints, monthShortNames(t), t) : null),
+    [dec, months, changepoints, t],
   );
 
   const exportCsv = () => {
@@ -163,7 +169,7 @@ export default function Decomposition({
         dec.residual[i] === null ? '' : Number(dec.residual[i].toFixed(2)),
       ]),
     );
-    toast.success('Decomposition components exported');
+    toast.success(t('trends.toast.decomp'));
   };
 
   const short = !loading && !error && months.length > 0 && months.length < MIN_MONTHS;
@@ -171,21 +177,21 @@ export default function Decomposition({
   return (
     <div className="space-y-2">
       <Card
-        title="Trend · seasonal · residual decomposition"
-        subtitle="Monthly totals split client-side (2×12 moving average + calendar-month seasonal indices) with level-shift markers"
+        title={t('trends.decomp.title')}
+        subtitle={t('trends.decomp.subtitle')}
         actions={(
           <div className="trends-no-print flex flex-wrap items-center justify-end gap-1.5">
             {dec && (
               <>
-                <Tooltip label={`Share of variation carried by the long-run trend: ${strengthWord(dec.strengthTrend)}`}>
-                  <span><Badge tone="amber">trend {fmtNum(dec.strengthTrend * 100, 0)}%</Badge></span>
+                <Tooltip label={t('trends.decomp.trendTip', { strength: t(`trends.decomp.${strengthKey(dec.strengthTrend)}`) })}>
+                  <span><Badge tone="amber">{t('trends.decomp.trendBadge', { pct: fmtNum(dec.strengthTrend * 100, 0) })}</Badge></span>
                 </Tooltip>
-                <Tooltip label={`Share of variation carried by the repeating season: ${strengthWord(dec.strengthSeasonal)}`}>
-                  <span><Badge tone="teal">season {fmtNum(dec.strengthSeasonal * 100, 0)}%</Badge></span>
+                <Tooltip label={t('trends.decomp.seasonTip', { strength: t(`trends.decomp.${strengthKey(dec.strengthSeasonal)}`) })}>
+                  <span><Badge tone="teal">{t('trends.decomp.seasonBadge', { pct: fmtNum(dec.strengthSeasonal * 100, 0) })}</Badge></span>
                 </Tooltip>
               </>
             )}
-            <Tooltip label="Download observed, trend, seasonal and residual columns">
+            <Tooltip label={t('trends.decomp.csvTip')}>
               <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!dec}>CSV</button>
             </Tooltip>
           </div>
@@ -198,8 +204,8 @@ export default function Decomposition({
           error={error}
           onRetry={onRetry}
           emptyMessage={short
-            ? `Decomposition needs at least ${MIN_MONTHS} months of history — widen the date range.`
-            : 'No monthly history for the current filters.'}
+            ? t('trends.decomp.needMonths', { n: MIN_MONTHS })
+            : t('trends.decomp.empty')}
         />
       </Card>
       <InsightLine text={insight} loading={loading} />

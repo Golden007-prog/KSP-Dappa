@@ -7,11 +7,14 @@ import Badge from '../../components/Badge.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { fmtInt, fmtNum } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 import { communityColor, edgeTier } from './graphUtils.js';
+import { useCaseNames } from '../cases/names.js';
 import { addToCompare, COMPARE_MAX } from '../offenders/compareStore.js';
 import { useWatchlist, WATCH_MAX } from '../offenders/watchlistStore.js';
 
 function DrawerShell({ title, subtitle, onClose, children }) {
+  const t = useT();
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-2">
@@ -23,7 +26,7 @@ function DrawerShell({ title, subtitle, onClose, children }) {
           type="button"
           className="flex h-10 w-10 -mt-2 -mr-2 shrink-0 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
           onClick={onClose}
-          aria-label="Close panel"
+          aria-label={t('network.drawer.close')}
         >
           ✕
         </button>
@@ -45,6 +48,8 @@ function Stat({ label, children }) {
 /** Node tap → offender identity drawer (enriched via GET /offenders/:key). */
 export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEgo = false, broker = null, isCut = false }) {
   const toast = useToast();
+  const t = useT();
+  const trName = useCaseNames();
   const detail = useOffender(node?.id || '');
   const d = detail.data || {};
   const hasCommunity = node?.communityId !== null && node?.communityId !== undefined && node?.communityId !== '';
@@ -53,16 +58,16 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
 
   const compare = () => {
     const r = addToCompare(node?.id);
-    if (r.status === 'added') toast.success(`${node?.label || node?.id} added to compare — open the Offenders registry tray.`);
-    else if (r.status === 'exists') toast.info('Already in the compare tray.');
-    else toast.info(`Compare holds up to ${COMPARE_MAX} offenders — remove one in the registry first.`);
+    if (r.status === 'added') toast.success(t('network.toast.compareAdded', { name: node?.label || node?.id }));
+    else if (r.status === 'exists') toast.info(t('network.toast.compareExists'));
+    else toast.info(t('network.toast.compareFull', { n: fmtInt(COMPARE_MAX) }));
   };
 
   const watch = () => {
     const r = toggleWatch(node?.id, node?.label);
-    if (r.status === 'added') toast.success(`${node?.label || node?.id} added to the watchlist.`);
-    else if (r.status === 'removed') toast.info('Removed from the watchlist.');
-    else toast.info(`Watchlist holds up to ${WATCH_MAX} people — remove one first.`);
+    if (r.status === 'added') toast.success(t('network.toast.watchAdded', { name: node?.label || node?.id }));
+    else if (r.status === 'removed') toast.info(t('network.toast.watchRemoved'));
+    else toast.info(t('network.toast.watchFull', { n: fmtInt(WATCH_MAX) }));
   };
 
   return (
@@ -77,19 +82,21 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
       onClose={onClose}
     >
       <div className="grid grid-cols-3 gap-2">
-        <Stat label="Cases">{fmtInt(node?.caseCount)}</Stat>
-        <Stat label="Degree">{fmtInt(node?.degree)}</Stat>
-        <Stat label="Risk">{detail.isLoading ? '…' : fmtNum(d.riskScore, 1)}</Stat>
+        <Stat label={t('network.drawer.cases')}>{fmtInt(node?.caseCount)}</Stat>
+        <Stat label={t('network.drawer.degree')}>{fmtInt(node?.degree)}</Stat>
+        <Stat label={t('network.drawer.risk')}>{detail.isLoading ? '…' : fmtNum(d.riskScore, 1)}</Stat>
       </div>
 
       {(isCut || (broker && broker.crossLinks > 0)) && (
         <div className="flex flex-wrap gap-1.5">
           {isCut && (
-            <Badge tone="red">cut vertex — removal splits the group</Badge>
+            <Badge tone="red">{t('network.drawer.cutVertex')}</Badge>
           )}
           {broker && broker.crossLinks > 0 && (
             <Badge tone="amber">
-              bridges {fmtInt(broker.groups.size)} other group{broker.groups.size === 1 ? '' : 's'} · {fmtInt(broker.crossLinks)} cross-link{broker.crossLinks === 1 ? '' : 's'}
+              {t(broker.groups.size === 1 ? 'network.drawer.bridgeGroups.one' : 'network.drawer.bridgeGroups.other', { n: fmtInt(broker.groups.size) })}
+              {' · '}
+              {t(broker.crossLinks === 1 ? 'network.drawer.crossLinks.one' : 'network.drawer.crossLinks.other', { n: fmtInt(broker.crossLinks) })}
             </Badge>
           )}
         </div>
@@ -100,7 +107,7 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
         <>
           {(d.aliases || []).length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Aliases</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.drawer.aliases')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {(d.aliases || []).slice(0, 5).map((a) => <span key={a} className="chip">{a}</span>)}
                 {(d.aliases || []).length > 5 && <span className="chip text-muted">+{(d.aliases || []).length - 5}</span>}
@@ -109,28 +116,31 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
           )}
           {(d.moTags || []).length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted mb-1">MO tags</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.drawer.moTags')}</p>
               <div className="flex flex-wrap gap-1.5">
-                {(d.moTags || []).slice(0, 6).map((t) => <Badge key={t} tone="amber">{t}</Badge>)}
+                {(d.moTags || []).slice(0, 6).map((tag) => <Badge key={tag} tone="amber">{tag}</Badge>)}
               </div>
             </div>
           )}
           {(d.districts || []).length > 0 && (
             <p className="text-[11px] text-muted">
-              Active in <span className="text-ink">{(d.districts || []).join(', ')}</span>
+              {t('network.drawer.activeIn')}{' '}
+              <span className="text-ink">{(d.districts || []).map((n) => trName('districts', n)).join(', ')}</span>
             </p>
           )}
         </>
       )}
-      {detail.error && <p className="text-[11px] text-muted">Profile detail unavailable — {detail.error.message}</p>}
+      {detail.error && (
+        <p className="text-[11px] text-muted">{t('network.drawer.profileUnavailable', { msg: detail.error.message })}</p>
+      )}
 
       <div className="flex flex-wrap gap-2 pt-1">
         <Link to={`/offenders/${encodeURIComponent(node?.id || '')}`} className="btn-primary !py-1.5 !px-3 text-xs min-h-[40px]">
-          Offender 360 →
+          {t('network.drawer.offender360')}
         </Link>
         {hasCommunity && (
           <button type="button" className="btn !py-1.5 !px-3 text-xs min-h-[40px]" onClick={() => onIsolate?.(node.communityId)}>
-            Isolate group #{String(node.communityId)}
+            {t('network.drawer.isolateGroup', { id: String(node.communityId) })}
           </button>
         )}
         {onEgo && (
@@ -139,28 +149,28 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
             className={`btn !py-1.5 !px-3 text-xs min-h-[40px] ${isEgo ? '!border-teal/60 text-teal' : ''}`}
             onClick={() => onEgo(isEgo ? null : node?.id)}
           >
-            {isEgo ? 'Exit ego focus' : 'Focus ego network'}
+            {isEgo ? t('network.ego.exit') : t('network.ego.focus')}
           </button>
         )}
       </div>
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={() => onSetPathEnd?.('a', node?.id)}>
-          Set as path A
+          {t('network.drawer.setPathA')}
         </button>
         <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={() => onSetPathEnd?.('b', node?.id)}>
-          Set as path B
+          {t('network.drawer.setPathB')}
         </button>
         <button type="button" className="btn !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={compare}>
-          ＋ Compare
+          {t('network.drawer.addCompare')}
         </button>
         <button
           type="button"
           className={`btn !py-1.5 !px-2.5 text-[11px] min-h-[40px] ${watched ? '!border-amber/60 text-amber' : ''}`}
           onClick={watch}
           aria-pressed={watched}
-          title={watched ? 'Remove from the shared watchlist' : 'Star this person — watchlisted people render as diamonds'}
+          title={watched ? t('network.drawer.unwatchHint') : t('network.drawer.watchHint')}
         >
-          {watched ? '★ Watching' : '☆ Watch'}
+          {watched ? t('network.drawer.watching') : t('network.drawer.watch')}
         </button>
       </div>
     </DrawerShell>
@@ -168,13 +178,14 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
 }
 
 const TIER_META = {
-  single: { label: 'single link — 1 shared FIR', tone: 'slate' },
-  repeat: { label: 'repeat pair — 2 shared FIRs', tone: 'amber' },
-  strong: { label: 'strong tie — 3+ shared FIRs', tone: 'red' },
+  single: { key: 'network.edge.tierSingle', tone: 'slate' },
+  repeat: { key: 'network.edge.tierRepeat', tone: 'amber' },
+  strong: { key: 'network.edge.tierStrong', tone: 'red' },
 };
 
 /** Edge tap → shared-case list between the two endpoints. */
 export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode, mutuals = [] }) {
+  const t = useT();
   const a = nodesById.get(String(edge?.source));
   const b = nodesById.get(String(edge?.target));
   const caseIds = edge?.caseIds || [];
@@ -185,26 +196,30 @@ export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode, mutuals = [
       type="button"
       className="chip !py-1.5 min-h-[40px] hover:border-amber/50 transition-colors max-w-full"
       onClick={() => n && onSelectNode?.(n)}
-      title="Open person panel"
+      title={t('network.edge.openPerson')}
     >
       <span className="truncate">{n?.label || fallbackId}</span>
     </button>
   );
 
   return (
-    <DrawerShell title="Shared-case link" subtitle={`${fmtInt(edge?.weight)} case${Number(edge?.weight) === 1 ? '' : 's'} together`} onClose={onClose}>
+    <DrawerShell
+      title={t('network.edge.title')}
+      subtitle={t(Number(edge?.weight) === 1 ? 'network.edge.together.one' : 'network.edge.together.other', { n: fmtInt(edge?.weight) })}
+      onClose={onClose}
+    >
       <div className="flex items-center gap-2 flex-wrap">
         {endpoint(a, edge?.source)}
         <span className="text-muted text-xs shrink-0">↔</span>
         {endpoint(b, edge?.target)}
       </div>
       <div>
-        <Badge tone={tier.tone}>{tier.label}</Badge>
+        <Badge tone={tier.tone}>{t(tier.key)}</Badge>
       </div>
       {mutuals.length > 0 && (
         <div>
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1">
-            Mutual associates ({fmtInt(mutuals.length)})
+            {t('network.edge.mutuals', { n: fmtInt(mutuals.length) })}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {mutuals.slice(0, 8).map((m) => (
@@ -213,7 +228,7 @@ export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode, mutuals = [
                 type="button"
                 className="chip !py-1 min-h-[36px] hover:border-amber/50 transition-colors max-w-full"
                 onClick={() => onSelectNode?.(m)}
-                title="Both endpoints share cases with this person — open their panel"
+                title={t('network.edge.mutualHint')}
               >
                 <span className="truncate">{m.label || String(m.id)}</span>
               </button>
@@ -223,9 +238,9 @@ export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode, mutuals = [
         </div>
       )}
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Shared cases</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.edge.sharedCases')}</p>
         {caseIds.length === 0 ? (
-          <p className="text-[11px] text-muted">No case ids recorded on this link.</p>
+          <p className="text-[11px] text-muted">{t('network.edge.noCaseIds')}</p>
         ) : (
           <ul className="space-y-1 max-h-56 overflow-y-auto pr-1">
             {caseIds.map((cid) => (
@@ -234,7 +249,7 @@ export function EdgeDrawer({ edge, nodesById, onClose, onSelectNode, mutuals = [
                   to={`/cases/${encodeURIComponent(cid)}`}
                   className="inline-flex items-center min-h-[36px] text-xs text-amber hover:underline num break-all"
                 >
-                  Case {String(cid)}
+                  {t('network.edge.caseLink', { id: String(cid) })}
                 </Link>
               </li>
             ))}

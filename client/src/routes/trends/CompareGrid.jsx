@@ -14,6 +14,7 @@ import StatDelta from '../../components/StatDelta.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { fmtInt, fmtNum } from '../../lib/format.js';
+import { useI18n } from '../../lib/i18n.jsx';
 import { detectAnomalies, recentDeltaPct, toPerLakh } from './analysis.js';
 import { riserFallerInsight } from './insights.js';
 import { downloadCsv, slug } from './csv.js';
@@ -28,6 +29,7 @@ const parseList = (raw, max) => (raw ? raw.split('.').filter(Boolean).slice(0, m
 export default function CompareGrid({ window: win, norm, pops, colors, anomalyColor, defaultDistrictIds = [] }) {
   const toast = useToast();
   const lookups = useLookups();
+  const { t, tName } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const cmpDRaw = searchParams.get('cmpD');
@@ -37,8 +39,14 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
 
   const districts = lookups.data?.districts || [];
   const heads = lookups.data?.crimeHeads || [];
-  const districtName = (id) => districts.find((d) => d.districtId === String(id))?.districtName || `District ${id}`;
-  const headName = (id) => heads.find((h) => h.crimeHeadId === String(id))?.headName || `Head ${id}`;
+  // Raw = the API's English name, used for CSV filename slugs (slug() drops
+  // non-Latin script, so a Kannada label would collapse to 'all').
+  const rawDistrictName = (id) => districts.find((d) => d.districtId === String(id))?.districtName
+    || t('trends.compare.districtFallback', { id });
+  const rawHeadName = (id) => heads.find((h) => h.crimeHeadId === String(id))?.headName
+    || t('trends.compare.headFallback', { id });
+  const districtName = (id) => tName('districts', id, rawDistrictName(id));
+  const headName = (id) => tName('crimeHeads', id, rawHeadName(id));
   // Stable hue per entity — index in the full lookup list, not in the current
   // selection, so removing one series never repaints the survivors.
   const districtColor = (id) => colors[Math.max(0, districts.findIndex((d) => d.districtId === String(id))) % colors.length];
@@ -54,9 +62,12 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
     }, { replace: true });
   };
 
-  const add = (key, list, max, value, kind) => {
+  const add = (key, list, max, value, kindKey) => {
     if (!value || list.includes(value)) return;
-    if (list.length >= max) { toast.info(`Compare up to ${max} ${kind} at once — remove one first.`); return; }
+    if (list.length >= max) {
+      toast.info(t('trends.compare.limit', { max, kind: t(`trends.compare.${kindKey}`) }));
+      return;
+    }
     setList(key, [...list, value]);
   };
 
@@ -106,10 +117,14 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
       const pop = r.cell.d ? pops.byDistrict.get(String(r.cell.d)) : pops.statePop;
       const label = r.cell.d && r.cell.h ? `${districtName(r.cell.d)} · ${headName(r.cell.h)}`
         : r.cell.d ? districtName(r.cell.d)
-          : r.cell.h ? headName(r.cell.h) : 'Karnataka · all heads';
+          : r.cell.h ? headName(r.cell.h) : t('trends.compare.allHeads');
+      const rawLabel = r.cell.d && r.cell.h ? `${rawDistrictName(r.cell.d)} · ${rawHeadName(r.cell.h)}`
+        : r.cell.d ? rawDistrictName(r.cell.d)
+          : r.cell.h ? rawHeadName(r.cell.h) : 'Karnataka all heads';
       return {
         key: `${r.cell.d || 'all'}-${r.cell.h || 'all'}`,
         label,
+        rawLabel,
         error: r.error,
         color: r.cell.d ? districtColor(r.cell.d) : headColor(r.cell.h),
         values,
@@ -124,13 +139,17 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
     return {
       rows,
       months: months.slice(start),
-      insight: riserFallerInsight(rows.map((r) => ({ label: r.label, total: r.total, deltaPct: r.deltaPct }))),
+      insight: riserFallerInsight(
+        rows.map((r) => ({ label: r.label, total: r.total, deltaPct: r.deltaPct })), t,
+      ),
     };
-  }, [loading, cells, queries, norm, pops, districts, heads]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, cells, queries, norm, pops, districts, heads, t, tName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const exportCsv = () => {
     if (!view?.months.length) return;
-    const headers = ['month', ...view.rows.map((r) => (r.normApplied ? `${r.label} (per lakh)` : r.label))];
+    const headers = ['month', ...view.rows.map((r) => (r.normApplied
+      ? t('trends.compare.perLakhSuffix', { label: r.label })
+      : r.label))];
     const rows = view.months.map((ym, i) => [
       ym,
       ...view.rows.map((r) => {
@@ -138,8 +157,8 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
         return v === null || v === undefined ? '' : r.normApplied ? Number(v.toFixed(2)) : v;
       }),
     ]);
-    downloadCsv(`dappa-compare_${slug(view.rows.map((r) => r.label).join('_'))}`, headers, rows);
-    toast.success(`Exported ${view.rows.length} series × ${view.months.length} months`);
+    downloadCsv(`dappa-compare_${slug(view.rows.map((r) => r.rawLabel).join('_'))}`, headers, rows);
+    toast.success(t('trends.toast.compare', { series: view.rows.length, months: view.months.length }));
   };
 
   const chip = (label, color, onRemove) => (
@@ -152,7 +171,7 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
         type="button"
         className="ml-0.5 flex min-h-[40px] min-w-[32px] items-center justify-center rounded-full -my-2 text-muted hover:text-ink transition-colors"
         onClick={onRemove}
-        aria-label={`Remove ${label} from comparison`}
+        aria-label={t('trends.compare.removeAria', { label })}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
       </button>
@@ -161,10 +180,10 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
 
   return (
     <Card
-      title="Compare districts × crime heads"
-      subtitle="Small multiples on one aligned monthly window — add up to 4 districts and 3 heads"
+      title={t('trends.compare.title')}
+      subtitle={t('trends.compare.subtitle', { d: MAX_DISTRICTS, h: MAX_HEADS })}
       actions={(
-        <Tooltip label="Download every compared series as CSV">
+        <Tooltip label={t('trends.compare.csvTip')}>
           <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!view?.months.length}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>
             CSV
@@ -178,25 +197,29 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
         <select
           className="input-dark !py-2 !px-2 text-xs max-w-[11rem] min-h-[40px]"
           value=""
-          aria-label="Add district to comparison"
+          aria-label={t('trends.compare.addDistrictAria')}
           disabled={lookups.isLoading}
-          onChange={(e) => add('cmpD', cmpD, MAX_DISTRICTS, e.target.value, 'districts')}
+          onChange={(e) => add('cmpD', cmpD, MAX_DISTRICTS, e.target.value, 'kindDistricts')}
         >
-          <option value="">+ district…</option>
+          <option value="">{t('trends.compare.addDistrict')}</option>
           {districts.filter((d) => !cmpD.includes(d.districtId)).map((d) => (
-            <option key={d.districtId} value={d.districtId}>{d.districtName}</option>
+            <option key={d.districtId} value={d.districtId}>
+              {tName('districts', d.districtId, d.districtName)}
+            </option>
           ))}
         </select>
         <select
           className="input-dark !py-2 !px-2 text-xs max-w-[11rem] min-h-[40px]"
           value=""
-          aria-label="Add crime head to comparison"
+          aria-label={t('trends.compare.addHeadAria')}
           disabled={lookups.isLoading}
-          onChange={(e) => add('cmpH', cmpH, MAX_HEADS, e.target.value, 'crime heads')}
+          onChange={(e) => add('cmpH', cmpH, MAX_HEADS, e.target.value, 'kindHeads')}
         >
-          <option value="">+ crime head…</option>
+          <option value="">{t('trends.compare.addHead')}</option>
           {heads.filter((h) => !cmpH.includes(h.crimeHeadId)).map((h) => (
-            <option key={h.crimeHeadId} value={h.crimeHeadId}>{h.headName}</option>
+            <option key={h.crimeHeadId} value={h.crimeHeadId}>
+              {tName('crimeHeads', h.crimeHeadId, h.headName)}
+            </option>
           ))}
         </select>
       </div>
@@ -206,7 +229,7 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
           {cells.map((c) => <div key={`${c.d}-${c.h}`} className="skeleton h-28" />)}
         </div>
       ) : !view?.rows.length ? (
-        <EmptyState compact title="Nothing to compare" message="Add a district or a crime head above to build the grid." />
+        <EmptyState compact title={t('trends.compare.emptyTitle')} message={t('trends.compare.emptyMsg')} />
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -218,15 +241,19 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
                   <>
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-xs font-medium text-ink leading-snug min-w-0 truncate" title={r.label}>{r.label}</p>
-                      <StatDelta value={r.deltaPct} positiveIsGood={false} label="3m" className="shrink-0" />
+                      <StatDelta value={r.deltaPct} positiveIsGood={false} label={t('trends.compare.delta3m')} className="shrink-0" />
                     </div>
                     <p className="num text-lg font-semibold text-ink mt-0.5">
                       {r.normApplied
-                        ? <>{fmtNum((r.total / r.pop) * 100000, 1)}<span className="text-xs text-muted font-normal"> /lakh</span></>
+                        ? <>{fmtNum((r.total / r.pop) * 100000, 1)}<span className="text-xs text-muted font-normal"> {t('trends.compare.perLakhUnit')}</span></>
                         : fmtInt(r.total)}
                       <span className="text-[10px] text-muted font-normal ml-1.5">
                         {r.anomalies.length > 0 && (
-                          <span style={{ color: anomalyColor }}>⚑ {r.anomalies.length} anomal{r.anomalies.length === 1 ? 'y' : 'ies'}</span>
+                          <span style={{ color: anomalyColor }}>
+                            {r.anomalies.length === 1
+                              ? t('trends.compare.anomalyOne')
+                              : t('trends.compare.anomalyMany', { n: fmtInt(r.anomalies.length) })}
+                          </span>
                         )}
                       </span>
                     </p>

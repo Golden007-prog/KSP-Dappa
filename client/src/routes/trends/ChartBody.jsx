@@ -9,12 +9,14 @@ import '../../components/ChartPanel.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 export default function ChartBody({
   option, height = 300, loading = false, error = null, onRetry,
   emptyMessage, onEvents,
 }) {
   const { theme } = useTheme();
+  const t = useT();
   const chartTheme = theme === 'light' ? 'dappa-light' : 'dappa';
 
   if (loading) return <LoadingSkeleton height={height} />;
@@ -23,10 +25,10 @@ export default function ChartBody({
       <div style={{ height }} className="flex items-center justify-center">
         <EmptyState
           compact
-          title="Couldn't load this chart"
+          title={t('trends.chart.errorTitle')}
           message={error.message}
           action={onRetry && (
-            <button type="button" className="btn" onClick={onRetry}>Retry</button>
+            <button type="button" className="btn" onClick={onRetry}>{t('common.action.retry')}</button>
           )}
         />
       </div>
@@ -35,7 +37,7 @@ export default function ChartBody({
   if (!option) {
     return (
       <div style={{ height }} className="flex items-center justify-center">
-        <EmptyState compact title="No data" message={emptyMessage || 'Nothing to plot for the current filters.'} />
+        <EmptyState compact title={t('common.state.empty')} message={emptyMessage || t('trends.chart.empty')} />
       </div>
     );
   }

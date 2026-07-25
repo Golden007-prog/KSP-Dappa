@@ -4,18 +4,21 @@
 // unstar them or adjust filters to bring them back.
 import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
+import { fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 import { useWatchlist } from '../offenders/watchlistStore.js';
 
 export default function WatchlistPanel({ nodesById = new Map(), onPick }) {
+  const t = useT();
   const { list, toggle } = useWatchlist();
   if (!list.length) return null;
 
   return (
     <Card
-      title="Watchlist"
-      subtitle="Starred people — shared with Offenders and Offender 360"
+      title={t('network.watch.title')}
+      subtitle={t('network.watch.subtitle')}
       padded={false}
-      actions={<Badge tone="amber">{list.length}</Badge>}
+      actions={<Badge tone="amber">{fmtInt(list.length)}</Badge>}
     >
       <ul className="divide-y divide-grid/50">
         {list.map((w) => {
@@ -27,17 +30,17 @@ export default function WatchlistPanel({ nodesById = new Map(), onPick }) {
                 disabled={!n}
                 onClick={() => n && onPick?.(n)}
                 className={`flex-1 min-w-0 min-h-[44px] flex items-center gap-2 text-left transition-colors ${n ? 'hover:text-amber' : 'cursor-default'}`}
-                title={n ? 'Select and fly to this person' : 'Not in the current graph view'}
+                title={n ? t('network.watch.pickHint') : t('network.watch.notInView')}
               >
                 <span className="text-amber shrink-0" aria-hidden="true">★</span>
                 <span className={`text-xs truncate flex-1 min-w-0 ${n ? 'text-ink' : 'text-muted'}`}>{w.name || w.key}</span>
-                {!n && <span className="text-[10px] text-muted shrink-0">not in view</span>}
+                {!n && <span className="text-[10px] text-muted shrink-0">{t('network.watch.notInViewShort')}</span>}
               </button>
               <button
                 type="button"
                 className="flex h-9 w-8 shrink-0 items-center justify-center text-muted hover:text-signal transition-colors"
                 onClick={() => toggle(w.key, w.name)}
-                aria-label={`Remove ${w.name || w.key} from the watchlist`}
+                aria-label={t('network.watch.removeAria', { name: w.name || w.key })}
               >
                 ✕
               </button>

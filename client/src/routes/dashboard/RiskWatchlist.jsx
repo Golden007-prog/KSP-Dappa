@@ -8,10 +8,13 @@ import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import { unitInfo } from '../../lib/districtGeoMap.js';
 import { fmtNum } from '../../lib/format.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
 
 const SHOW = 6;
 
 export default function RiskWatchlist({ query, linkSearch = '' }) {
+  const t = useT();
+  const tName = useNames();
   const top = useMemo(
     () => [...(query.data || [])]
       .filter((r) => Number.isFinite(Number(r.riskScore)))
@@ -25,14 +28,14 @@ export default function RiskWatchlist({ query, linkSearch = '' }) {
     return (
       <EmptyState
         compact
-        title="Couldn't load station risk"
+        title={t('dashboard.risk.error')}
         message={query.error.message}
-        action={<button type="button" className="btn" onClick={() => query.refetch()}>Retry</button>}
+        action={<button type="button" className="btn" onClick={() => query.refetch()}>{t('common.action.retry')}</button>}
       />
     );
   }
   if (!top.length) {
-    return <EmptyState compact title="No risk scores" message="No station risk predictions for this horizon." />;
+    return <EmptyState compact title={t('dashboard.risk.empty')} message={t('dashboard.risk.emptyHint')} />;
   }
 
   const maxRisk = Math.max(1e-9, ...top.map((r) => Number(r.riskScore) || 0));
@@ -42,12 +45,15 @@ export default function RiskWatchlist({ query, linkSearch = '' }) {
       <ol className="divide-y divide-grid/50">
         {top.map((r, i) => {
           const drivers = Array.isArray(r.drivers) ? r.drivers.slice(0, 2) : [];
-          const district = unitInfo(r.districtId)?.name;
+          const district = tName('districts', r.districtId, unitInfo(r.districtId)?.name);
           return (
             <li key={r.unitId || i}>
               <Link
                 to={`/predict${linkSearch}`}
-                title={`Open the Predict workbench — ${r.unitName || 'station'} risk ${fmtNum(r.riskScore, 1)}`}
+                title={t('dashboard.risk.rowTitle', {
+                  station: r.unitName || t('dashboard.risk.station'),
+                  score: fmtNum(r.riskScore, 1),
+                })}
                 className="flex min-h-[44px] items-center gap-2.5 rounded-lg px-1.5 py-2 transition-colors hover:bg-grid/30"
               >
                 <span className="num w-5 shrink-0 text-center text-[11px] text-muted">{i + 1}</span>
@@ -74,7 +80,7 @@ export default function RiskWatchlist({ query, linkSearch = '' }) {
           );
         })}
       </ol>
-      <p className="text-[10px] text-muted">Predicted 30-day risk · chips show the model's top drivers · tap for the full league</p>
+      <p className="text-[10px] text-muted">{t('dashboard.risk.footnote')}</p>
     </div>
   );
 }

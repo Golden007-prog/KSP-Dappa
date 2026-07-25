@@ -10,7 +10,8 @@ import { Link } from 'react-router-dom';
 import Sheet from '../../components/Sheet.jsx';
 import { useOffender } from '../../lib/api.js';
 import { fmtInt, dateLabel } from '../../lib/format.js';
-import { RiskBadge } from './common.jsx';
+import { useT } from '../../lib/i18n.jsx';
+import { RiskBadge, useDistrictName } from './common.jsx';
 import YearSparkline from './YearSparkline.jsx';
 import { communityColor } from '../network/graphUtils.js';
 
@@ -18,48 +19,49 @@ function DetCell({ loading, children }) {
   return loading ? <div className="skeleton h-4 w-16" /> : children;
 }
 
+// `ctx` carries the translator and the compared columns into every renderer.
 const METRICS = [
   {
     id: 'risk',
-    label: 'Risk',
+    labelKey: 'network.compare.risk',
     num: (c) => Number(c.p.riskScore),
     maxTint: 'bg-signal/10',
     render: (c) => <RiskBadge score={c.p.riskScore} />,
   },
   {
     id: 'cases',
-    label: 'Cases',
+    labelKey: 'network.compare.cases',
     num: (c) => Number(c.p.caseCount),
     maxTint: 'bg-amber/10',
     render: (c) => fmtInt(c.p.caseCount),
   },
   {
     id: 'degree',
-    label: 'Network degree',
+    labelKey: 'network.compare.degree',
     num: (c) => Number(c.p.degree),
     maxTint: 'bg-amber/10',
     render: (c) => <DetCell loading={c.loading}>{fmtInt(c.p.degree)}</DetCell>,
   },
   {
     id: 'districts',
-    label: 'Districts',
-    render: (c) => (
-      <span className="whitespace-normal">{(c.p.districts || []).join(', ') || '—'}</span>
+    labelKey: 'network.compare.districts',
+    render: (c, ctx) => (
+      <span className="whitespace-normal">{(c.p.districts || []).map(ctx.districtName).join(', ') || '—'}</span>
     ),
   },
   {
     id: 'firstSeen',
-    label: 'First seen',
+    labelKey: 'network.compare.firstSeen',
     render: (c) => <DetCell loading={c.loading}>{dateLabel(c.p.firstSeen)}</DetCell>,
   },
   {
     id: 'lastSeen',
-    label: 'Last seen',
+    labelKey: 'network.compare.lastSeen',
     render: (c) => <DetCell loading={c.loading}>{dateLabel(c.p.lastSeen)}</DetCell>,
   },
   {
     id: 'aliases',
-    label: 'Aliases',
+    labelKey: 'network.compare.aliases',
     render: (c) => {
       const aliases = c.p.aliases || [];
       if (!aliases.length) return '—';
@@ -77,19 +79,19 @@ const METRICS = [
   },
   {
     id: 'mo',
-    label: 'MO tags',
+    labelKey: 'network.compare.mo',
     render: (c, ctx) => {
       const tags = c.p.moTags || [];
       if (!tags.length) return '—';
       return (
         <span className="inline-flex flex-wrap gap-1">
-          {tags.slice(0, 6).map((t) => (
+          {tags.slice(0, 6).map((tag) => (
             <span
-              key={t}
-              className={`chip !py-0 text-[10px] ${ctx?.sharedTags?.has(t) ? '!border-amber text-amber' : ''}`}
-              title={ctx?.sharedTags?.has(t) ? 'Shared with another compared offender' : undefined}
+              key={tag}
+              className={`chip !py-0 text-[10px] ${ctx?.sharedTags?.has(tag) ? '!border-amber text-amber' : ''}`}
+              title={ctx?.sharedTags?.has(tag) ? ctx.t('network.compare.sharedTagHint') : undefined}
             >
-              {t}
+              {tag}
             </span>
           ))}
           {tags.length > 6 && (
@@ -101,7 +103,7 @@ const METRICS = [
   },
   {
     id: 'activity',
-    label: 'Activity',
+    labelKey: 'network.compare.activity',
     render: (c) => {
       if (c.loading) return <div className="skeleton h-10 w-28" />;
       return (c.p.timeline || []).length
@@ -111,7 +113,7 @@ const METRICS = [
   },
   {
     id: 'links',
-    label: 'Direct links',
+    labelKey: 'network.compare.directLinks',
     render: (c, ctx) => {
       if (c.loading) return <div className="skeleton h-4 w-16" />;
       const links = (ctx?.cols || [])
@@ -121,12 +123,12 @@ const METRICS = [
           return hit ? { key: o.key, name: o.p.canonicalName || o.key, n: hit.sharedCases } : null;
         })
         .filter(Boolean);
-      if (!links.length) return <span className="text-muted">no direct link</span>;
+      if (!links.length) return <span className="text-muted">{ctx.t('network.compare.noDirectLink')}</span>;
       return (
         <span className="inline-flex flex-wrap gap-1">
           {links.map((l) => (
-            <span key={l.key} className="chip !py-0 text-[10px] !border-amber/60 text-amber" title="These two are co-accused on the same FIR(s)">
-              ↔ {l.name} · {fmtInt(l.n)} shared
+            <span key={l.key} className="chip !py-0 text-[10px] !border-amber/60 text-amber" title={ctx.t('network.compare.linkHint')}>
+              {ctx.t('network.compare.sharedLink', { name: l.name, n: fmtInt(l.n) })}
             </span>
           ))}
         </span>
@@ -135,7 +137,7 @@ const METRICS = [
   },
   {
     id: 'community',
-    label: 'Community',
+    labelKey: 'network.compare.community',
     render: (c) => {
       const cid = c.p.communityId;
       if (cid === null || cid === undefined || cid === '') return '—';
@@ -165,6 +167,8 @@ function maxIndex(metric, cols) {
 }
 
 export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), onClose, onRemove }) {
+  const t = useT();
+  const districtName = useDistrictName();
   // Fixed slots keep the hook count stable for up to 3 offenders.
   const d0 = useOffender(open ? keys[0] || '' : '');
   const d1 = useOffender(open ? keys[1] || '' : '');
@@ -180,10 +184,10 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
   // MO tags carried by 2+ compared offenders → highlighted in the MO row.
   const tagCount = new Map();
   for (const c of cols) {
-    for (const t of new Set(c.p.moTags || [])) tagCount.set(t, (tagCount.get(t) || 0) + 1);
+    for (const tag of new Set(c.p.moTags || [])) tagCount.set(tag, (tagCount.get(tag) || 0) + 1);
   }
-  const sharedTags = new Set([...tagCount].filter(([, n]) => n >= 2).map(([t]) => t));
-  const ctx = { cols, sharedTags };
+  const sharedTags = new Set([...tagCount].filter(([, n]) => n >= 2).map(([tag]) => tag));
+  const ctx = { cols, sharedTags, t, districtName };
 
   // Associates shared by 2+ compared offenders (excluding the compared people
   // themselves) — hidden-association detection across the set.
@@ -205,12 +209,12 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
     <Sheet
       open={open}
       onClose={onClose}
-      title={`Compare offenders (${cols.length})`}
+      title={t('network.compare.title', { n: fmtInt(cols.length) })}
       className="md:!w-[46rem] md:max-w-[calc(100vw-3rem)]"
     >
       {cols.length < 2 ? (
         <p className="text-xs text-muted px-2 py-6 text-center">
-          Select at least two offenders in the registry to compare them side by side.
+          {t('network.compare.needTwo')}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -218,7 +222,7 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
             <thead>
               <tr className="border-b border-grid">
                 <th scope="col" className="text-left text-[10px] uppercase tracking-wide text-muted px-2 py-2 align-bottom w-28">
-                  Metric
+                  {t('network.compare.metric')}
                 </th>
                 {cols.map((c) => (
                   <th key={c.key} scope="col" className="text-left px-2 py-2 align-bottom">
@@ -236,7 +240,7 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
                         type="button"
                         className="flex h-9 w-9 -mt-1 -mr-1 shrink-0 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
                         onClick={() => onRemove?.(c.key)}
-                        aria-label={`Remove ${c.p.canonicalName || c.key} from comparison`}
+                        aria-label={t('network.tray.removeAria', { name: c.p.canonicalName || c.key })}
                       >
                         ✕
                       </button>
@@ -248,16 +252,17 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
             <tbody>
               {METRICS.map((m) => {
                 const hi = maxIndex(m, cols);
+                const label = t(m.labelKey);
                 return (
                   <tr key={m.id} className="border-b border-grid/40 align-top">
                     <th scope="row" className="text-left text-[10px] uppercase tracking-wide text-muted font-semibold px-2 py-2 whitespace-nowrap">
-                      {m.label}
+                      {label}
                     </th>
                     {cols.map((c, i) => (
                       <td
                         key={c.key}
                         className={`px-2 py-2 num text-xs text-ink align-top ${i === hi ? `${m.maxTint} rounded` : ''}`}
-                        title={i === hi ? `Highest ${m.label.toLowerCase()} of the compared set` : undefined}
+                        title={i === hi ? t('network.compare.highestHint', { label: label.toLowerCase() }) : undefined}
                       >
                         {m.render(c, ctx)}
                       </td>
@@ -267,7 +272,7 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
               })}
               <tr className="align-top">
                 <th scope="row" className="text-left text-[10px] uppercase tracking-wide text-muted font-semibold px-2 py-2 whitespace-nowrap">
-                  Common associates
+                  {t('network.compare.commonAssociates')}
                 </th>
                 <td colSpan={cols.length} className="px-2 py-2 text-xs text-ink">
                   {cols.some((c) => c.loading) ? (
@@ -279,14 +284,14 @@ export default function CompareDrawer({ open, keys = [], baseByKey = new Map(), 
                           key={k}
                           to={`/offenders/${encodeURIComponent(k)}`}
                           className="chip !py-0 text-[10px] hover:border-amber/50 transition-colors"
-                          title="Co-accused with at least two of the compared offenders"
+                          title={t('network.compare.commonHint')}
                         >
                           {baseByKey.get(k)?.canonicalName || k}
                         </Link>
                       ))}
                     </span>
                   ) : (
-                    <span className="text-muted">none shared by two or more of the compared offenders</span>
+                    <span className="text-muted">{t('network.compare.noneShared')}</span>
                   )}
                 </td>
               </tr>

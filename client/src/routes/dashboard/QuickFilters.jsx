@@ -6,6 +6,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { useUrlFilters, DATE_RANGES } from '../../lib/filters.js';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
+import { useT, useNames } from '../../lib/i18n.jsx';
 
 function Chip({ active, onClick, children, title }) {
   return (
@@ -24,6 +25,8 @@ function Chip({ active, onClick, children, title }) {
 }
 
 export default function QuickFilters({ districts = [], loading = false }) {
+  const t = useT();
+  const tName = useNames();
   const { districtId, range, setFilter, setFilters } = useUrlFilters();
   const [searchParams] = useSearchParams();
   const hasCustomDates = !!(searchParams.get('from') || searchParams.get('to'));
@@ -31,36 +34,40 @@ export default function QuickFilters({ districts = [], loading = false }) {
   return (
     <div
       role="group"
-      aria-label="Quick filters"
+      aria-label={t('dashboard.quick.aria')}
       className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5"
     >
-      {DATE_RANGES.map((r) => (
-        <Chip
-          key={r.value}
-          active={!hasCustomDates && range === r.value}
-          onClick={() => setFilter('range', r.value === 'all' ? '' : r.value)}
-          title={`Show ${r.label.toLowerCase()}`}
-        >
-          {r.label}
-        </Chip>
-      ))}
+      {DATE_RANGES.map((r) => {
+        const label = t(r.key);
+        return (
+          <Chip
+            key={r.value}
+            active={!hasCustomDates && range === r.value}
+            onClick={() => setFilter('range', r.value === 'all' ? '' : r.value)}
+            title={t('dashboard.quick.showRange', { label: label.toLowerCase() })}
+          >
+            {label}
+          </Chip>
+        );
+      })}
       {hasCustomDates && (
-        <Chip active onClick={() => setFilters({ from: '', to: '' })} title="Clear the custom date range">
-          Custom dates ✕
+        <Chip active onClick={() => setFilters({ from: '', to: '' })} title={t('dashboard.quick.clearCustom')}>
+          {t('dashboard.quick.customDates')}
         </Chip>
       )}
       <span className="h-4 w-px shrink-0 bg-grid" aria-hidden="true" />
       {loading && !districts.length && <LoadingSkeleton height={26} className="w-64 shrink-0 !rounded-full" />}
       {districts.map((d) => {
         const active = String(d.districtId) === String(districtId);
+        const name = tName('districts', d.districtId, d.districtName) || d.districtName;
         return (
           <Chip
             key={d.districtId}
             active={active}
             onClick={() => setFilter('districtId', active ? '' : d.districtId)}
-            title={active ? 'Clear district filter' : `Filter to ${d.districtName}`}
+            title={active ? t('dashboard.quick.clearDistrict') : t('dashboard.quick.filterTo', { name })}
           >
-            {d.districtName}
+            {name}
             {active && <span aria-hidden="true"> ✕</span>}
           </Chip>
         );

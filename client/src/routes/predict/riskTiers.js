@@ -2,12 +2,14 @@
 // histogram and the station drawer. Risk scores carry no absolute scale
 // contract, so tier thresholds always derive from the distribution of the
 // FULL league on screen (never a filtered subset).
+// Tier names are translated by the caller: this module is not a hook, so
+// makeTierOf takes the `t` from the component's useT().
 
 export const TIERS = [
-  { label: 'Severe', tone: 'red', min: 0.9 },
-  { label: 'High', tone: 'amber', min: 0.75 },
-  { label: 'Guarded', tone: 'neutral', min: 0.5 },
-  { label: 'Low', tone: 'slate', min: 0 },
+  { key: 'severe', tone: 'red', min: 0.9 },
+  { key: 'high', tone: 'amber', min: 0.75 },
+  { key: 'guarded', tone: 'neutral', min: 0.5 },
+  { key: 'low', tone: 'slate', min: 0 },
 ];
 
 export function quantile(sortedAsc, q) {
@@ -18,11 +20,16 @@ export function quantile(sortedAsc, q) {
   return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (pos - lo);
 }
 
-/** rows (full league) → (score) => tier, with per-tier cut points attached. */
-export function makeTierOf(rows) {
+/** rows (full league) + t → (score) => tier, with per-tier cut points attached. */
+export function makeTierOf(rows, t) {
   const scores = (rows || []).map((r) => Number(r.riskScore) || 0).sort((a, b) => a - b);
-  const cuts = TIERS.map((t) => ({ ...t, at: quantile(scores, t.min) }));
-  const fn = (score) => cuts.find((t) => score >= t.at) || TIERS[TIERS.length - 1];
+  const cuts = TIERS.map((tier) => ({
+    ...tier,
+    at: quantile(scores, tier.min),
+    label: t(`trends.predict.tier.${tier.key}`),
+  }));
+  const lowest = cuts[cuts.length - 1];
+  const fn = (score) => cuts.find((c) => score >= c.at) || lowest;
   fn.cuts = cuts;
   return fn;
 }

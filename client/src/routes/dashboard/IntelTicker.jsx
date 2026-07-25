@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PulseDot from '../../components/PulseDot.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 const TONE_DOT = { up: 'teal', down: 'red', alert: 'amber', info: 'amber' };
 
@@ -23,6 +24,7 @@ function StepBtn({ label, onClick, children }) {
 }
 
 export default function IntelTicker({ items = [], intervalMs = 7000, className = '' }) {
+  const t = useT();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -48,11 +50,11 @@ export default function IntelTicker({ items = [], intervalMs = 7000, className =
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
       role="group"
-      aria-label="Intelligence ticker"
+      aria-label={t('dashboard.ticker.label')}
     >
       <span className="hidden sm:inline-flex items-center gap-1.5 shrink-0">
         <PulseDot color={TONE_DOT[it.tone] || 'amber'} />
-        <span className="eyebrow">Intel</span>
+        <span className="eyebrow">{t('dashboard.ticker.eyebrow')}</span>
       </span>
       <PulseDot color={TONE_DOT[it.tone] || 'amber'} className="sm:hidden shrink-0" />
       <p
@@ -64,14 +66,14 @@ export default function IntelTicker({ items = [], intervalMs = 7000, className =
       </p>
       {it.to && (
         <Link to={it.to} className="hidden sm:inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline shrink-0">
-          Open →
+          {t('dashboard.link.open')}
         </Link>
       )}
       <span className="num shrink-0 text-[10px] text-muted" aria-live="off">{Math.min(index, items.length - 1) + 1}/{items.length}</span>
-      <StepBtn label="Previous insight" onClick={() => setIndex((i) => (i - 1 + items.length) % items.length)}>
+      <StepBtn label={t('dashboard.ticker.prev')} onClick={() => setIndex((i) => (i - 1 + items.length) % items.length)}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
       </StepBtn>
-      <StepBtn label="Next insight" onClick={() => setIndex((i) => (i + 1) % items.length)}>
+      <StepBtn label={t('dashboard.ticker.next')} onClick={() => setIndex((i) => (i + 1) % items.length)}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
       </StepBtn>
     </div>

@@ -8,8 +8,9 @@
 // Keystrokes inside inputs/selects/textareas or open modals are ignored.
 import { useEffect, useRef } from 'react';
 
-/** g-then-key jump table — rendered verbatim by ShortcutsSheet; the actual
- * key handling lives in Layout.jsx's global shortcut layer. */
+/** g-then-key jump table — listed by ShortcutsSheet, which renders the label
+ * from t('dashboard.goto.<key>'); the third entry is the English fallback and
+ * the actual key handling lives in Layout.jsx's global shortcut layer. */
 export const GO_ROUTES = [
   ['d', '/', 'Dashboard'],
   ['m', '/map', 'GeoIntel map'],

@@ -27,7 +27,9 @@ export const CHORO_RAMP = {
 
 /** Curated demo questions — all covered by the backend's canned-utterance
  * grammar (functions/dappa_api/lib/copilot.js) AND the static-demo snapshot,
- * so every chip always produces a real answer. */
+ * so every chip always produces a real answer. These stay ENGLISH: they are
+ * the utterance sent to /copilot, whose parser is English-only. OmniBox shows
+ * the translated label from t('dashboard.omni.q<n>') in the same order. */
 export const CURATED_QUESTIONS = [
   'chain snatching in Mysuru City last 3 months',
   'top 5 districts for vehicle theft this year',
@@ -67,13 +69,16 @@ export function buildCompareView(t) {
  *   'share'   — 100% stacked bars (per-month percent share)
  *   'line'    — one smoothed line per crime head
  * `narrow` tunes labels/grid for <480px viewports (rotated month labels).
+ * `headLabel` (optional) maps the English head name the API returns to its
+ * name in the active language — the caller owns the lookup, this module is
+ * plain JS and never calls a hook.
  */
-export function buildTrendOption(t, mode = 'stacked', narrow = false) {
-  if (!t || !Array.isArray(t.months) || !t.months.length) return null;
-  const months = t.months.slice(-12);
-  const offset = t.months.length - months.length;
-  const series = (t.series || []).map((s) => ({
-    name: s.name,
+export function buildTrendOption(data, mode = 'stacked', narrow = false, headLabel = (n) => n) {
+  if (!data || !Array.isArray(data.months) || !data.months.length) return null;
+  const months = data.months.slice(-12);
+  const offset = data.months.length - months.length;
+  const series = (data.series || []).map((s) => ({
+    name: headLabel(s.name),
     data: (s.data || []).slice(offset).map((v) => Number(v) || 0),
   }));
   let out;
@@ -132,12 +137,14 @@ export function buildTrendOption(t, mode = 'stacked', narrow = false) {
  * 'Total' trend mode — one line for total FIRs over the FULL history (not the
  * 12-month clip), a 3-month rolling mean, red 2σ spike dots and, when the
  * /forecast payload is supplied, a dashed projection with its confidence band.
- * extras: { narrow?, forecast?: {history, forecast, model, mape}, spikes? }.
+ * extras: { narrow?, forecast?: {history, forecast, model, mape}, spikes?, t }.
+ * `t` is the caller's useT() translator — the fixed series names are UI copy.
  */
-export function buildTotalTrendOption(t, { narrow = false, forecast = null, spikes = [] } = {}) {
-  if (!t || !Array.isArray(t.months) || !t.months.length) return null;
-  const months = t.months.slice();
-  const totals = months.map((_, i) => (t.series || []).reduce((a, s) => a + (Number(s.data?.[i]) || 0), 0));
+export function buildTotalTrendOption(data, { narrow = false, forecast = null, spikes = [], t } = {}) {
+  if (!data || !Array.isArray(data.months) || !data.months.length) return null;
+  const tr = t || ((k) => k);
+  const months = data.months.slice();
+  const totals = months.map((_, i) => (data.series || []).reduce((a, s) => a + (Number(s.data?.[i]) || 0), 0));
   const fc = (forecast?.forecast || []).filter((f) => f && f.ym && !months.includes(f.ym));
   const axis = [...months, ...fc.map((f) => f.ym)];
   const n = months.length;
@@ -148,9 +155,10 @@ export function buildTotalTrendOption(t, { narrow = false, forecast = null, spik
   });
 
   const pad = (arr) => [...arr, ...fc.map(() => null)];
+  const ciLowName = tr('dashboard.series.ciLow');
   const series = [
     {
-      name: 'Total FIRs',
+      name: tr('dashboard.series.totalFirs'),
       type: 'line',
       smooth: true,
       showSymbol: false,
@@ -158,7 +166,7 @@ export function buildTotalTrendOption(t, { narrow = false, forecast = null, spik
       data: pad(totals),
     },
     {
-      name: '3-mo mean',
+      name: tr('dashboard.series.rollingMean'),
       type: 'line',
       smooth: true,
       showSymbol: false,
@@ -168,7 +176,7 @@ export function buildTotalTrendOption(t, { narrow = false, forecast = null, spik
   ];
   if (spikes.length) {
     series.push({
-      name: 'Spike (|z|≥2)',
+      name: tr('dashboard.series.spike'),
       type: 'scatter',
       symbolSize: 8,
       itemStyle: { color: '#E5484D' },
@@ -179,7 +187,7 @@ export function buildTotalTrendOption(t, { narrow = false, forecast = null, spik
   if (fc.length) {
     const bridge = totals[n - 1];
     series.push({
-      name: 'Forecast',
+      name: tr('dashboard.series.forecast'),
       type: 'line',
       smooth: true,
       lineStyle: { type: 'dashed' },
@@ -189,7 +197,7 @@ export function buildTotalTrendOption(t, { narrow = false, forecast = null, spik
     const hasBand = fc.some((f) => Number.isFinite(Number(f.lo)) && Number.isFinite(Number(f.hi)));
     if (hasBand) {
       series.push({
-        name: 'CI low',
+        name: ciLowName,
         type: 'line',
         stack: 'ci',
         showSymbol: false,
@@ -198,7 +206,7 @@ export function buildTotalTrendOption(t, { narrow = false, forecast = null, spik
         data: [...months.map(() => null), ...fc.map((f) => Math.round(Number(f.lo) || 0))],
       });
       series.push({
-        name: 'Confidence band',
+        name: tr('dashboard.series.ciBand'),
         type: 'line',
         stack: 'ci',
         showSymbol: false,
@@ -211,7 +219,7 @@ export function buildTotalTrendOption(t, { narrow = false, forecast = null, spik
   }
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'line' }, valueFormatter: (v) => fmtInt(v) },
-    legend: { bottom: 0, type: 'scroll', data: series.map((s) => s.name).filter((x) => x !== 'CI low') },
+    legend: { bottom: 0, type: 'scroll', data: series.map((s) => s.name).filter((x) => x !== ciLowName) },
     grid: { left: 48, right: 12, top: 16, bottom: narrow ? 48 : 34 },
     xAxis: {
       type: 'category',

@@ -18,6 +18,7 @@ import EmptyState from '../../components/EmptyState.jsx';
 import { useTrendsMonthly, useCategoryShare } from '../../lib/api.js';
 import { unitsForPolygon, unitInfo, normalizeUnitCode } from '../../lib/districtGeoMap.js';
 import { fmtInt, fmtNum, fmtCompact, monthLabel } from '../../lib/format.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
 import { isOpenAlert, sevRank, relTime } from './AlertsFeed.jsx';
 import { detectSpikes, hourBandLabel, unitPopulation } from './insights.js';
 import DashChart from './DashChart.jsx';
@@ -34,11 +35,12 @@ function Stat({ label, children }) {
 }
 
 function Sparkline({ trends }) {
+  const t = useT();
   const option = useMemo(() => {
-    const t = trends.data;
-    if (!t || !t.months?.length) return null;
-    const totals = t.months.map((_, i) => (t.series || []).reduce((a, s) => a + (Number(s.data?.[i]) || 0), 0));
-    const months = t.months.slice(-12);
+    const d = trends.data;
+    if (!d || !d.months?.length) return null;
+    const totals = d.months.map((_, i) => (d.series || []).reduce((a, s) => a + (Number(s.data?.[i]) || 0), 0));
+    const months = d.months.slice(-12);
     const values = totals.slice(-12);
     if (!values.some((v) => v > 0)) return null;
     const spikes = detectSpikes(totals).filter((s) => s.index >= totals.length - 12);
@@ -49,9 +51,9 @@ function Sparkline({ trends }) {
       xAxis: { type: 'category', data: months.map(monthLabel), axisLabel: { fontSize: 9, interval: 2 } },
       yAxis: { type: 'value', axisLabel: { fontSize: 9 }, splitNumber: 3 },
       series: [
-        { name: 'FIRs', type: 'line', smooth: true, showSymbol: false, areaStyle: { opacity: 0.12 }, data: values },
+        { name: t('dashboard.series.firs'), type: 'line', smooth: true, showSymbol: false, areaStyle: { opacity: 0.12 }, data: values },
         {
-          name: 'Spike (|z|≥2)',
+          name: t('dashboard.series.spike'),
           type: 'scatter',
           symbolSize: 7,
           itemStyle: { color: '#E5484D' },
@@ -60,10 +62,10 @@ function Sparkline({ trends }) {
         },
       ],
     };
-  }, [trends.data]);
+  }, [trends.data, t]);
 
   if (trends.isLoading) return <LoadingSkeleton height={110} />;
-  if (!option) return <p className="text-[11px] text-muted">No monthly history for this unit.</p>;
+  if (!option) return <p className="text-[11px] text-muted">{t('dashboard.drill.noHistory')}</p>;
   return <DashChart option={option} height={110} />;
 }
 
@@ -71,6 +73,8 @@ export default function DistrictDrillSheet({
   polygon, onClose, baseParams = {}, rows = [], alerts = [], hotspots = [],
   riskRows = [], linkSearch = '', activeDistrictId = '', onFilterDistrict,
 }) {
+  const t = useT();
+  const tName = useNames();
   const units = useMemo(() => unitsForPolygon(polygon), [polygon]);
   const unitRows = useMemo(
     () => rows.filter((r) => units.includes(normalizeUnitCode(r.districtId))),
@@ -125,10 +129,10 @@ export default function DistrictDrillSheet({
   const isActive = normalizeUnitCode(activeDistrictId) === unit;
 
   return (
-    <Sheet open={!!polygon} onClose={onClose} title={polygon || 'District'}>
+    <Sheet open={!!polygon} onClose={onClose} title={polygon || t('dashboard.drill.district')}>
       <div className="space-y-3.5 px-1">
         {units.length > 1 && (
-          <div role="group" aria-label="Police units in this district" className="flex flex-wrap gap-1.5">
+          <div role="group" aria-label={t('dashboard.drill.unitsAria')} className="flex flex-wrap gap-1.5">
             {units.map((u) => (
               <button
                 key={u}
@@ -139,52 +143,60 @@ export default function DistrictDrillSheet({
                   u === unit ? '!border-amber/60 !text-amber bg-amber/5' : 'hover:border-amber/40'
                 }`}
               >
-                {unitInfo(u)?.name || u}
+                {tName('districts', u, unitInfo(u)?.name || u) || u}
               </button>
             ))}
           </div>
         )}
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge tone="slate">{unitInfo(unit)?.name || unit}</Badge>
-          {row?.alert && <Badge tone="red" pulse>anomaly</Badge>}
+          <Badge tone="slate">{tName('districts', unit, unitInfo(unit)?.name || unit) || unit}</Badge>
+          {row?.alert && <Badge tone="red" pulse>{t('dashboard.drill.anomaly')}</Badge>}
           {peak && (
-            <Badge tone="amber">peak {hourBandLabel(peak.hourBandStart, peak.hourBandEnd)}</Badge>
+            <Badge tone="amber">
+              {t('dashboard.drill.peak', { band: hourBandLabel(peak.hourBandStart, peak.hourBandEnd) })}
+            </Badge>
           )}
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <Stat label="Cases (period)">{fmtInt(row?.caseCount)}</Stat>
-          <Stat label="Rate / lakh">
+          <Stat label={t('dashboard.drill.casesPeriod')}>{fmtInt(row?.caseCount)}</Stat>
+          <Stat label={t('dashboard.drill.ratePerLakh')}>
             {Number.isFinite(Number(row?.ratePerLakh)) ? fmtNum(row.ratePerLakh, 1) : '—'}
           </Stat>
-          <Stat label="MoM change">
+          <Stat label={t('dashboard.drill.momChange')}>
             <StatDelta value={Number(row?.momDeltaPct)} positiveIsGood={false} />
           </Stat>
-          <Stat label="Population (derived)">{population ? fmtCompact(population) : '—'}</Stat>
+          <Stat label={t('dashboard.drill.population')}>{population ? fmtCompact(population) : '—'}</Stat>
         </div>
         {units.length > 1 && (
           <p className="text-[11px] text-muted">
-            District total across {units.length} units: <span className="num text-ink">{fmtInt(polygonTotal)}</span>
+            {t('dashboard.drill.districtTotal', { n: units.length, total: fmtInt(polygonTotal) })}
           </p>
         )}
 
         <section>
-          <p className="eyebrow mb-1">12-month trend · red dot = 2σ spike</p>
+          <p className="eyebrow mb-1">{t('dashboard.drill.trendHeading')}</p>
           <Sparkline trends={trends} />
         </section>
 
         <section>
-          <p className="eyebrow mb-1.5">Top crime heads</p>
+          <p className="eyebrow mb-1.5">{t('dashboard.drill.topHeads')}</p>
           {share.isLoading ? (
             <LoadingSkeleton lines={4} />
           ) : !topHeads.items.length ? (
-            <EmptyState compact title="No category data" message="No head-level counts for this unit." />
+            <EmptyState
+              compact
+              title={t('dashboard.drill.noCategory')}
+              message={t('dashboard.drill.noCategoryHint')}
+            />
           ) : (
             <ul className="space-y-1.5">
               {topHeads.items.map((s) => (
                 <li key={s.id || s.name} className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-xs text-ink">{s.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-ink">
+                    {tName('crimeHeads', s.id, s.name) || s.name}
+                  </span>
                   <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-grid/50" aria-hidden="true">
                     <span
                       className="block h-full rounded-full bg-amber/80"
@@ -200,26 +212,28 @@ export default function DistrictDrillSheet({
 
         {topRisk && (
           <p className="text-[11px] text-muted">
-            Highest-risk station:{' '}
+            {t('dashboard.drill.topRiskPrefix')}{' '}
             <Link to={linkTo('/predict')} className="text-amber hover:underline">
               {topRisk.unitName || topRisk.unitId}
             </Link>{' '}
-            · risk <span className="num text-ink">{fmtNum(topRisk.riskScore, 1)}</span> (30d)
+            {t('dashboard.drill.topRiskSuffix', { score: fmtNum(topRisk.riskScore, 1) })}
           </p>
         )}
 
         {openAlerts.length > 0 && (
           <section>
-            <p className="eyebrow mb-1.5">Open alerts</p>
+            <p className="eyebrow mb-1.5">{t('dashboard.drill.openAlerts')}</p>
             <ul className="space-y-1.5">
               {openAlerts.map((a, i) => {
                 const sev = String(a.severity || 'medium').toLowerCase();
                 return (
                   <li key={a.alertId || i} className="flex items-center gap-2">
-                    <Badge tone={SEV_TONE[sev] || 'neutral'} pulse={sev === 'critical'}>{sev}</Badge>
-                    <span className="min-w-0 flex-1 truncate text-xs text-ink">{a.headName || 'Anomaly'}</span>
-                    <span className="num shrink-0 text-[11px] text-muted">z {fmtNum(a.zScore, 1)}</span>
-                    <span className="num shrink-0 text-[10px] text-muted/80">{relTime(a.periodEnd)}</span>
+                    <Badge tone={SEV_TONE[sev] || 'neutral'} pulse={sev === 'critical'}>{t(`dashboard.sev.${sev}`)}</Badge>
+                    <span className="min-w-0 flex-1 truncate text-xs text-ink">
+                      {tName('crimeHeads', a.crimeHeadId, a.headName) || t('dashboard.alerts.anomaly')}
+                    </span>
+                    <span className="num shrink-0 text-[11px] text-muted">{t('dashboard.alerts.z', { v: fmtNum(a.zScore, 1) })}</span>
+                    <span className="num shrink-0 text-[10px] text-muted/80">{relTime(a.periodEnd, t)}</span>
                   </li>
                 );
               })}
@@ -233,11 +247,11 @@ export default function DistrictDrillSheet({
             className={`btn min-h-[44px] ${isActive ? '!border-amber/60 !text-amber' : ''}`}
             onClick={() => onFilterDistrict?.(isActive ? '' : unit)}
           >
-            {isActive ? 'Clear dashboard filter' : 'Filter dashboard'}
+            {t(isActive ? 'dashboard.drill.clearFilter' : 'dashboard.drill.filter')}
           </button>
-          <Link to={linkTo('/map')} className="btn min-h-[44px]">GeoIntel →</Link>
-          <Link to={linkTo('/trends')} className="btn min-h-[44px]">Trends →</Link>
-          <Link to={linkTo('/cases')} className="btn min-h-[44px]">Cases →</Link>
+          <Link to={linkTo('/map')} className="btn min-h-[44px]">{t('dashboard.link.geointel')}</Link>
+          <Link to={linkTo('/trends')} className="btn min-h-[44px]">{t('dashboard.link.trends')}</Link>
+          <Link to={linkTo('/cases')} className="btn min-h-[44px]">{t('dashboard.link.cases')}</Link>
         </div>
       </div>
     </Sheet>

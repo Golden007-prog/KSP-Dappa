@@ -16,13 +16,17 @@ import { useToast } from '../../components/ToastProvider.jsx';
 import ChartBody from '../trends/ChartBody.jsx';
 import { seriesColors, SURFACE } from '../trends/palettes.js';
 import { downloadCsv, slug } from '../trends/csv.js';
-import { fmtNum, monthLabel } from '../../lib/format.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
+import { fmtInt, fmtNum, monthLabel } from '../../lib/format.js';
 
 const HOLDOUT = 6;
 const MIN_HISTORY = 18;
 const WINDOW = 18; // months drawn
 
-function runBacktest(history) {
+// CSV column names are data keys, so they stay English whatever the UI shows.
+const CSV_HEADER = { seasonal: 'seasonal-naive', drift: 'drift', mean3: '3-month-mean' };
+
+function runBacktest(history, t) {
   if (!history || history.length < MIN_HISTORY) return null;
   const vals = history.map((r) => Number(r.actual) || 0);
   const n = vals.length;
@@ -32,20 +36,20 @@ function runBacktest(history) {
   const models = [
     {
       key: 'seasonal',
-      name: 'Seasonal naive',
-      note: 'same month last year',
+      name: t('trends.predict.bt.seasonal'),
+      note: t('trends.predict.bt.seasonalNote'),
       preds: Array.from({ length: HOLDOUT }, (_, i) => vals[n - HOLDOUT + i - 12]),
     },
     {
       key: 'drift',
-      name: 'Drift',
-      note: 'last value + average slope',
+      name: t('trends.predict.bt.drift'),
+      note: t('trends.predict.bt.driftNote'),
       preds: Array.from({ length: HOLDOUT }, (_, i) => Math.max(0, train[train.length - 1] + drift * (i + 1))),
     },
     {
       key: 'mean3',
-      name: '3-month mean',
-      note: 'flat recent average',
+      name: t('trends.predict.bt.mean3'),
+      note: t('trends.predict.bt.mean3Note'),
       preds: Array.from({ length: HOLDOUT }, () => mean3),
     },
   ];
@@ -70,6 +74,8 @@ function runBacktest(history) {
 }
 
 export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId }) {
+  const t = useT();
+  const tName = useNames();
   const toast = useToast();
   const lookups = useLookups();
   const { theme } = useTheme();
@@ -82,10 +88,15 @@ export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId })
   const q = useForecast({ districtId, crimeHeadId });
 
   const history = q.data?.history || [];
-  const bt = useMemo(() => runBacktest(history), [history]);
+  const bt = useMemo(() => runBacktest(history, t), [history, t]);
 
-  const districtName = (lookups.data?.districts || []).find((d) => d.districtId === districtId)?.districtName || districtId;
-  const headName = (lookups.data?.crimeHeads || []).find((h) => h.crimeHeadId === String(crimeHeadId))?.headName || `head ${crimeHeadId}`;
+  // Raw API names feed the CSV filename slug; translated ones feed the card.
+  const districtRaw = (lookups.data?.districts || []).find((d) => d.districtId === districtId)?.districtName || districtId;
+  const headRaw = (lookups.data?.crimeHeads || []).find((h) => h.crimeHeadId === String(crimeHeadId))?.headName || '';
+  const districtName = tName('districts', districtId, districtRaw);
+  const headName = headRaw
+    ? tName('crimeHeads', crimeHeadId, headRaw)
+    : t('trends.predict.headFallback', { id: crimeHeadId });
 
   const option = useMemo(() => {
     if (!bt) return null;
@@ -112,7 +123,7 @@ export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId })
       yAxis: { type: 'value' },
       series: [
         {
-          name: 'Actual',
+          name: t('trends.predict.bt.actual'),
           type: 'line',
           data: win.map((r) => r.actual),
           showSymbol: false,
@@ -122,38 +133,42 @@ export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId })
           markArea: {
             silent: true,
             itemStyle: { color: surface.grid, opacity: 0.25 },
-            label: { show: true, position: 'insideTop', color: surface.muted, fontSize: 9, formatter: 'holdout — models never saw these months' },
+            label: { show: true, position: 'insideTop', color: surface.muted, fontSize: 9, formatter: t('trends.predict.bt.holdout') },
             data: [[{ xAxis: Math.max(0, holdAt - 0.5) }, { xAxis: labels.length - 0.5 }]],
           },
         },
         ...modelSeries,
       ],
     };
-  }, [bt, history, colors, surface]);
+  }, [bt, history, colors, surface, t]);
 
   const exportCsv = () => {
     if (!bt) return;
     const holdRows = history.slice(bt.holdStart);
     downloadCsv(
-      `dappa-backtest_${slug(`${districtName}-${headName}`)}`,
-      ['month', 'actual', ...bt.models.map((m) => slug(m.name))],
+      `dappa-backtest_${slug(`${districtRaw}-${headRaw || crimeHeadId}`)}`,
+      ['month', 'actual', ...bt.models.map((m) => CSV_HEADER[m.key] || m.key)],
       holdRows.map((r, i) => [r.ym, r.actual, ...bt.models.map((m) => fmtNum(m.preds[i], 1))]),
     );
-    toast.success('Holdout backtest exported');
+    toast.success(t('trends.predict.toast.backtest'));
   };
 
   return (
     <Card
-      title="Forecast accuracy — 6-month backtest"
-      subtitle={`How well would simple models have predicted ${districtName} × ${headName}? Fitted on earlier history only, scored on the shaded holdout`}
+      title={t('trends.predict.bt.title')}
+      subtitle={t('trends.predict.bt.subtitle', { district: districtName, head: headName })}
       actions={(
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           {q.data?.model && q.data?.mape != null && (
-            <Tooltip label="The server model's own backtest error, for comparison">
-              <span><Badge tone="neutral">{q.data.model} MAPE {fmtNum(q.data.mape, 1)}%</Badge></span>
+            <Tooltip label={t('trends.predict.bt.serverTip')}>
+              <span>
+                <Badge tone="neutral">
+                  {t('trends.predict.bt.serverBadge', { model: q.data.model, value: fmtNum(q.data.mape, 1) })}
+                </Badge>
+              </span>
             </Tooltip>
           )}
-          <Tooltip label="Download the holdout months with every model's prediction">
+          <Tooltip label={t('trends.predict.bt.csvTip')}>
             <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={!bt}>CSV</button>
           </Tooltip>
         </div>
@@ -166,20 +181,20 @@ export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId })
         error={q.error}
         onRetry={() => q.refetch()}
         emptyMessage={history.length && history.length < MIN_HISTORY
-          ? `Backtest needs at least ${MIN_HISTORY} months of history for this district × head.`
-          : 'No forecast history for this district × crime head — run the analytics pass.'}
+          ? t('trends.predict.bt.needMonths', { n: fmtInt(MIN_HISTORY) })
+          : t('trends.predict.bt.empty')}
       />
       {bt && (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-xs border-collapse min-w-[420px]">
             <thead>
               <tr className="border-b border-grid text-[11px] uppercase tracking-wide text-muted">
-                <th scope="col" className="text-left py-1.5 pr-2 font-semibold">Challenger model</th>
+                <th scope="col" className="text-left py-1.5 pr-2 font-semibold">{t('trends.predict.bt.colModel')}</th>
                 <th scope="col" className="text-right py-1.5 px-2 font-semibold">MAPE</th>
                 <th scope="col" className="text-right py-1.5 px-2 font-semibold">MAE</th>
                 <th scope="col" className="text-right py-1.5 pl-2 font-semibold">
-                  <Tooltip label="Mean signed error — positive means the model over-predicts">
-                    <span className="cursor-help underline decoration-dotted">Bias</span>
+                  <Tooltip label={t('trends.predict.bt.biasTip')}>
+                    <span className="cursor-help underline decoration-dotted">{t('trends.predict.bt.colBias')}</span>
                   </Tooltip>
                 </th>
               </tr>
@@ -190,7 +205,7 @@ export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId })
                   <td className="py-1.5 pr-2">
                     <span className="text-ink font-medium">{m.name}</span>
                     <span className="text-muted"> — {m.note}</span>
-                    {m.key === bt.best && <Badge tone="teal" className="ml-1.5">best</Badge>}
+                    {m.key === bt.best && <Badge tone="teal" className="ml-1.5">{t('trends.predict.bt.best')}</Badge>}
                   </td>
                   <td className="num text-right py-1.5 px-2 text-ink">{m.mape === null ? '—' : `${fmtNum(m.mape, 1)}%`}</td>
                   <td className="num text-right py-1.5 px-2 text-ink">{fmtNum(m.mae, 1)}</td>
@@ -200,9 +215,7 @@ export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId })
             </tbody>
           </table>
           <p className="text-[11px] text-muted mt-2">
-            Transparent challengers, computed in the browser: if the deployed model can't beat
-            "same month last year", trust its forecasts less. One holdout window — not a full
-            cross-validation.
+            {t('trends.predict.bt.caveat')}
           </p>
         </div>
       )}

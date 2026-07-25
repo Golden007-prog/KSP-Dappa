@@ -9,6 +9,7 @@ import { useToast } from '../../components/ToastProvider.jsx';
 import { useLookups } from '../../lib/api.js';
 import { useUrlFilters, DATE_RANGES } from '../../lib/filters.js';
 import { dateLabel } from '../../lib/format.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
 
 const KEY = 'dappa-dash-saved-views';
 const MAX_VIEWS = 12;
@@ -28,6 +29,8 @@ function writeViews(views) {
 
 export default function SavedViews({ open, onClose }) {
   const toast = useToast();
+  const t = useT();
+  const tName = useNames();
   const lookups = useLookups();
   const { setFilters } = useUrlFilters();
   const [searchParams] = useSearchParams();
@@ -47,16 +50,21 @@ export default function SavedViews({ open, onClose }) {
   const describe = (f) => {
     const bits = [];
     if (f.districtId) {
-      bits.push((lookups.data?.districts || []).find((d) => String(d.districtId) === String(f.districtId))?.districtName
-        || `District ${f.districtId}`);
+      const raw = (lookups.data?.districts || []).find((d) => String(d.districtId) === String(f.districtId))?.districtName
+        || t('dashboard.filters.district', { id: f.districtId });
+      bits.push(tName('districts', f.districtId, raw) || raw);
     }
     if (f.crimeHeadId) {
-      bits.push((lookups.data?.crimeHeads || []).find((h) => String(h.crimeHeadId) === String(f.crimeHeadId))?.headName
-        || `Head ${f.crimeHeadId}`);
+      const raw = (lookups.data?.crimeHeads || []).find((h) => String(h.crimeHeadId) === String(f.crimeHeadId))?.headName
+        || t('dashboard.filters.head', { id: f.crimeHeadId });
+      bits.push(tName('crimeHeads', f.crimeHeadId, raw) || raw);
     }
     if (f.from || f.to) bits.push(`${f.from ? dateLabel(f.from) : '…'} → ${f.to ? dateLabel(f.to) : '…'}`);
-    else if (f.range && f.range !== 'all') bits.push(DATE_RANGES.find((r) => r.value === f.range)?.label || f.range);
-    return bits.length ? bits.join(' · ') : 'Statewide · all heads · all time';
+    else if (f.range && f.range !== 'all') {
+      const r = DATE_RANGES.find((x) => x.value === f.range);
+      bits.push(r ? t(r.key) : f.range);
+    }
+    return bits.length ? bits.join(' · ') : t('dashboard.views.describeNone');
   };
 
   const save = () => {
@@ -66,7 +74,7 @@ export default function SavedViews({ open, onClose }) {
     setViews(next);
     writeViews(next);
     setName('');
-    toast.success(`Saved view “${label}”`);
+    toast.success(t('dashboard.views.saved', { name: label }));
   };
 
   const apply = (view) => {
@@ -78,7 +86,7 @@ export default function SavedViews({ open, onClose }) {
       from: f.from || '',
       to: f.to || '',
     });
-    toast.info(`Applied “${view.name}”`);
+    toast.info(t('dashboard.views.applied', { name: view.name }));
     onClose();
   };
 
@@ -86,14 +94,14 @@ export default function SavedViews({ open, onClose }) {
     const next = views.filter((v) => v.id !== view.id);
     setViews(next);
     writeViews(next);
-    toast.info(`Deleted “${view.name}”`);
+    toast.info(t('dashboard.views.deleted', { name: view.name }));
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title="Saved views">
+    <Sheet open={open} onClose={onClose} title={t('dashboard.views.title')}>
       <div className="space-y-4 px-1">
         <section className="space-y-2">
-          <p className="eyebrow">Save the current view</p>
+          <p className="eyebrow">{t('dashboard.views.saveCurrent')}</p>
           <p className="text-xs text-muted">{describe(current)}</p>
           <form
             className="flex gap-2"
@@ -101,18 +109,18 @@ export default function SavedViews({ open, onClose }) {
           >
             <input
               className="input-dark flex-1 min-h-[44px]"
-              placeholder="View name (optional)"
+              placeholder={t('dashboard.views.namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              aria-label="View name"
+              aria-label={t('dashboard.views.nameAria')}
             />
-            <button type="submit" className="btn-primary min-h-[44px] shrink-0">Save</button>
+            <button type="submit" className="btn-primary min-h-[44px] shrink-0">{t('common.action.save')}</button>
           </form>
         </section>
         <section>
-          <p className="eyebrow mb-1.5">Saved</p>
+          <p className="eyebrow mb-1.5">{t('dashboard.views.savedHeading')}</p>
           {views.length === 0 ? (
-            <EmptyState compact title="No saved views" message="Save the current filter set above to reuse it later." />
+            <EmptyState compact title={t('dashboard.views.empty')} message={t('dashboard.views.emptyHint')} />
           ) : (
             <ul className="divide-y divide-grid/50">
               {views.map((v) => (
@@ -122,12 +130,12 @@ export default function SavedViews({ open, onClose }) {
                     <p className="truncate text-[11px] text-muted">{describe(v.filters || {})}</p>
                   </div>
                   <button type="button" className="btn min-h-[44px] shrink-0" onClick={() => apply(v)}>
-                    Apply
+                    {t('common.action.apply')}
                   </button>
                   <button
                     type="button"
                     onClick={() => remove(v)}
-                    aria-label={`Delete view ${v.name}`}
+                    aria-label={t('dashboard.views.deleteAria', { name: v.name })}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:text-signal hover:bg-grid/40 transition-colors"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -140,7 +148,7 @@ export default function SavedViews({ open, onClose }) {
             </ul>
           )}
         </section>
-        <p className="text-[11px] text-muted">Views are stored only in this browser (localStorage).</p>
+        <p className="text-[11px] text-muted">{t('dashboard.views.footnote')}</p>
       </div>
     </Sheet>
   );

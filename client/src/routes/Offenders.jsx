@@ -24,7 +24,8 @@ import Tooltip from '../components/Tooltip.jsx';
 import KpiTile from '../components/KpiTile.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt } from '../lib/format.js';
-import { RiskBadge, MoChips } from './offenders/common.jsx';
+import { useT } from '../lib/i18n.jsx';
+import { RiskBadge, MoChips, useDistrictName } from './offenders/common.jsx';
 import CompareDrawer from './offenders/CompareDrawer.jsx';
 import MoMatrix from './offenders/MoMatrix.jsx';
 import { RiskBandStrip, MoTagChips, RecentRow } from './offenders/FilterStrips.jsx';
@@ -41,11 +42,11 @@ const FETCH_CAP = 200; // API perPage ceiling — search/paging run client-side 
 const REPEAT_PREF = 'dappa-offenders-repeat';
 const MO_TAG_CAP = 14;
 
-const BANDS = [
-  { value: 'all', label: 'All' },
-  { value: 'high', label: 'High ≥70' },
-  { value: 'med', label: 'Med 40–69' },
-  { value: 'low', label: 'Low <40' },
+const BAND_KEYS = [
+  { value: 'all', key: 'network.off.bandAll' },
+  { value: 'high', key: 'network.off.bandHigh' },
+  { value: 'med', key: 'network.off.bandMed' },
+  { value: 'low', key: 'network.off.bandLow' },
 ];
 
 function inBand(band, score) {
@@ -63,20 +64,24 @@ function bandOf(score) {
   return n >= 70 ? 'high' : n >= 40 ? 'med' : 'low';
 }
 
-const CSV_COLUMNS = [
-  { key: 'personKey', label: 'Person key' },
-  { key: 'canonicalName', label: 'Canonical name' },
-  { label: 'Aliases', map: (r) => (r.aliases || []).join('; ') },
-  { key: 'caseCount', label: 'Cases' },
-  { label: 'Districts', map: (r) => (r.districts || []).join('; ') },
-  { label: 'MO tags', map: (r) => (r.moTags || []).join('; ') },
-  { key: 'riskScore', label: 'Risk score' },
-  { label: 'Community', map: (r) => (r.communityId ?? '') },
+/** CSV headers follow the UI language; the values stay as the API sent them
+ *  except district names, which the sheet reads better translated. */
+const csvColumns = (t, dName) => [
+  { key: 'personKey', label: t('network.csv.personKey') },
+  { key: 'canonicalName', label: t('network.csv.canonicalName') },
+  { label: t('network.csv.aliases'), map: (r) => (r.aliases || []).join('; ') },
+  { key: 'caseCount', label: t('network.csv.cases') },
+  { label: t('network.csv.districts'), map: (r) => (r.districts || []).map(dName).join('; ') },
+  { label: t('network.csv.moTags'), map: (r) => (r.moTags || []).join('; ') },
+  { key: 'riskScore', label: t('network.csv.riskScore') },
+  { label: t('network.csv.community'), map: (r) => (r.communityId ?? '') },
 ];
 
 export default function Offenders() {
   const navigate = useNavigate();
   const toast = useToast();
+  const t = useT();
+  const localDistrict = useDistrictName();
   const [searchParams, setSearchParams] = useSearchParams();
   const { districtId } = useUrlFilters();
   const lookups = useLookups();
@@ -260,7 +265,7 @@ export default function Offenders() {
     setCompare((prev) => {
       if (prev.includes(key)) return prev.filter((k) => k !== key);
       if (prev.length >= COMPARE_MAX) {
-        toast.info(`Compare holds up to ${COMPARE_MAX} offenders — remove one first.`);
+        toast.info(t('network.toast.compareFullShort', { n: fmtInt(COMPARE_MAX) }));
         return prev;
       }
       return [...prev, key];
@@ -271,7 +276,7 @@ export default function Offenders() {
 
   const onToggleWatch = (r) => {
     const res = toggleWatchKey(String(r.personKey), r.canonicalName);
-    if (res.status === 'full') toast.info(`Watchlist holds up to ${WATCH_MAX} people — remove one first.`);
+    if (res.status === 'full') toast.info(t('network.toast.watchFull', { n: fmtInt(WATCH_MAX) }));
   };
 
   // Cell click applies/clears an MO pair from the co-occurrence matrix
@@ -284,21 +289,26 @@ export default function Offenders() {
   };
 
   const exportCsv = () => {
-    if (!sorted.length) { toast.info('Nothing to export under the current filters.'); return; }
-    downloadCsv(`dappa-offenders-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, sorted);
-    toast.success(`Exported ${fmtInt(sorted.length)} offender row${sorted.length === 1 ? '' : 's'} to CSV.`);
+    if (!sorted.length) { toast.info(t('network.toast.nothingToExportFilters')); return; }
+    downloadCsv(
+      `dappa-offenders-${new Date().toISOString().slice(0, 10)}.csv`,
+      csvColumns(t, localDistrict),
+      sorted,
+    );
+    toast.success(t(sorted.length === 1 ? 'network.toast.offendersCsv.one' : 'network.toast.offendersCsv.other',
+      { n: fmtInt(sorted.length) }));
   };
 
   const copyLink = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.success('View link copied — search, band and MO filters travel with it.');
-    else toast.error('Could not copy the link in this browser.');
+    if (ok) toast.success(t('network.toast.offenderLinkCopied'));
+    else toast.error(t('network.toast.copyFailed'));
   };
 
   const columns = [
     {
       key: 'canonicalName',
-      label: 'Canonical name',
+      label: t('network.table.colName'),
       sortable: true,
       render: (r) => (
         <div className="flex items-center gap-1.5 min-w-0">
@@ -312,7 +322,7 @@ export default function Offenders() {
               className="accent-amber h-4 w-4"
               checked={compare.includes(String(r.personKey))}
               onChange={() => toggleCompare(r)}
-              aria-label={`Select ${r.canonicalName || r.personKey} for comparison`}
+              aria-label={t('network.table.compareAria', { name: r.canonicalName || r.personKey })}
             />
           </label>
           <div className="min-w-0">
@@ -331,25 +341,25 @@ export default function Offenders() {
     },
     {
       key: 'aliasCount',
-      label: 'Aliases',
+      label: t('network.table.colAliases'),
       sortable: true,
       align: 'right',
       width: 70,
       render: (r) => (
-        <span title={(r.aliases || []).join(', ') || 'no aliases'}>{fmtInt((r.aliases || []).length)}</span>
+        <span title={(r.aliases || []).join(', ') || t('network.table.noAliases')}>{fmtInt((r.aliases || []).length)}</span>
       ),
     },
-    { key: 'caseCount', label: 'Cases', sortable: true, align: 'right', width: 70 },
+    { key: 'caseCount', label: t('network.table.colCases'), sortable: true, align: 'right', width: 70 },
     {
       key: 'districtCount',
-      label: 'Districts',
+      label: t('network.table.colDistricts'),
       sortable: true,
       align: 'right',
       width: 90,
       render: (r) => {
         const n = (r.districts || []).length;
         return (
-          <span className="inline-flex items-center justify-end gap-1.5" title={(r.districts || []).join(', ') || '—'}>
+          <span className="inline-flex items-center justify-end gap-1.5" title={(r.districts || []).map(localDistrict).join(', ') || '—'}>
             {n > 1 && (
               <span className="inline-flex gap-0.5" aria-hidden="true">
                 {Array.from({ length: Math.min(n, 4) }).map((_, i) => (
@@ -365,12 +375,12 @@ export default function Offenders() {
     },
     {
       key: 'moTags',
-      label: 'MO tags',
+      label: t('network.table.colMo'),
       render: (r) => <MoChips tags={r.moTags || []} />,
     },
     {
       key: 'riskScore',
-      label: 'Risk',
+      label: t('network.table.colRisk'),
       sortable: true,
       align: 'right',
       width: 80,
@@ -378,7 +388,7 @@ export default function Offenders() {
     },
     {
       key: 'communityId',
-      label: 'Group',
+      label: t('network.table.colGroup'),
       align: 'center',
       width: 80,
       render: (r) => (r.communityId === null || r.communityId === undefined ? (
@@ -388,7 +398,7 @@ export default function Offenders() {
           to={`/network?communityId=${encodeURIComponent(r.communityId)}&focus=${encodeURIComponent(r.personKey)}`}
           className="chip !py-0 text-[10px] hover:border-amber/50 transition-colors"
           onClick={(e) => e.stopPropagation()}
-          title="Open this community in the Network Explorer"
+          title={t('network.table.openCommunity')}
         >
           <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: communityColor(r.communityId) }} />
           #{String(r.communityId)}
@@ -410,8 +420,9 @@ export default function Offenders() {
             }`}
             onClick={(e) => { e.stopPropagation(); onToggleWatch(r); }}
             aria-pressed={watched}
-            aria-label={`${watched ? 'Remove' : 'Add'} ${r.canonicalName || r.personKey} ${watched ? 'from' : 'to'} the watchlist`}
-            title={watched ? 'Remove from watchlist' : 'Add to watchlist (shared with Network + Offender 360)'}
+            aria-label={t(watched ? 'network.table.watchRemoveAria' : 'network.table.watchAddAria',
+              { name: r.canonicalName || r.personKey })}
+            title={t(watched ? 'network.table.watchRemoveHint' : 'network.table.watchAddHint')}
           >
             {watched ? '★' : '☆'}
           </button>
@@ -423,23 +434,23 @@ export default function Offenders() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="page-title">Offenders</h1>
-        <p className="page-subtitle">Identity-resolved persons across FIRs — linked by alias, phone and address signals</p>
+        <h1 className="page-title">{t('network.off.title')}</h1>
+        <p className="page-subtitle">{t('network.off.subtitle')}</p>
       </div>
 
       <FilterBar show={['district']}>
         <input
           className="input-dark !py-2 w-52 sm:w-64"
-          placeholder="Search name, alias, MO tag…"
+          placeholder={t('network.off.searchPlaceholder')}
           value={search}
           onChange={(e) => setParams({ q: e.target.value })}
-          aria-label="Search offenders"
+          aria-label={t('network.off.searchAria')}
         />
         <SegmentedControl
-          ariaLabel="Risk band filter"
+          ariaLabel={t('network.off.bandAria')}
           value={band}
           onChange={(v) => setParams({ band: v === 'all' ? '' : v })}
-          options={BANDS}
+          options={BAND_KEYS.map((b) => ({ value: b.value, label: t(b.key) }))}
         />
         <label className="flex items-center gap-2 text-xs text-muted cursor-pointer select-none whitespace-nowrap min-h-[40px] px-0.5">
           <input
@@ -448,16 +459,16 @@ export default function Offenders() {
             checked={repeatOnly}
             onChange={(e) => setRepeat(e.target.checked)}
           />
-          Repeat only (≥3 cases)
+          {t('network.off.repeatOnly')}
         </label>
         <button
           type="button"
           className={`chip !py-1 min-h-[40px] whitespace-nowrap transition-colors hover:border-amber/50 ${watchOnly ? '!border-amber text-amber' : ''}`}
           onClick={() => setParams({ watch: watchOnly ? '' : '1' })}
           aria-pressed={watchOnly}
-          title={watchOnly ? 'Show all offenders again' : 'Only offenders on the shared watchlist'}
+          title={t(watchOnly ? 'network.off.watchChipOn' : 'network.off.watchChipOff')}
         >
-          ★ Watchlist
+          {t('network.off.watchChip')}
           <span className="num text-muted">{fmtInt(kpi.watched)}</span>
         </button>
         <button
@@ -465,39 +476,39 @@ export default function Offenders() {
           className={`chip !py-1 min-h-[40px] whitespace-nowrap transition-colors hover:border-amber/50 ${spanMulti ? '!border-amber text-amber' : ''}`}
           onClick={() => setParams({ span: spanMulti ? '' : 'multi' })}
           aria-pressed={spanMulti}
-          title={spanMulti ? 'Show all offenders again' : 'Only offenders active across 2+ districts (cross-jurisdiction)'}
+          title={t(spanMulti ? 'network.off.crossDistrictOn' : 'network.off.crossDistrictOff')}
         >
-          Cross-district
+          {t('network.off.crossDistrict')}
           <span className="num text-muted">{fmtInt(kpi.multi)}</span>
         </button>
       </FilterBar>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <KpiTile
-          label="Loaded offenders"
+          label={t('network.off.kpiLoaded')}
           value={kpi.total}
           loading={offenders.isLoading}
-          hint={`${fmtInt(serverTotal)} on file`}
+          hint={t('network.off.kpiLoadedHint', { n: fmtInt(serverTotal) })}
         />
         <KpiTile
-          label="High risk (≥70)"
+          label={t('network.off.kpiHigh')}
           value={kpi.high}
           accent="red"
           loading={offenders.isLoading}
-          hint="in the loaded slice"
+          hint={t('network.off.kpiHighHint')}
         />
         <KpiTile
-          label="Cross-district"
+          label={t('network.off.kpiCross')}
           value={kpi.multi}
           accent="teal"
           loading={offenders.isLoading}
-          hint="active in 2+ districts"
+          hint={t('network.off.kpiCrossHint')}
         />
         <KpiTile
-          label="Watchlisted"
+          label={t('network.off.kpiWatched')}
           value={kpi.watched}
           loading={offenders.isLoading}
-          hint="starred anywhere in the app"
+          hint={t('network.off.kpiWatchedHint')}
         />
       </div>
 
@@ -516,21 +527,26 @@ export default function Offenders() {
 
       <Card
         padded={false}
-        title="Resolved persons"
+        title={t('network.table.title')}
         subtitle={offenders.isLoading
-          ? 'Loading registry…'
-          : `${fmtInt(sorted.length)} shown${search ? ` for “${search.trim()}”` : ''} · ${fmtInt(serverTotal)} total on file`}
+          ? t('network.table.loading')
+          : t(search ? 'network.table.subtitleSearch' : 'network.table.subtitle', {
+            shown: fmtInt(sorted.length),
+            total: fmtInt(serverTotal),
+            q: search.trim(),
+          })}
         actions={(
           <>
             {truncated && (
               <Badge tone="slate">
-                top {FETCH_CAP}<span className="hidden sm:inline"> by risk</span> loaded
+                <span className="hidden sm:inline">{t('network.table.truncatedLong', { n: fmtInt(FETCH_CAP) })}</span>
+                <span className="sm:hidden">{t('network.table.truncatedShort', { n: fmtInt(FETCH_CAP) })}</span>
               </Badge>
             )}
             <DensityToggle className="hidden md:inline-flex" />
-            <Tooltip label="Copy a shareable link to this view">
+            <Tooltip label={t('network.table.linkHint')}>
               <button type="button" className="btn !py-1.5 !px-2.5 text-xs min-h-[40px]" onClick={copyLink}>
-                Link
+                {t('network.tool.link')}
               </button>
             </Tooltip>
             <button
@@ -539,16 +555,16 @@ export default function Offenders() {
               onClick={exportCsv}
               disabled={offenders.isLoading || !sorted.length}
             >
-              Export CSV
+              {t('common.action.exportCsv')}
             </button>
           </>
         )}
       >
         {offenders.error ? (
           <EmptyState
-            title="Couldn't load the offender registry"
+            title={t('network.table.error')}
             message={offenders.error.message}
-            action={<button type="button" className="btn" onClick={() => offenders.refetch()}>Retry</button>}
+            action={<button type="button" className="btn" onClick={() => offenders.refetch()}>{t('common.action.retry')}</button>}
           />
         ) : (
           <DataTable
@@ -557,17 +573,17 @@ export default function Offenders() {
             rows={pageRows}
             rowKey="personKey"
             loading={offenders.isLoading}
-            emptyMessage={watchOnly
-              ? 'No watchlisted offender matches the current filters — star people from the table, the Network node panel or Offender 360.'
+            emptyMessage={t(watchOnly
+              ? 'network.table.emptyWatch'
               : moSel.length
-                ? 'No offender carries all the selected MO tags — clear some tag chips.'
+                ? 'network.table.emptyMo'
                 : spanMulti
-                  ? 'No cross-district offender under the current filters — clear the Cross-district chip.'
+                  ? 'network.table.emptySpan'
                   : search
-                    ? 'No offender matches this search — try a shorter fragment.'
+                    ? 'network.table.emptySearch'
                     : repeatOnly
-                      ? 'No repeat offenders (≥3 cases) under the current filters — untick “Repeat only”.'
-                      : 'No offender profiles under the current filters.'}
+                      ? 'network.table.emptyRepeat'
+                      : 'network.table.empty')}
             total={sorted.length}
             page={page}
             perPage={PER_PAGE}
@@ -587,7 +603,7 @@ export default function Offenders() {
             rounded-xl border border-grid bg-panel/95 backdrop-blur px-3 py-2 shadow-lift
             max-w-[calc(100vw-1.5rem)] overflow-x-auto no-scrollbar"
           role="region"
-          aria-label="Offender comparison tray"
+          aria-label={t('network.tray.aria')}
         >
           {compare.map((k) => (
             <span key={k} className="chip !py-1 min-h-[36px] text-[11px] shrink-0">
@@ -596,7 +612,7 @@ export default function Offenders() {
                 type="button"
                 className="flex h-9 w-8 -my-2 -mr-2 items-center justify-center text-muted hover:text-ink leading-none"
                 onClick={() => removeCompare(k)}
-                aria-label={`Remove ${rowsByKey.get(k)?.canonicalName || k} from comparison`}
+                aria-label={t('network.tray.removeAria', { name: rowsByKey.get(k)?.canonicalName || k })}
               >
                 ✕
               </button>
@@ -608,10 +624,10 @@ export default function Offenders() {
             disabled={compare.length < 2}
             onClick={() => setCompareOpen(true)}
           >
-            Compare ({compare.length})
+            {t('network.tray.compare', { n: fmtInt(compare.length) })}
           </button>
           <button type="button" className="btn-ghost !py-1.5 !px-2 text-xs min-h-[40px] shrink-0" onClick={() => setCompare([])}>
-            Clear
+            {t('common.action.clear')}
           </button>
         </div>
       )}

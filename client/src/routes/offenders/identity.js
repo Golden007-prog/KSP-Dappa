@@ -41,10 +41,11 @@ export function aliasConfidence(alias, canonical) {
   return Math.max(0, Math.min(1, 0.55 * editSim + 0.45 * tokenSim));
 }
 
-/** Confidence → display band with a text color class for inline percentages. */
+/** Confidence → display band: a stable id (the caller translates it through
+ *  network.confidence.<id>) plus a text color class for inline percentages. */
 export function confidenceBand(conf) {
   const n = Number(conf) || 0;
-  if (n >= 0.72) return { label: 'high', text: 'text-teal' };
-  if (n >= 0.45) return { label: 'med', text: 'text-amber' };
-  return { label: 'low', text: 'text-muted' };
+  if (n >= 0.72) return { id: 'high', text: 'text-teal' };
+  if (n >= 0.45) return { id: 'med', text: 'text-amber' };
+  return { id: 'low', text: 'text-muted' };
 }

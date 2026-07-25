@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import Card from '../../components/Card.jsx';
 import { fmtInt, fmtPct } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 import { communityColor } from './graphUtils.js';
 
 const MEMBER_CAP = 12;
@@ -15,6 +16,7 @@ export default function CommunitySummary({
   communityId, community, nodes = [], edges = [], onPick, onClear,
   profilesByKey = new Map(), brokers = new Map(),
 }) {
+  const t = useT();
   const stats = useMemo(() => {
     const n = nodes.length;
     const e = edges.length;
@@ -28,7 +30,7 @@ export default function CommunitySummary({
   const topMo = useMemo(() => {
     const freq = new Map();
     for (const n of nodes) {
-      for (const t of profilesByKey.get(String(n.id))?.moTags || []) freq.set(t, (freq.get(t) || 0) + 1);
+      for (const tag of profilesByKey.get(String(n.id))?.moTags || []) freq.set(tag, (freq.get(tag) || 0) + 1);
     }
     return [...freq.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -56,25 +58,25 @@ export default function CommunitySummary({
       title={(
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: communityColor(communityId) }} aria-hidden="true" />
-          Group #{String(communityId)}
+          {t('network.community.title', { id: String(communityId) })}
         </span>
       )}
-      subtitle="Isolated community — numbers respect the current link filters"
+      subtitle={t('network.community.subtitle')}
       actions={(
         <button type="button" className="btn-ghost !py-1.5 !px-2.5 text-[11px] min-h-[40px]" onClick={onClear}>
-          Show all
+          {t('network.community.showAll')}
         </button>
       )}
     >
       <div className="grid grid-cols-2 gap-2 mb-3">
-        {cell('Members', fmtInt(stats.n))}
-        {cell('Cases', fmtInt(community?.cases))}
-        {cell('Districts', fmtInt(community?.districts))}
-        {cell('Density', stats.n > 1 ? fmtPct(stats.density * 100, { digits: 0, fraction: false }) : '—')}
+        {cell(t('network.community.members'), fmtInt(stats.n))}
+        {cell(t('network.community.cases'), fmtInt(community?.cases))}
+        {cell(t('network.community.districts'), fmtInt(community?.districts))}
+        {cell(t('network.community.density'), stats.n > 1 ? fmtPct(stats.density * 100, { digits: 0, fraction: false }) : '—')}
       </div>
       {topMo.length > 0 && (
         <div className="mb-3">
-          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Top MO tags</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.community.topMo')}</p>
           <div className="flex flex-wrap gap-1.5">
             {topMo.map(([tag, count]) => (
               <span key={tag} className="chip !py-0.5 text-[10px]">
@@ -87,23 +89,28 @@ export default function CommunitySummary({
       )}
       {keyConnector && (
         <div className="mb-3">
-          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Key connector</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.community.keyConnector')}</p>
           <button
             type="button"
             className="w-full min-h-[40px] flex items-center gap-2 text-left hover:text-amber transition-colors"
             onClick={() => onPick?.(keyConnector.node)}
-            title="Select and fly to this member"
+            title={t('network.community.pickHint')}
           >
             <span className="text-xs text-ink truncate flex-1 min-w-0">{keyConnector.node.label || String(keyConnector.node.id)}</span>
             <span className="num text-[11px] text-amber shrink-0">
-              bridges {fmtInt(keyConnector.stat.groups.size)} group{keyConnector.stat.groups.size === 1 ? '' : 's'}
+              {t(
+                keyConnector.stat.groups.size === 1
+                  ? 'network.community.bridgesGroups.one'
+                  : 'network.community.bridgesGroups.other',
+                { n: fmtInt(keyConnector.stat.groups.size) },
+              )}
             </span>
           </button>
         </div>
       )}
       {stats.members.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Members (by degree)</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.community.membersByDegree')}</p>
           <ul className="divide-y divide-grid/40">
             {stats.members.slice(0, MEMBER_CAP).map((m) => (
               <li key={String(m.id)}>
@@ -111,16 +118,20 @@ export default function CommunitySummary({
                   type="button"
                   className="w-full min-h-[40px] flex items-center gap-2 py-1 text-left hover:text-amber transition-colors"
                   onClick={() => onPick?.(m)}
-                  title="Select and fly to this member"
+                  title={t('network.community.pickHint')}
                 >
                   <span className="text-xs text-ink truncate flex-1 min-w-0">{m.label || String(m.id)}</span>
-                  <span className="num text-[11px] text-muted shrink-0">{fmtInt(m.degree)} links · {fmtInt(m.caseCount)} cases</span>
+                  <span className="num text-[11px] text-muted shrink-0">
+                    {t('network.community.memberStats', { links: fmtInt(m.degree), cases: fmtInt(m.caseCount) })}
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
           {stats.members.length > MEMBER_CAP && (
-            <p className="text-[11px] text-muted mt-1.5">+{fmtInt(stats.members.length - MEMBER_CAP)} more members in the graph</p>
+            <p className="text-[11px] text-muted mt-1.5">
+              {t('network.community.moreMembers', { n: fmtInt(stats.members.length - MEMBER_CAP) })}
+            </p>
           )}
         </div>
       )}

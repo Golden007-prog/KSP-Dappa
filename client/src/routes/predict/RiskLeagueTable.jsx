@@ -13,6 +13,7 @@ import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 import { fmtInt, fmtNum } from '../../lib/format.js';
 import { downloadCsv } from '../trends/csv.js';
 import Sparkline from '../trends/Sparkline.jsx';
@@ -25,6 +26,7 @@ const BIN_TONE = { red: 'bg-signal/80', amber: 'bg-amber/80', neutral: 'bg-muted
 
 /** Tiny CSS histogram of the league's risk scores, colored by tier. */
 function RiskHistogram({ rows, tierOf }) {
+  const t = useT();
   const model = useMemo(() => {
     const scores = rows.map((r) => Number(r.riskScore) || 0);
     if (scores.length < 8) return null;
@@ -49,13 +51,15 @@ function RiskHistogram({ rows, tierOf }) {
 
   if (!model) return null;
   return (
-    <div aria-label="Distribution of station risk scores">
+    <div aria-label={t('trends.predict.hist.aria')}>
       <div className="flex items-end gap-px h-9" aria-hidden="true">
         {model.bars.map((b, i) => (
           <span
             key={i}
             className="group relative flex-1 flex items-end"
-            title={`${fmtNum(b.from, 0)}–${fmtNum(b.to, 0)}: ${fmtInt(b.n)} station${b.n === 1 ? '' : 's'}`}
+            title={t(b.n === 1 ? 'trends.predict.hist.barOne' : 'trends.predict.hist.barMany', {
+              from: fmtNum(b.from, 0), to: fmtNum(b.to, 0), n: fmtInt(b.n),
+            })}
           >
             <span
               className={`w-full rounded-t-sm ${BIN_TONE[b.tone] || 'bg-grid'}`}
@@ -66,7 +70,7 @@ function RiskHistogram({ rows, tierOf }) {
       </div>
       <div className="flex items-center justify-between text-[10px] text-muted mt-0.5 num">
         <span>{fmtNum(model.min, 0)}</span>
-        <span className="text-muted/80">risk score distribution — {fmtInt(rows.length)} stations, colored by tier</span>
+        <span className="text-muted/80">{t('trends.predict.hist.caption', { n: fmtInt(rows.length) })}</span>
         <span>{fmtNum(model.max, 0)}</span>
       </div>
     </div>
@@ -74,6 +78,7 @@ function RiskHistogram({ rows, tierOf }) {
 }
 
 function DriverChip({ label, count, active, onClick }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -84,7 +89,7 @@ function DriverChip({ label, count, active, onClick }) {
           : 'border-grid bg-base/60 text-muted hover:border-amber/40 hover:text-ink'
       }`}
       aria-pressed={active}
-      title={active ? 'Clear driver filter' : `Show stations driven by “${label}”`}
+      title={active ? t('trends.predict.driver.clear') : t('trends.predict.driver.show', { label })}
     >
       <span className="truncate max-w-[14rem]">{label}</span>
       {count !== undefined && <span className="num font-semibold">{count}</span>}
@@ -93,6 +98,7 @@ function DriverChip({ label, count, active, onClick }) {
 }
 
 export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowClick, onDetails }) {
+  const t = useT();
   const toast = useToast();
   const [driverFilter, setDriverFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -109,7 +115,7 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
 
   // Tier thresholds come from the FULL league (pre-filter) so a driver or
   // search filter never re-labels the surviving stations.
-  const tierOf = useMemo(() => makeTierOf(rows), [rows]);
+  const tierOf = useMemo(() => makeTierOf(rows, t), [rows, t]);
 
   const hasSpark = useMemo(
     () => rows.some((r) => Array.isArray(r.spark) && r.spark.some((v) => Number(v) > 0)),
@@ -147,23 +153,31 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
         (r.drivers || []).join('; '),
       ]),
     );
-    toast.success(`Exported ${filteredAll.length} stations`);
+    toast.success(t('trends.predict.toast.exported', { n: fmtInt(filteredAll.length) }));
   };
 
   const copyBriefing = async () => {
     const top = filteredAll.slice(0, 5);
     if (!top.length) return;
     const lines = [
-      'Station risk briefing — next 30 days (DAPPA, synthetic data)',
+      t('trends.predict.brief.header'),
       ...top.map((r) =>
-        `${r.rank}. ${r.unitName} (${r.districtName || '—'}) — risk ${fmtNum(r.riskScore, 1)}, ${tierOf(Number(r.riskScore) || 0).label.toLowerCase()} tier`
-        + ((r.drivers || []).length ? ` — drivers: ${r.drivers.join('; ')}` : '')),
+        t('trends.predict.brief.row', {
+          rank: r.rank,
+          station: r.unitName,
+          district: r.districtName || '—',
+          score: fmtNum(r.riskScore, 1),
+          tier: tierOf(Number(r.riskScore) || 0).label.toLowerCase(),
+        })
+        + ((r.drivers || []).length
+          ? t('trends.predict.brief.drivers', { drivers: r.drivers.join('; ') })
+          : '')),
     ];
     try {
       await navigator.clipboard.writeText(lines.join('\n'));
-      toast.success('Top-5 risk briefing copied');
+      toast.success(t('trends.predict.toast.briefCopied'));
     } catch {
-      toast.error('Clipboard unavailable in this browser');
+      toast.error(t('trends.clipboard.unavailable'));
     }
   };
 
@@ -173,14 +187,14 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
       render: (r) => <span className="num text-muted">{r.rank}</span>,
     },
     {
-      key: 'unitName', label: 'Station', className: 'font-medium',
+      key: 'unitName', label: t('trends.predict.col.station'), className: 'font-medium',
       render: (r) => (
         <div className="min-w-0">
           <button
             type="button"
             className="block max-w-full truncate text-left text-ink hover:text-primary transition-colors"
             onClick={(e) => { e.stopPropagation(); onRowClick?.(r); }}
-            aria-label={`Open ${r.unitName} on the map`}
+            aria-label={t('trends.predict.openOnMapAria', { name: r.unitName })}
           >
             {r.unitName}
           </button>
@@ -189,14 +203,14 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
       ),
     },
     {
-      key: 'tier', label: 'Tier', width: 92,
+      key: 'tier', label: t('trends.predict.col.tier'), width: 92,
       render: (r) => {
-        const t = tierOf(Number(r.riskScore) || 0);
-        return <Badge tone={t.tone}>{t.label}</Badge>;
+        const tier = tierOf(Number(r.riskScore) || 0);
+        return <Badge tone={tier.tone}>{tier.label}</Badge>;
       },
     },
     {
-      key: 'riskScore', label: 'Risk (30d)', sortable: true, align: 'right', width: 150,
+      key: 'riskScore', label: t('trends.predict.col.risk'), sortable: true, align: 'right', width: 150,
       render: (r) => (
         <div className="flex items-center justify-end gap-2">
           <div className="h-1.5 w-20 rounded-full bg-grid overflow-hidden" aria-hidden="true">
@@ -210,7 +224,7 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
       ),
     },
     ...(hasSpark ? [{
-      key: 'spark', label: '6-mo trend', width: 96,
+      key: 'spark', label: t('trends.predict.col.trend'), width: 96,
       render: (r) => (
         Array.isArray(r.spark) && r.spark.some((v) => Number(v) > 0)
           ? <Sparkline values={r.spark} color="currentColor" height={22} className="w-20 text-muted" />
@@ -218,7 +232,7 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
       ),
     }] : []),
     {
-      key: 'drivers', label: 'Drivers',
+      key: 'drivers', label: t('trends.predict.col.drivers'),
       render: (r) => {
         const drivers = r.drivers || [];
         if (!drivers.length) return <span className="text-[11px] text-muted">—</span>;
@@ -245,23 +259,23 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
 
   return (
     <Card
-      title="Station risk league — next 30 days"
+      title={t('trends.predict.league.title')}
       subtitle={onDetails
-        ? 'Every police station scored by the nightly risk model (all crime heads); click a row for the station dossier, or the name to open it on the map'
-        : 'Every police station scored by the nightly risk model (all crime heads); open a station to see it on the map'}
+        ? t('trends.predict.league.subtitleDossier')
+        : t('trends.predict.league.subtitle')}
       padded={false}
       actions={(
         <div className="flex items-center gap-1.5">
-          <Tooltip label="Copy a top-5 briefing to the clipboard">
+          <Tooltip label={t('trends.predict.league.briefTip')}>
             <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={copyBriefing} disabled={loading || !filteredAll.length}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="9" y="9" width="11" height="11" rx="2" />
                 <path d="M5 15V5a2 2 0 0 1 2-2h8" />
               </svg>
-              Brief
+              {t('trends.predict.league.brief')}
             </button>
           </Tooltip>
-          <Tooltip label="Download the league as CSV">
+          <Tooltip label={t('trends.predict.league.csvTip')}>
             <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={exportCsv} disabled={loading || !filteredAll.length}>CSV</button>
           </Tooltip>
         </div>
@@ -269,9 +283,9 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
     >
       {error ? (
         <EmptyState
-          title="Couldn't load station risk"
+          title={t('trends.predict.league.errorTitle')}
           message={error.message}
-          action={<button type="button" className="btn" onClick={onRetry}>Retry</button>}
+          action={<button type="button" className="btn" onClick={onRetry}>{t('common.action.retry')}</button>}
         />
       ) : (
         <>
@@ -280,14 +294,14 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
             <input
               type="search"
               className="input-dark w-full sm:max-w-xs !py-2 min-h-[40px]"
-              placeholder="Search station or district…"
+              placeholder={t('trends.predict.searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search stations by name or district"
+              aria-label={t('trends.predict.searchAria')}
             />
             {topDrivers.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-muted mr-1">Top drivers:</span>
+                <span className="text-[11px] text-muted mr-1">{t('trends.predict.topDrivers')}</span>
                 {topDrivers.map(([label, count]) => (
                   <DriverChip
                     key={label}
@@ -307,15 +321,17 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
             rowKey="unitId"
             loading={loading}
             emptyMessage={driverFilter || search
-              ? 'No stations match the current search / driver filter.'
-              : 'No station risk scores for the current filters — run the analytics pass.'}
+              ? t('trends.predict.league.emptyFiltered')
+              : t('trends.predict.league.empty')}
             onRowClick={onDetails || onRowClick}
             dense
           />
           {!loading && filteredCount > SHOW_DEFAULT && (
             <div className="p-2.5 border-t border-grid/60 text-center">
               <button type="button" className="btn !px-2.5 text-xs min-h-[40px]" onClick={() => setShowAll((v) => !v)}>
-                {showAll ? `Show top ${SHOW_DEFAULT}` : `Show all ${filteredCount} stations`}
+                {showAll
+                  ? t('trends.predict.showTop', { n: fmtInt(SHOW_DEFAULT) })
+                  : t('trends.predict.showAll', { n: fmtInt(filteredCount) })}
               </button>
             </div>
           )}
