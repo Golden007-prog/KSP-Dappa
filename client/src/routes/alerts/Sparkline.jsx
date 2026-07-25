@@ -10,8 +10,10 @@ import * as echarts from 'echarts';
 import '../../components/ChartPanel.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { fmtInt, fmtNum } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 export default function Sparkline({ alert, height = 72 }) {
+  const t = useT();
   const { theme } = useTheme();
   const light = theme === 'light';
   const vals = (alert.sparkline || []).map((v) => Number(v) || 0);
@@ -22,7 +24,7 @@ export default function Sparkline({ alert, height = 72 }) {
   if (!vals.length) {
     return (
       <div style={{ height }} className="flex items-center justify-center rounded-lg border border-grid/60 text-[11px] text-muted">
-        no history
+        {t('alerts.spark.noHistory')}
       </div>
     );
   }
@@ -48,7 +50,7 @@ export default function Sparkline({ alert, height = 72 }) {
     tooltip: {
       trigger: 'axis',
       confine: true,
-      formatter: (ps) => `${ps[0].value} cases`,
+      formatter: (ps) => t('alerts.spark.tooltip', { n: ps[0].value }),
     },
     grid: { left: 4, right: 4, top: 6, bottom: 4 },
     xAxis: { type: 'category', show: false, boundaryGap: false, data: vals.map((_, i) => i) },
@@ -87,8 +89,10 @@ export default function Sparkline({ alert, height = 72 }) {
   };
 
   const alt = Number.isFinite(observed) && Number.isFinite(expected)
-    ? `Trend chart: observed ${fmtInt(observed)} vs expected ${fmtInt(expected)}${Number.isFinite(z) ? `, z-score ${fmtNum(z, 1)}` : ''}, over ${vals.length} periods`
-    : `Trend chart over ${vals.length} periods`;
+    ? t(Number.isFinite(z) ? 'alerts.spark.alt' : 'alerts.spark.altNoZ', {
+      obs: fmtInt(observed), exp: fmtInt(expected), z: fmtNum(z, 1), n: vals.length,
+    })
+    : t('alerts.spark.altPlain', { n: vals.length });
 
   return (
     <div role="img" aria-label={alt}>

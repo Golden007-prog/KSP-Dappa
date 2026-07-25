@@ -10,15 +10,17 @@ import '../../components/ChartPanel.jsx';
 import Card from '../../components/Card.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { fmtInt, dateLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const SEV_CHIPS = [
-  { key: 'critical', label: 'Critical', cls: 'text-signal' },
-  { key: 'high', label: 'High', cls: 'text-signal' },
-  { key: 'medium', label: 'Medium', cls: 'text-amber' },
-  { key: 'low', label: 'Low', cls: 'text-muted' },
+  { key: 'critical', cls: 'text-signal' },
+  { key: 'high', cls: 'text-signal' },
+  { key: 'medium', cls: 'text-amber' },
+  { key: 'low', cls: 'text-muted' },
 ];
 
 export default function OverviewStrip({ openAlerts, sev, onSev }) {
+  const t = useT();
   const { theme } = useTheme();
   const light = theme === 'light';
 
@@ -54,7 +56,10 @@ export default function OverviewStrip({ openAlerts, sev, onSev }) {
     tooltip: {
       trigger: 'axis',
       confine: true,
-      formatter: (ps) => `${dateLabel(volume.days[ps[0].dataIndex])}: ${ps[0].value} alert${ps[0].value === 1 ? '' : 's'}`,
+      formatter: (ps) => t(
+        ps[0].value === 1 ? 'alerts.overview.tooltip.one' : 'alerts.overview.tooltip.other',
+        { date: dateLabel(volume.days[ps[0].dataIndex]), n: ps[0].value },
+      ),
     },
     grid: { left: 2, right: 2, top: 4, bottom: 2 },
     xAxis: { type: 'category', show: false, data: volume.days },
@@ -70,8 +75,8 @@ export default function OverviewStrip({ openAlerts, sev, onSev }) {
   return (
     <Card padded={false} className="!py-0">
       <div className="flex flex-col md:flex-row md:items-center gap-3 p-3">
-        <div className="flex items-stretch gap-2 overflow-x-auto no-scrollbar" role="group" aria-label="Open alerts by severity">
-          {SEV_CHIPS.map(({ key, label, cls }) => {
+        <div className="flex items-stretch gap-2 overflow-x-auto no-scrollbar" role="group" aria-label={t('alerts.overview.aria')}>
+          {SEV_CHIPS.map(({ key, cls }) => {
             const active = sev === key;
             return (
               <button
@@ -83,7 +88,7 @@ export default function OverviewStrip({ openAlerts, sev, onSev }) {
                   active ? 'border-primary/70 bg-primary/5' : 'border-grid hover:border-primary/40'
                 }`}
               >
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{t(`alerts.sev.${key}`)}</span>
                 <span className={`num text-base font-semibold leading-tight ${counts[key] ? cls : 'text-muted/60'}`}>
                   {fmtInt(counts[key] || 0)}
                 </span>
@@ -91,7 +96,7 @@ export default function OverviewStrip({ openAlerts, sev, onSev }) {
             );
           })}
           <div className="flex shrink-0 flex-col items-start rounded-lg border border-grid/60 bg-grid/20 px-3 py-1.5 min-h-[44px]">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">Open total</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{t('alerts.overview.openTotal')}</span>
             <span className="num text-base font-semibold leading-tight text-ink">{fmtInt(openAlerts.length)}</span>
           </div>
         </div>
@@ -99,7 +104,7 @@ export default function OverviewStrip({ openAlerts, sev, onSev }) {
           <div className="flex-1 min-w-[10rem]">
             <div
               role="img"
-              aria-label={`Alert volume over the 14 days ending ${dateLabel(volume.anchor)}: ${fmtInt(volume.total)} alerts`}
+              aria-label={t('alerts.overview.volumeAria', { date: dateLabel(volume.anchor), n: fmtInt(volume.total) })}
             >
               <div aria-hidden="true">
                 <ReactECharts
@@ -114,7 +119,7 @@ export default function OverviewStrip({ openAlerts, sev, onSev }) {
               </div>
             </div>
             <p className="text-[10px] text-muted mt-0.5">
-              alert volume · 14 days to <span className="num">{dateLabel(volume.anchor)}</span>
+              {t('alerts.overview.volumeCaption')} <span className="num">{dateLabel(volume.anchor)}</span>
             </p>
           </div>
         )}

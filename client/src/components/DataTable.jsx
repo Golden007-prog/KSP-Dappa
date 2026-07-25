@@ -24,6 +24,7 @@ import LoadingSkeleton from './LoadingSkeleton.jsx';
 import EmptyState from './EmptyState.jsx';
 import { useToast } from './ToastProvider.jsx';
 import { fmtInt } from '../lib/format.js';
+import { useT } from '../lib/i18n.jsx';
 
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' };
 
@@ -42,6 +43,7 @@ export default function DataTable({
   const [localSort, setLocalSort] = useState(null);
   const [quickFilter, setQuickFilter] = useState('');
   const toast = useToast();
+  const t = useT();
   const activeSort = onSortChange ? sort : localSort;
 
   const filteredRows = useMemo(() => {
@@ -101,7 +103,9 @@ export default function DataTable({
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast.success(`Exported ${fmtInt(displayRows.length)} row${displayRows.length === 1 ? '' : 's'} to CSV.`);
+    toast.success(displayRows.length === 1
+      ? t('shell.table.exportedOne')
+      : t('shell.table.exportedMany', { n: fmtInt(displayRows.length) }));
   };
 
   const cellPad = dense ? 'px-3 py-1.5' : 'px-3 td-pad';
@@ -115,7 +119,7 @@ export default function DataTable({
       type="button"
       onClick={exportCsv}
       className="btn-ghost !py-1.5 !px-2 !text-[11px] shrink-0"
-      aria-label="Export visible rows as CSV"
+      aria-label={t('shell.table.exportAria')}
     >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 4v11m-5-4 5 5 5-5" /><path d="M4.5 20h15" />
@@ -137,8 +141,8 @@ export default function DataTable({
               className="input-dark !py-2 !pl-8 w-full min-h-[40px]"
               value={quickFilter}
               onChange={(e) => setQuickFilter(e.target.value)}
-              placeholder={filterPlaceholder || 'Filter rows…'}
-              aria-label={filterPlaceholder || 'Filter rows'}
+              placeholder={filterPlaceholder || t('shell.table.filterRows')}
+              aria-label={filterPlaceholder || t('shell.table.filterRowsAria')}
             />
           </div>
         </div>
@@ -161,6 +165,7 @@ export default function DataTable({
                       <button
                         type="button"
                         onClick={() => toggleSort(col)}
+                        aria-label={typeof col.label === 'string' ? t('shell.table.sortBy', { column: col.label }) : undefined}
                         className={`${cellPad} w-full inline-flex items-center gap-1 uppercase tracking-wide font-semibold hover:text-ink transition-colors ${
                           col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''
                         }`}
@@ -210,10 +215,10 @@ export default function DataTable({
         {!loading && displayRows.length === 0 && (
           <EmptyState
             compact
-            title="No rows"
+            title={t('shell.table.noRows')}
             message={filterable && quickFilter.trim()
-              ? `No rows match “${quickFilter.trim()}”.`
-              : (emptyMessage || 'No records match the current filters.')}
+              ? t('shell.table.noRowsMatch', { q: quickFilter.trim() })
+              : (emptyMessage || t('common.state.emptyHint'))}
           />
         )}
       </div>
@@ -221,14 +226,18 @@ export default function DataTable({
         <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-grid text-xs text-muted">
           <div className="flex items-center gap-2 min-w-0">
             <span className="num truncate">
-              {total === 0 ? '0 rows' : `${fmtInt((page - 1) * perPage + 1)}–${fmtInt(Math.min(page * perPage, total))} of ${fmtInt(total)}`}
+              {total === 0 ? t('shell.table.zeroRows') : t('shell.table.range', {
+                from: fmtInt((page - 1) * perPage + 1),
+                to: fmtInt(Math.min(page * perPage, total)),
+                total: fmtInt(total),
+              })}
             </span>
             {exportBtn}
           </div>
           <div className="flex items-center gap-1.5">
-            <button type="button" className="btn !py-1.5 !px-2.5" disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)} aria-label="Previous page">‹ Prev</button>
+            <button type="button" className="btn !py-1.5 !px-2.5" disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)} aria-label={t('shell.table.prevAria')}>{t('shell.table.prev')}</button>
             <span className="num px-1" aria-live="polite">{fmtInt(page)} / {fmtInt(pages)}</span>
-            <button type="button" className="btn !py-1.5 !px-2.5" disabled={page >= pages || loading} onClick={() => onPageChange(page + 1)} aria-label="Next page">Next ›</button>
+            <button type="button" className="btn !py-1.5 !px-2.5" disabled={page >= pages || loading} onClick={() => onPageChange(page + 1)} aria-label={t('shell.table.nextAria')}>{t('shell.table.next')}</button>
           </div>
         </div>
       )}

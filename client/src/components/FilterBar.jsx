@@ -15,6 +15,7 @@ import { useLookups } from '../lib/api.js';
 import { useUrlFilters, DATE_RANGES, describeFilters } from '../lib/filters.js';
 import Sheet from './Sheet.jsx';
 import { useToast } from './ToastProvider.jsx';
+import { useI18n } from '../lib/i18n.jsx';
 
 const VIEWS_KEY = 'dappa-saved-views';
 
@@ -31,7 +32,7 @@ function writeViews(views) {
   try { localStorage.setItem(VIEWS_KEY, JSON.stringify(views)); } catch { /* private mode */ }
 }
 
-function Select({ label, value, onChange, options, placeholder, disabled }) {
+function Select({ label, value, onChange, options, placeholder, disabled, loadingText }) {
   return (
     <label className="flex shrink-0 items-center gap-2 text-xs text-muted">
       <span className="hidden sm:inline">{label}</span>
@@ -42,7 +43,7 @@ function Select({ label, value, onChange, options, placeholder, disabled }) {
         onChange={(e) => onChange(e.target.value)}
         aria-label={label}
       >
-        <option value="">{disabled ? 'Loading…' : placeholder}</option>
+        <option value="">{disabled ? loadingText : placeholder}</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
@@ -51,14 +52,14 @@ function Select({ label, value, onChange, options, placeholder, disabled }) {
   );
 }
 
-function FilterChip({ label, onClear }) {
+function FilterChip({ label, onClear, removeLabel }) {
   return (
     <span className="chip shrink-0 !pr-1 bg-primary/10 border-primary/30 text-ink">
       <span className="truncate max-w-[11rem]">{label}</span>
       <button
         type="button"
         onClick={onClear}
-        aria-label={`Remove filter: ${label}`}
+        aria-label={removeLabel}
         className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:text-signal transition-colors"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -67,9 +68,15 @@ function FilterChip({ label, onClear }) {
   );
 }
 
+/** FilterChip + its translated remove-button label. */
+function Chip({ label, onClear, t }) {
+  return <FilterChip label={label} onClear={onClear} removeLabel={t('shell.filter.removeAria', { label })} />;
+}
+
 export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'], children, className = '' }) {
   const lookups = useLookups();
   const toast = useToast();
+  const { t, tName } = useI18n();
   const { districtId, crimeHeadId, range, setFilter, setFilters, reset } = useUrlFilters();
   const [searchParams] = useSearchParams();
   const rawFrom = searchParams.get('from') || '';
@@ -79,16 +86,21 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
   const [views, setViews] = useState(readViews);
   const [viewName, setViewName] = useState('');
 
-  const districts = (lookups.data?.districts || []).map((d) => ({ value: d.districtId, label: d.districtName }));
-  const heads = (lookups.data?.crimeHeads || []).map((h) => ({ value: h.crimeHeadId, label: h.headName }));
+  // Option text is the API name translated by id (tName falls back to the API
+  // string), so a Kannada session reads ಬೆಂಗಳೂರು ನಗರ without the ids moving.
+  const districts = (lookups.data?.districts || [])
+    .map((d) => ({ value: d.districtId, label: tName('districts', d.districtId, d.districtName) }));
+  const heads = (lookups.data?.crimeHeads || [])
+    .map((h) => ({ value: h.crimeHeadId, label: tName('crimeHeads', h.crimeHeadId, h.headName) }));
   const anyActive = districtId || crimeHeadId || (range && range !== 'all') || rawFrom || rawTo;
 
-  const districtName = districts.find((d) => d.value === districtId)?.label || `District ${districtId}`;
-  const headName = heads.find((h) => h.value === crimeHeadId)?.label || `Head ${crimeHeadId}`;
-  const rangeLabel = DATE_RANGES.find((r) => r.value === range)?.label || range;
+  const districtName = districts.find((d) => d.value === districtId)?.label || t('shell.filter.districtN', { id: districtId });
+  const headName = heads.find((h) => h.value === crimeHeadId)?.label || t('shell.filter.headN', { id: crimeHeadId });
+  const rangeEntry = DATE_RANGES.find((r) => r.value === range);
+  const rangeLabel = rangeEntry ? t(rangeEntry.key) : range;
 
   const currentParams = { districtId, crimeHeadId, range: range === 'all' ? '' : range, from: rawFrom, to: rawTo };
-  const currentSummary = describeFilters(currentParams, lookups.data);
+  const currentSummary = describeFilters(currentParams, lookups.data, { t, tName });
 
   const applyView = (v) => {
     // key order matters: setFilters clears from/to whenever it processes
@@ -112,7 +124,7 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
     setViews(next);
     writeViews(next);
     setViewName('');
-    toast.success(`View “${name}” saved.`);
+    toast.success(t('shell.filter.viewSaved', { name }));
   };
 
   const deleteView = (id) => {
@@ -125,7 +137,7 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
     <>
       <div
         role="group"
-        aria-label="Filters"
+        aria-label={t('shell.filter.groupAria')}
         className={`flex items-center gap-3 bg-panel border border-grid rounded-xl px-3 py-2 shadow-card
           flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap sm:overflow-visible ${className}`}
       >
@@ -134,31 +146,33 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
         </svg>
         {show.includes('district') && (
           <Select
-            label="District"
+            label={t('common.filter.district')}
             value={districtId}
             onChange={(v) => setFilter('districtId', v)}
             options={districts}
-            placeholder="All districts"
+            placeholder={t('common.filter.allDistricts')}
             disabled={lookups.isLoading}
+            loadingText={t('common.state.loading')}
           />
         )}
         {show.includes('crimeHead') && (
           <Select
-            label="Crime head"
+            label={t('common.filter.crimeHead')}
             value={crimeHeadId}
             onChange={(v) => setFilter('crimeHeadId', v)}
             options={heads}
-            placeholder="All crime heads"
+            placeholder={t('common.filter.allCrimeHeads')}
             disabled={lookups.isLoading}
+            loadingText={t('common.state.loading')}
           />
         )}
         {show.includes('dateRange') && (
           <Select
-            label="Period"
+            label={t('common.filter.period')}
             value={range === 'all' ? '' : range}
             onChange={(v) => setFilter('range', v)}
-            options={DATE_RANGES.filter((r) => r.value !== 'all').map((r) => ({ value: r.value, label: r.label }))}
-            placeholder="All time"
+            options={DATE_RANGES.filter((r) => r.value !== 'all').map((r) => ({ value: r.value, label: t(r.key) }))}
+            placeholder={t('common.filter.allTime')}
             disabled={false}
           />
         )}
@@ -168,7 +182,7 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
             className="shrink-0 rounded-lg px-2.5 py-1.5 min-h-[40px] text-xs text-muted hover:text-primary transition-colors"
             onClick={reset}
           >
-            Clear
+            {t('common.action.clear')}
           </button>
         )}
         <button
@@ -176,29 +190,33 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
           onClick={() => { setViews(readViews()); setViewsOpen(true); }}
           className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 min-h-[40px] text-xs text-muted hover:text-primary transition-colors"
           aria-haspopup="dialog"
-          aria-label="Saved filter views"
+          aria-label={t('shell.filter.savedViewsAria')}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4-6.5 4v-16a1 1 0 0 1 1-1Z" />
           </svg>
-          Views
+          {t('shell.filter.views')}
         </button>
         {districtId && show.includes('district') && (
-          <FilterChip label={`District: ${districtName}`} onClear={() => setFilter('districtId', '')} />
+          <Chip label={t('shell.filter.chipDistrict', { name: districtName })} onClear={() => setFilter('districtId', '')} t={t} />
         )}
         {crimeHeadId && show.includes('crimeHead') && (
-          <FilterChip label={`Head: ${headName}`} onClear={() => setFilter('crimeHeadId', '')} />
+          <Chip label={t('shell.filter.chipHead', { name: headName })} onClear={() => setFilter('crimeHeadId', '')} t={t} />
         )}
         {(rawFrom || rawTo) && (
-          <FilterChip label={`Period: ${rawFrom || '…'} → ${rawTo || '…'}`} onClear={() => setFilters({ from: '', to: '' })} />
+          <Chip
+            label={t('shell.filter.chipPeriodRange', { from: rawFrom || '…', to: rawTo || '…' })}
+            onClear={() => setFilters({ from: '', to: '' })}
+            t={t}
+          />
         )}
         {!rawFrom && !rawTo && range !== 'all' && show.includes('dateRange') && (
-          <FilterChip label={`Period: ${rangeLabel}`} onClear={() => setFilter('range', '')} />
+          <Chip label={t('shell.filter.chipPeriod', { label: rangeLabel })} onClear={() => setFilter('range', '')} t={t} />
         )}
         {children && <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>}
       </div>
 
-      <Sheet open={viewsOpen} onClose={() => setViewsOpen(false)} title="Saved filter views">
+      <Sheet open={viewsOpen} onClose={() => setViewsOpen(false)} title={t('shell.filter.savedViewsTitle')}>
         <div className="space-y-3 px-1 pb-1">
           {anyActive ? (
             <form
@@ -210,22 +228,22 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
                 value={viewName}
                 onChange={(e) => setViewName(e.target.value)}
                 placeholder={currentSummary}
-                aria-label="Name for the current filter view"
+                aria-label={t('shell.filter.nameAria')}
                 maxLength={60}
               />
-              <button type="submit" className="btn-primary shrink-0 min-h-[44px]">Save</button>
+              <button type="submit" className="btn-primary shrink-0 min-h-[44px]">{t('common.action.save')}</button>
             </form>
           ) : (
             <p className="text-xs text-muted">
-              Set a district, crime head or period first, then save it here as a named view.
+              {t('shell.filter.saveHint')}
             </p>
           )}
           {views.length === 0 ? (
             <p className="text-xs text-muted border-t border-grid/60 pt-3">
-              No saved views yet — saved combos apply with one tap and survive reloads.
+              {t('shell.filter.noViews')}
             </p>
           ) : (
-            <ul className="border-t border-grid/60 pt-2 space-y-0.5" aria-label="Saved views">
+            <ul className="border-t border-grid/60 pt-2 space-y-0.5" aria-label={t('shell.section.savedViews')}>
               {views.map((v) => (
                 <li key={v.id} className="flex items-center gap-1">
                   <button
@@ -234,12 +252,12 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
                     className="flex-1 min-w-0 rounded-xl px-3 py-2 min-h-[48px] text-left hover:bg-grid/30 transition-colors"
                   >
                     <span className="block text-sm text-ink truncate">{v.name}</span>
-                    <span className="block text-[11px] text-muted truncate">{describeFilters(v, lookups.data)}</span>
+                    <span className="block text-[11px] text-muted truncate">{describeFilters(v, lookups.data, { t, tName })}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => deleteView(v.id)}
-                    aria-label={`Delete saved view ${v.name}`}
+                    aria-label={t('shell.filter.deleteAria', { name: v.name })}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:text-signal hover:bg-grid/30 transition-colors"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

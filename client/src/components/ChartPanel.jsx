@@ -28,6 +28,7 @@ import EmptyState from './EmptyState.jsx';
 import Tooltip from './Tooltip.jsx';
 import { useTheme } from './ThemeProvider.jsx';
 import { useFocusTrap, useScrollLock } from '../lib/modal.js';
+import { useT } from '../lib/i18n.jsx';
 
 export const DAPPA_CHART_COLORS = [
   '#F5A623', '#2DD4BF', '#E5484D', '#7C9BFF', '#C084FC', '#F97316', '#38BDF8', '#A3E635',
@@ -104,6 +105,7 @@ const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeL
 
 /** Fullscreen chart overlay — Esc / overlay click close, focus trapped. */
 function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose, onDownload }) {
+  const t = useT();
   const panelRef = useRef(null);
   const expandedRef = useRef(null);
   useScrollLock(true);
@@ -128,7 +130,7 @@ function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose,
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label={`${title || 'Chart'} — expanded view`}
+        aria-label={t('shell.chart.expandedAria', { title: title || t('shell.chart.word') })}
         className="absolute inset-2 md:inset-8 flex flex-col rounded-2xl border border-grid bg-panel shadow-lift overflow-hidden animate-scale-in focus:outline-none"
       >
         <div className="flex items-start justify-between gap-3 px-4 pt-3 pb-2 border-b border-grid/60 shrink-0">
@@ -137,11 +139,11 @@ function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose,
             {subtitle && <p className="text-xs text-muted mt-0.5 truncate">{subtitle}</p>}
           </div>
           <div className="flex items-center gap-1 -mr-2 -mt-1 shrink-0">
-            <Tooltip label="Download PNG" position="bottom">
+            <Tooltip label={t('shell.chart.downloadPng')} position="bottom">
               <button
                 type="button"
                 onClick={() => onDownload?.(expandedRef.current?.getEchartsInstance?.())}
-                aria-label={`Download ${title || 'chart'} as PNG`}
+                aria-label={t('shell.chart.downloadAria', { title: title || t('shell.chart.word') })}
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/40 transition-colors"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
@@ -152,7 +154,7 @@ function ExpandedChart({ title, subtitle, option, chartTheme, onEvents, onClose,
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close expanded chart"
+              aria-label={t('shell.chart.closeExpanded')}
               className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -184,6 +186,7 @@ export default function ChartPanel({
   title, subtitle, actions, onEvents, notMerge = true, exportable = true, className = '',
 }) {
   const { theme } = useTheme();
+  const t = useT();
   const chartRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
   const chartTheme = theme === 'light' ? 'dappa-light' : 'dappa';
@@ -208,11 +211,11 @@ export default function ChartPanel({
   const chartActions = exportable && hasChart ? (
     <>
       {actions}
-      <Tooltip label="Download PNG" position="bottom">
+      <Tooltip label={t('shell.chart.downloadPng')} position="bottom">
         <button
           type="button"
           onClick={() => downloadPng()}
-          aria-label={`Download ${title || 'chart'} as PNG`}
+          aria-label={t('shell.chart.downloadAria', { title: title || t('shell.chart.word') })}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/30 transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
@@ -220,11 +223,11 @@ export default function ChartPanel({
           </svg>
         </button>
       </Tooltip>
-      <Tooltip label="Expand chart" position="bottom">
+      <Tooltip label={t('shell.chart.expand')} position="bottom">
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          aria-label={`Expand ${title || 'chart'} to fullscreen`}
+          aria-label={t('shell.chart.expandAria', { title: title || t('shell.chart.word') })}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/30 transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
@@ -238,11 +241,11 @@ export default function ChartPanel({
   const retryHeaderAction = error && onRetry ? (
     <>
       {actions}
-      <Tooltip label="Retry" position="bottom">
+      <Tooltip label={t('common.action.retry')} position="bottom">
         <button
           type="button"
           onClick={onRetry}
-          aria-label={`Retry loading ${title || 'chart'}`}
+          aria-label={t('shell.chart.retryAria', { title: title || t('shell.chart.word') })}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-signal hover:bg-grid/30 transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
@@ -259,12 +262,12 @@ export default function ChartPanel({
   } else if (error) {
     const message = typeof error === 'string'
       ? error
-      : String(error?.message || 'The data for this chart could not be loaded.');
+      : String(error?.message || t('shell.chart.failedMessage'));
     body = (
       <div style={{ height }} className="flex items-center justify-center">
         <EmptyState
           compact
-          title="Chart failed to load"
+          title={t('shell.chart.failed')}
           message={message}
           icon={(
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -272,7 +275,7 @@ export default function ChartPanel({
             </svg>
           )}
           action={onRetry ? (
-            <button type="button" className="btn" onClick={onRetry}>Retry</button>
+            <button type="button" className="btn" onClick={onRetry}>{t('common.action.retry')}</button>
           ) : undefined}
         />
       </div>
@@ -280,7 +283,7 @@ export default function ChartPanel({
   } else if (empty || !option) {
     body = (
       <div style={{ height }} className="flex items-center justify-center">
-        <EmptyState compact title="No data" message={emptyMessage || 'Nothing to plot for the current filters.'} />
+        <EmptyState compact title={t('common.state.empty')} message={emptyMessage || t('shell.chart.noPlot')} />
       </div>
     );
   } else {

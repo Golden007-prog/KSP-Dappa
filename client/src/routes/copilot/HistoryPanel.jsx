@@ -5,12 +5,14 @@
 import { useMemo, useState } from 'react';
 import Sheet from '../../components/Sheet.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 const ICON = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
 export default function HistoryPanel({
   open, onClose, items = [], pinned = [], onAsk, onTogglePin, onDelete, onClearAll,
 }) {
+  const t = useT();
   const [filter, setFilter] = useState('');
   const filtered = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -18,24 +20,26 @@ export default function HistoryPanel({
   }, [items, filter]);
 
   return (
-    <Sheet open={open} onClose={onClose} title="Question history">
+    <Sheet open={open} onClose={onClose} title={t('copilot.history.title')}>
       {items.length === 0 ? (
         <p className="text-xs text-muted px-1 py-2">
-          No questions asked yet — everything you ask is kept here (locally, on this device) for quick re-asking.
+          {t('copilot.history.emptyBody')}
         </p>
       ) : (
         <div className="space-y-2">
           <input
             className="input-dark w-full !py-2 text-xs"
-            placeholder={`Search ${items.length} question${items.length === 1 ? '' : 's'}…`}
+            placeholder={items.length === 1
+              ? t('copilot.history.searchOne')
+              : t('copilot.history.searchMany', { n: items.length })}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            aria-label="Search question history"
+            aria-label={t('copilot.history.searchAria')}
           />
           {filtered.length === 0 ? (
-            <p className="text-xs text-muted px-1 py-2">No questions match “{filter.trim()}”.</p>
+            <p className="text-xs text-muted px-1 py-2">{t('copilot.history.noMatch', { q: filter.trim() })}</p>
           ) : (
-            <ul className="divide-y divide-grid/40" aria-label="Past questions">
+            <ul className="divide-y divide-grid/40" aria-label={t('copilot.history.listAria')}>
               {filtered.map((q) => {
                 const isPinned = pinned.includes(q);
                 return (
@@ -44,29 +48,29 @@ export default function HistoryPanel({
                       type="button"
                       className="flex-1 min-w-0 text-left text-xs text-ink rounded-lg px-2 py-2.5 min-h-[44px] hover:bg-grid/30 transition-colors"
                       onClick={() => { onAsk(q); onClose(); }}
-                      title="Ask this again"
+                      title={t('copilot.history.askAgain')}
                     >
                       {q}
                     </button>
-                    <Tooltip label={isPinned ? 'Unpin from suggestions' : 'Pin to suggestions'}>
+                    <Tooltip label={t(isPinned ? 'copilot.pin.unpinTip' : 'copilot.pin.pinTip')}>
                       <button
                         type="button"
                         className={`grid place-items-center h-10 w-10 shrink-0 rounded-lg transition-colors ${isPinned ? 'text-amber' : 'text-muted/60 hover:text-amber'}`}
                         onClick={() => onTogglePin(q)}
                         aria-pressed={isPinned}
-                        aria-label={isPinned ? `Unpin question: ${q}` : `Pin question: ${q}`}
+                        aria-label={t(isPinned ? 'copilot.pin.unpinQuestionAria' : 'copilot.pin.pinQuestionAria', { q })}
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" {...ICON} fill={isPinned ? 'currentColor' : 'none'} aria-hidden="true">
                           <path d="m12 3 2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9l-5.4 2.9 1.1-6.1L3.2 9.4l6.1-.8L12 3Z" />
                         </svg>
                       </button>
                     </Tooltip>
-                    <Tooltip label="Remove from history">
+                    <Tooltip label={t('copilot.history.removeTip')}>
                       <button
                         type="button"
                         className="grid place-items-center h-10 w-10 shrink-0 rounded-lg text-muted/60 hover:text-signal transition-colors"
                         onClick={() => onDelete(q)}
-                        aria-label={`Remove question from history: ${q}`}
+                        aria-label={t('copilot.history.removeAria', { q })}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
                       </button>
@@ -78,16 +82,18 @@ export default function HistoryPanel({
           )}
           <div className="flex items-center justify-between gap-2 pt-1 border-t border-grid/60">
             <p className="text-[11px] text-muted px-1">
-              {filtered.length === items.length
-                ? `${items.length} question${items.length === 1 ? '' : 's'} kept locally`
-                : `${filtered.length} of ${items.length} shown`}
+              {filtered.length !== items.length
+                ? t('copilot.history.shown', { n: filtered.length, total: items.length })
+                : items.length === 1
+                  ? t('copilot.history.keptOne')
+                  : t('copilot.history.keptMany', { n: items.length })}
             </p>
             <button
               type="button"
               className="text-[11px] text-muted hover:text-signal transition-colors min-h-[40px] px-2"
               onClick={onClearAll}
             >
-              Clear all
+              {t('copilot.history.clearAll')}
             </button>
           </div>
         </div>

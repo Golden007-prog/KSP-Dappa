@@ -7,7 +7,17 @@ import { useLookups } from '../../lib/api.js';
 import { DATE_RANGES } from '../../lib/filters.js';
 import Sheet from '../../components/Sheet.jsx';
 import Badge from '../../components/Badge.jsx';
+import { useT, useNames } from '../../lib/i18n.jsx';
 import { MIN_AGE_OPTIONS } from './explorerState.js';
+
+/** DATE_RANGES is shared English config — map its values onto `common` keys. */
+export const RANGE_KEYS = {
+  all: 'common.filter.allTime',
+  '30d': 'common.filter.last30',
+  '90d': 'common.filter.last90',
+  '12m': 'common.filter.last12m',
+  ytd: 'common.filter.yearToDate',
+};
 
 function Field({ label, hint, children }) {
   return (
@@ -21,7 +31,7 @@ function Field({ label, hint, children }) {
   );
 }
 
-function Select({ value, onChange, options, placeholder, disabled, ariaLabel }) {
+function Select({ value, onChange, options, placeholder, disabled, ariaLabel, loadingLabel }) {
   return (
     <select
       className="input-dark w-full !py-2.5"
@@ -30,7 +40,7 @@ function Select({ value, onChange, options, placeholder, disabled, ariaLabel }) 
       aria-label={ariaLabel}
       onChange={(e) => onChange(e.target.value)}
     >
-      <option value="">{disabled ? 'Loading…' : placeholder}</option>
+      <option value="">{disabled ? loadingLabel : placeholder}</option>
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>
       ))}
@@ -39,141 +49,154 @@ function Select({ value, onChange, options, placeholder, disabled, ariaLabel }) 
 }
 
 export default function FilterSheet({ open, onClose, values, setMany, onClearAll, activeCount = 0 }) {
+  const t = useT();
+  const tName = useNames();
   const lookups = useLookups();
   const lk = lookups.data;
   const loading = lookups.isLoading;
+  const loadingLabel = t('cases.filter.loading');
 
-  const districts = (lk?.districts || []).map((d) => ({ value: d.districtId, label: d.districtName }));
+  const districts = (lk?.districts || []).map((d) => ({ value: d.districtId, label: tName('districts', d.districtId, d.districtName) }));
+  // Police-station names have no translation table — they keep their API name.
   const units = (lk?.units || [])
     .filter((u) => !values.districtId || u.districtId === values.districtId)
     .map((u) => ({ value: u.unitId, label: u.unitName }));
-  const heads = (lk?.crimeHeads || []).map((h) => ({ value: h.crimeHeadId, label: h.headName }));
+  const heads = (lk?.crimeHeads || []).map((h) => ({ value: h.crimeHeadId, label: tName('crimeHeads', h.crimeHeadId, h.headName) }));
   const subHeads = (lk?.crimeSubHeads || [])
     .filter((s) => !values.crimeHeadId || s.crimeHeadId === values.crimeHeadId)
-    .map((s) => ({ value: s.crimeSubHeadId, label: s.subHeadName }));
-  const statuses = (lk?.statuses || []).map((s) => ({ value: s.id, label: s.name }));
-  const gravities = (lk?.gravities || []).map((g) => ({ value: g.id, label: g.name }));
+    .map((s) => ({ value: s.crimeSubHeadId, label: tName('crimeSubHeads', s.crimeSubHeadId, s.subHeadName) }));
+  const statuses = (lk?.statuses || []).map((s) => ({ value: s.id, label: tName('statuses', s.id, s.name) }));
+  const gravities = (lk?.gravities || []).map((g) => ({ value: g.id, label: tName('gravities', g.id, g.name) }));
 
   return (
-    <Sheet open={open} onClose={onClose} title="Filter cases">
+    <Sheet open={open} onClose={onClose} title={t('cases.filter.title')}>
       <div className="space-y-3 px-1 pb-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="District">
+          <Field label={t('cases.filter.district')}>
             <Select
-              ariaLabel="District"
+              ariaLabel={t('cases.filter.districtAria')}
               value={values.districtId}
               onChange={(v) => setMany({ districtId: v })}
               options={districts}
-              placeholder="All districts"
+              placeholder={t('cases.filter.allDistricts')}
               disabled={loading}
+              loadingLabel={loadingLabel}
             />
           </Field>
-          <Field label="Station" hint={!values.districtId ? 'all units' : undefined}>
+          <Field label={t('cases.filter.station')} hint={!values.districtId ? t('cases.filter.allUnitsHint') : undefined}>
             <Select
-              ariaLabel="Police station"
+              ariaLabel={t('cases.filter.stationAria')}
               value={values.unitId}
               onChange={(v) => setMany({ unitId: v })}
               options={units}
-              placeholder="All stations"
+              placeholder={t('cases.filter.allStations')}
               disabled={loading}
+              loadingLabel={loadingLabel}
             />
           </Field>
-          <Field label="Crime head">
+          <Field label={t('cases.filter.head')}>
             <Select
-              ariaLabel="Crime head"
+              ariaLabel={t('cases.filter.headAria')}
               value={values.crimeHeadId}
               onChange={(v) => setMany({ crimeHeadId: v })}
               options={heads}
-              placeholder="All crime heads"
+              placeholder={t('cases.filter.allHeads')}
               disabled={loading}
+              loadingLabel={loadingLabel}
             />
           </Field>
-          <Field label="Subhead" hint={!values.crimeHeadId ? 'all heads' : undefined}>
+          <Field label={t('cases.filter.subHead')} hint={!values.crimeHeadId ? t('cases.filter.allHeadsHint') : undefined}>
             <Select
-              ariaLabel="Crime subhead"
+              ariaLabel={t('cases.filter.subHeadAria')}
               value={values.crimeSubHeadId}
               onChange={(v) => setMany({ crimeSubHeadId: v })}
               options={subHeads}
-              placeholder="All subheads"
+              placeholder={t('cases.filter.allSubHeads')}
               disabled={loading}
+              loadingLabel={loadingLabel}
             />
           </Field>
-          <Field label="Status" hint="client-side refine">
+          <Field label={t('cases.filter.status')} hint={t('cases.filter.clientRefine')}>
             <Select
-              ariaLabel="Case status"
+              ariaLabel={t('cases.filter.statusAria')}
               value={values.statusId}
               onChange={(v) => setMany({ status: v })}
               options={statuses}
-              placeholder="Any status"
+              placeholder={t('cases.filter.anyStatus')}
               disabled={loading}
+              loadingLabel={loadingLabel}
             />
           </Field>
-          <Field label="Gravity">
+          <Field label={t('cases.filter.gravity')}>
             <Select
-              ariaLabel="Gravity of offence"
+              ariaLabel={t('cases.filter.gravityAria')}
               value={values.gravityId}
               onChange={(v) => setMany({ gravityId: v })}
               options={gravities}
-              placeholder="Any gravity"
+              placeholder={t('cases.filter.anyGravity')}
               disabled={loading}
+              loadingLabel={loadingLabel}
             />
           </Field>
-          <Field label="Pending age" hint="client-side refine">
+          <Field label={t('cases.filter.pendingAge')} hint={t('cases.filter.clientRefine')}>
             <Select
-              ariaLabel="Minimum case age in days"
+              ariaLabel={t('cases.filter.pendingAgeAria')}
               value={values.minAgeDays ? String(values.minAgeDays) : ''}
               onChange={(v) => setMany({ minAge: v })}
-              options={MIN_AGE_OPTIONS.map((d) => ({ value: String(d), label: `Older than ${d} days` }))}
-              placeholder="Any age"
+              options={MIN_AGE_OPTIONS.map((d) => ({ value: String(d), label: t('cases.filter.olderThan', { d }) }))}
+              placeholder={t('cases.filter.anyAge')}
               disabled={false}
+              loadingLabel={loadingLabel}
             />
           </Field>
         </div>
 
         <div className="border-t border-grid/60 pt-3">
-          <Field label="Period">
+          <Field label={t('cases.filter.period')}>
             <Select
-              ariaLabel="Date range preset"
+              ariaLabel={t('cases.filter.periodAria')}
               value={values.explicitDates ? '' : (values.range === 'all' ? '' : values.range)}
               onChange={(v) => setMany({ range: v || 'all' })}
-              options={DATE_RANGES.filter((r) => r.value !== 'all').map((r) => ({ value: r.value, label: r.label }))}
-              placeholder={values.explicitDates ? 'Custom dates below' : 'All time'}
+              options={DATE_RANGES.filter((r) => r.value !== 'all')
+                .map((r) => ({ value: r.value, label: RANGE_KEYS[r.value] ? t(RANGE_KEYS[r.value]) : r.label }))}
+              placeholder={values.explicitDates ? t('cases.filter.customDates') : t('common.filter.allTime')}
               disabled={false}
+              loadingLabel={loadingLabel}
             />
           </Field>
           <div className="grid grid-cols-2 gap-3 mt-2">
-            <Field label="From">
+            <Field label={t('cases.filter.from')}>
               <input
                 type="date"
                 className="input-dark w-full !py-2 num"
                 value={values.from}
-                aria-label="Registered from date"
+                aria-label={t('cases.filter.fromAria')}
                 onChange={(e) => setMany({ from: e.target.value })}
               />
             </Field>
-            <Field label="To">
+            <Field label={t('cases.filter.to')}>
               <input
                 type="date"
                 className="input-dark w-full !py-2 num"
                 value={values.to}
-                aria-label="Registered to date"
+                aria-label={t('cases.filter.toAria')}
                 onChange={(e) => setMany({ to: e.target.value })}
               />
             </Field>
           </div>
           <p className="text-[10px] text-muted/80 mt-1.5">
             {values.explicitDates
-              ? 'Custom dates active — picking a Period preset replaces them.'
+              ? t('cases.filter.dateHintCustom')
               : values.range && values.range !== 'all'
-                ? 'These dates come from the preset — editing either switches to custom dates.'
-                : 'Pick a preset above or type explicit dates.'}
+                ? t('cases.filter.dateHintPreset')
+                : t('cases.filter.dateHintNone')}
           </p>
         </div>
 
         <label className="flex items-center justify-between gap-3 border-t border-grid/60 pt-3 min-h-[44px] cursor-pointer">
           <span>
-            <span className="text-sm text-ink">Anomalies only</span>
-            <span className="block text-[11px] text-muted">Cases flagged by the nightly z-score pass</span>
+            <span className="text-sm text-ink">{t('cases.filter.anomaliesOnly')}</span>
+            <span className="block text-[11px] text-muted">{t('cases.filter.anomaliesOnlyHint')}</span>
           </span>
           <input
             type="checkbox"
@@ -185,11 +208,13 @@ export default function FilterSheet({ open, onClose, values, setMany, onClearAll
 
         <div className="flex items-center justify-between gap-2 border-t border-grid/60 pt-3">
           <div className="flex items-center gap-2">
-            {activeCount > 0 ? <Badge tone="amber">{activeCount} active</Badge> : <span className="text-xs text-muted">No filters active</span>}
+            {activeCount > 0
+              ? <Badge tone="amber">{t('cases.filter.activeCount', { n: activeCount })}</Badge>
+              : <span className="text-xs text-muted">{t('cases.filter.noneActive')}</span>}
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" className="btn-ghost" onClick={onClearAll} disabled={activeCount === 0}>Clear all</button>
-            <button type="button" className="btn-primary" onClick={onClose}>Done</button>
+            <button type="button" className="btn-ghost" onClick={onClearAll} disabled={activeCount === 0}>{t('cases.chip.clearAll')}</button>
+            <button type="button" className="btn-primary" onClick={onClose}>{t('cases.filter.done')}</button>
           </div>
         </div>
       </div>

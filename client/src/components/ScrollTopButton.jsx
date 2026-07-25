@@ -3,9 +3,11 @@
 // Hidden until the container scrolls past threshold; smooth scroll unless the
 // user prefers reduced motion. Sits above the mobile tab bar.
 import { useEffect, useState } from 'react';
+import { useT } from '../lib/i18n.jsx';
 
 export default function ScrollTopButton({ targetId = 'main-scroll', threshold = 480 }) {
   const [visible, setVisible] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     const el = document.getElementById(targetId);
@@ -28,7 +30,7 @@ export default function ScrollTopButton({ targetId = 'main-scroll', threshold = 
     <button
       type="button"
       onClick={scrollTop}
-      aria-label="Back to top"
+      aria-label={t('shell.action.backToTop')}
       className="no-print fixed z-40 bottom-24 md:bottom-8 right-4 md:right-6 flex h-11 w-11 items-center
         justify-center rounded-full border border-grid bg-panel text-muted shadow-lift
         hover:text-primary hover:border-primary/60 transition-colors animate-fade-up mb-safe"

@@ -7,6 +7,7 @@
 import { useLookups } from '../lib/api.js';
 import { useUrlFilters, describeFilters } from '../lib/filters.js';
 import { useSearchParams } from 'react-router-dom';
+import { useI18n } from '../lib/i18n.jsx';
 
 function Crest({ size = 34 }) {
   return (
@@ -21,6 +22,7 @@ function Crest({ size = 34 }) {
 
 export default function PrintHeader({ viewName = 'View' }) {
   const lookups = useLookups();
+  const { t, tName, lang } = useI18n();
   const { districtId, crimeHeadId, range } = useUrlFilters();
   const [searchParams] = useSearchParams();
   const rawFrom = searchParams.get('from') || '';
@@ -28,8 +30,9 @@ export default function PrintHeader({ viewName = 'View' }) {
   const summary = describeFilters(
     { districtId, crimeHeadId, range, from: rawFrom, to: rawTo },
     lookups.data,
+    { t, tName },
   );
-  const stamp = new Intl.DateTimeFormat('en-IN', {
+  const stamp = new Intl.DateTimeFormat(lang === 'hi' ? 'hi-IN' : lang === 'kn' ? 'kn-IN' : 'en-IN', {
     timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short',
   }).format(new Date());
 
@@ -40,16 +43,16 @@ export default function PrintHeader({ viewName = 'View' }) {
           <Crest />
           <div className="leading-tight min-w-0">
             <p className="text-base font-bold tracking-[0.06em] text-[#0B1220]">KSP DAPPA — {viewName}</p>
-            <p className="text-[11px] text-[#4B5563]">Karnataka State Police · Data Analytics &amp; Predictive Policing Assistant</p>
+            <p className="text-[11px] text-[#4B5563]">{t('common.app.org')} · {t('shell.print.fullName')}</p>
           </div>
         </div>
         <div className="text-right text-[11px] text-[#4B5563] shrink-0 leading-snug">
-          <p>Generated {stamp} IST</p>
-          <p className="font-semibold text-[#92400E]">Synthetic demonstration data — not real records</p>
+          <p>{t('shell.print.generated', { stamp })}</p>
+          <p className="font-semibold text-[#92400E]">{t('shell.print.synthetic')}</p>
         </div>
       </div>
       <p className="mt-2 text-[11px] text-[#374151]">
-        <span className="font-semibold uppercase tracking-wide text-[10px]">Filters:</span> {summary}
+        <span className="font-semibold uppercase tracking-wide text-[10px]">{t('shell.print.filters')}</span> {summary}
       </p>
     </div>
   );

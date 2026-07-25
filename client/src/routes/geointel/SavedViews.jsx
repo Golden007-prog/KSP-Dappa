@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { loadPrefs, savePrefs } from './prefs.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const MAX_VIEWS = 8;
 
@@ -19,6 +20,7 @@ export default function SavedViews({ getCurrent, onApply }) {
   const [name, setName] = useState('');
   const rootRef = useRef(null);
   const toast = useToast();
+  const t = useT();
 
   // click-away close (the popover floats over the map, no backdrop)
   useEffect(() => {
@@ -36,13 +38,13 @@ export default function SavedViews({ getCurrent, onApply }) {
   };
 
   const saveCurrent = () => {
-    const label = name.trim() || `View ${views.length + 1}`;
+    const label = name.trim() || t('geointel.views.default', { n: views.length + 1 });
     const snap = getCurrent();
     if (!snap) return;
     const next = [{ id: Date.now(), name: label, ...snap }, ...views].slice(0, MAX_VIEWS);
     persist(next);
     setName('');
-    toast.success(`Saved view “${label}”`);
+    toast.success(t('geointel.views.saved', { name: label }));
   };
 
   const remove = (id) => {
@@ -59,13 +61,13 @@ export default function SavedViews({ getCurrent, onApply }) {
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
-        title="Saved map views"
+        title={t('geointel.views.title')}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
           strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
         </svg>
-        Views
+        {t('geointel.views.label')}
       </button>
       {open && (
         <div className="pointer-events-auto absolute left-0 right-0 md:left-auto md:right-0 md:w-64 top-full mt-1 z-30 bg-panel border border-grid rounded-xl shadow-lift p-2.5 space-y-2 animate-scale-in">
@@ -74,19 +76,19 @@ export default function SavedViews({ getCurrent, onApply }) {
               type="text"
               value={name}
               maxLength={40}
-              placeholder="Name this view…"
-              aria-label="Saved view name"
+              placeholder={t('geointel.views.namePlaceholder')}
+              aria-label={t('geointel.views.nameAria')}
               className="input-dark !py-1.5 !px-2 text-xs flex-1 min-w-0"
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') saveCurrent(); }}
             />
             <button type="button" className="btn-primary gi-tap !px-2.5 !py-1.5 text-xs shrink-0" onClick={saveCurrent}>
-              Save
+              {t('common.action.save')}
             </button>
           </div>
           {views.length === 0 ? (
             <p className="text-[11px] text-muted px-0.5 pb-0.5">
-              No saved views yet — frame the map, pick layers and filters, then save.
+              {t('geointel.views.empty')}
             </p>
           ) : (
             <ul className="space-y-1 max-h-56 overflow-y-auto">
@@ -95,22 +97,22 @@ export default function SavedViews({ getCurrent, onApply }) {
                   <button
                     type="button"
                     className="flex-1 min-w-0 text-left rounded-lg border border-grid bg-base/40 hover:border-primary/50 px-2 py-1.5 transition-colors gi-tap"
-                    onClick={() => { onApply(v); setOpen(false); toast.info(`Applied view “${v.name}”`); }}
-                    title="Apply this view"
+                    onClick={() => { onApply(v); setOpen(false); toast.info(t('geointel.views.applied', { name: v.name })); }}
+                    title={t('geointel.views.apply')}
                   >
                     <span className="block text-xs text-ink truncate">{v.name}</span>
                     <span className="block text-[10px] text-muted truncate">
                       {[
-                        v.m ? `month ${v.m}` : null,
-                        v.filters?.districtId ? `district ${v.filters.districtId}` : null,
-                        v.metric && v.metric !== 'cases' ? `metric ${v.metric}` : null,
-                      ].filter(Boolean).join(' · ') || 'full window'}
+                        v.m ? t('geointel.views.month', { m: v.m }) : null,
+                        v.filters?.districtId ? t('geointel.views.district', { id: v.filters.districtId }) : null,
+                        v.metric && v.metric !== 'cases' ? t('geointel.views.metric', { m: v.metric }) : null,
+                      ].filter(Boolean).join(' · ') || t('geointel.views.fullWindow')}
                     </span>
                   </button>
                   <button
                     type="button"
                     className="btn-ghost gi-tap gi-tap-w !px-1.5 !py-1.5 shrink-0"
-                    aria-label={`Delete saved view ${v.name}`}
+                    aria-label={t('geointel.views.delete', { name: v.name })}
                     onClick={() => remove(v.id)}
                   >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>

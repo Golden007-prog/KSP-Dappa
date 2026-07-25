@@ -2,9 +2,16 @@
 // persisted client-side (localStorage) and deliberately NOT wired to the API
 // yet; the /admin console will own real delivery later. Pure helpers: load /
 // save, next-run computation, and a human-readable description.
+import { translate } from '../../lib/i18n.jsx';
+
 const KEY = 'dappa-report-schedule';
 
+const en = (key, vars) => translate('en', key, vars);
+
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Weekday names in the active language, JS getDay() order. */
+export const weekdayNames = (t = en) => WEEKDAYS.map((_, i) => t(`alerts.weekday.${i}`));
 
 export const DEFAULT_SCHEDULE = {
   enabled: false,
@@ -64,12 +71,12 @@ export function nextRun(s, now = new Date()) {
   return null;
 }
 
-export function describeSchedule(s) {
+export function describeSchedule(s, t = en) {
   const when = s.freq === 'monthly'
-    ? `Monthly on day ${s.monthday} at ${s.time}`
-    : `Every ${WEEKDAYS[s.weekday]} at ${s.time}`;
+    ? t('alerts.sched.describeMonthly', { day: s.monthday, time: s.time })
+    : t('alerts.sched.describeWeekly', { day: t(`alerts.weekday.${s.weekday}`), time: s.time });
   const who = s.recipients.length
-    ? `${s.recipients.length} recipient${s.recipients.length === 1 ? '' : 's'}`
-    : 'no recipients yet';
+    ? t(s.recipients.length === 1 ? 'alerts.sched.recipientCount.one' : 'alerts.sched.recipientCount.other', { n: s.recipients.length })
+    : t('alerts.sched.noRecipients');
   return `${when} · ${who}`;
 }

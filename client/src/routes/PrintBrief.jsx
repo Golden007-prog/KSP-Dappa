@@ -23,8 +23,9 @@ import BriefContent from './reports/BriefContent.jsx';
 import BriefPrintStyles from './reports/briefStyles.jsx';
 import { useBriefData, WINDOWS, DEFAULT_WINDOW, CUSTOM_WINDOW, isValidCustomRange } from './reports/useBriefData.js';
 import { sectionsFromParam, sectionsToParam, orderFromParam, orderToParam, DEFAULT_ORDER } from './reports/briefSections.js';
-import { CLASS_LEVELS, CLASS_META, normalizeClass, loadClassification, saveClassification } from './reports/classification.js';
+import { CLASS_LEVELS, normalizeClass, loadClassification, saveClassification } from './reports/classification.js';
 import { loadExecOverride } from './reports/exec.js';
+import { useT } from '../lib/i18n.jsx';
 
 const toolbarBtn = {
   background: '#ffffff',
@@ -46,6 +47,7 @@ const saveDensity = (v) => {
 };
 
 export default function PrintBrief() {
+  const t = useT();
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get('window') || DEFAULT_WINDOW;
   const custom = { from: searchParams.get('from') || '', to: searchParams.get('to') || '' };
@@ -90,9 +92,9 @@ export default function PrintBrief() {
   // "Save as PDF" filename comes from the document title.
   useEffect(() => {
     const prev = document.title;
-    document.title = `DAPPA Weekly Brief — ${brief.win.label}`;
+    document.title = t('alerts.print.docTitle', { win: brief.win.label });
     return () => { document.title = prev; };
-  }, [brief.win.label]);
+  }, [brief.win.label, t]);
 
   const setDensity = (v) => {
     saveDensity(v);
@@ -142,15 +144,16 @@ export default function PrintBrief() {
         }}
       >
         <span>
-          Print view — SmartBrowz PDF target · {brief.ready ? 'data loaded' : 'loading data…'}
-          {sectionCount < DEFAULT_ORDER.length ? ` · ${sectionCount}/${DEFAULT_ORDER.length} sections` : ''}
-          {windowKey === CUSTOM_WINDOW ? ' · custom window' : ''}
+          {t('alerts.print.viewLabel')} · {brief.ready ? t('alerts.print.dataLoaded') : t('alerts.print.loadingData')}
+          {sectionCount < DEFAULT_ORDER.length
+            ? ` · ${t('alerts.print.sectionCount', { n: sectionCount, total: DEFAULT_ORDER.length })}` : ''}
+          {windowKey === CUSTOM_WINDOW ? ` · ${t('alerts.print.customWindow')}` : ''}
         </span>
         {brief.allError && (
           <span role="alert" style={{ color: '#b91c1c', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            Data unavailable — retry before printing.
+            {t('alerts.print.dataUnavailable')}
             <button type="button" style={{ ...toolbarBtn, borderColor: '#b91c1c', color: '#b91c1c' }} onClick={brief.refetchAll}>
-              Retry
+              {t('common.action.retry')}
             </button>
           </span>
         )}
@@ -169,7 +172,7 @@ export default function PrintBrief() {
             }}
             aria-current={w.value === windowKey ? 'page' : undefined}
           >
-            {w.label}
+            {t(`alerts.reports.win.${w.key}`)}
           </Link>
         ))}
         <button
@@ -181,24 +184,26 @@ export default function PrintBrief() {
             borderColor: classification === 'confidential' ? '#b91c1c' : '#d1d5db',
           }}
           onClick={cycleClass}
-          title="Cycle the classification stamp (header banner, per-page footer, watermark)"
+          title={t('alerts.print.classTip')}
         >
-          Class: {CLASS_META[classification].label}
+          {t('alerts.print.classBtn', { label: t(`alerts.class.${classification}.label`) })}
         </button>
         <button
           type="button"
           style={{ ...toolbarBtn, fontWeight: density === 'compact' ? 700 : 400 }}
           onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
           aria-pressed={density === 'compact'}
-          title="Compact shrinks table padding and type so long briefs fit fewer pages"
+          title={t('alerts.print.densityTip')}
         >
-          Density: {density === 'compact' ? 'Compact' : 'Comfortable'}
+          {t('alerts.print.densityBtn', {
+            label: density === 'compact' ? t('alerts.print.densityCompact') : t('alerts.print.densityComfortable'),
+          })}
         </button>
         <button type="button" style={toolbarBtn} onClick={() => window.print()}>
-          Print / Save as PDF
+          {t('alerts.print.printSave')}
         </button>
         <Link to="/reports" style={{ ...toolbarBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-          ← Back to Reports
+          {t('alerts.print.back')}
         </Link>
       </div>
       <div className="brief-scroll">

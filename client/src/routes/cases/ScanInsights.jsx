@@ -12,10 +12,13 @@ import ChartPanel from '../../components/ChartPanel.jsx';
 import KpiTile from '../../components/KpiTile.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { fmtInt, fmtPct, monthLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
+import { useCaseNames } from './names.js';
 import { readJson, writeJson } from './explorerState.js';
 
 const STORAGE_KEY = 'dappa-cases-insights';
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_KEYS = ['cases.insights.day.mon', 'cases.insights.day.tue', 'cases.insights.day.wed',
+  'cases.insights.day.thu', 'cases.insights.day.fri', 'cases.insights.day.sat', 'cases.insights.day.sun'];
 const MAX_STATUS_CHIPS = 6;
 
 function median(nums) {
@@ -26,7 +29,10 @@ function median(nums) {
 }
 
 export default function ScanInsights({ rows, scopeLabel, statuses = [], statusId, onStatus, onMonthClick }) {
+  const t = useT();
+  const trName = useCaseNames();
   const { theme } = useTheme();
+  const dayLabels = DAY_KEYS.map((k) => t(k));
   const [open, setOpen] = useState(() => readJson(STORAGE_KEY, true) !== false);
 
   const agg = useMemo(() => {
@@ -79,8 +85,8 @@ export default function ScanInsights({ rows, scopeLabel, statuses = [], statusId
     return (
       <Card>
         <div className="flex items-center justify-between gap-3 -my-1.5">
-          <p className="text-xs text-muted truncate">Scan insights — anomaly / heinous share, status mix, temporal profile · {scopeLabel}</p>
-          <button type="button" className="btn !py-1 !px-2 text-xs shrink-0" onClick={toggle} aria-expanded={false}>Show</button>
+          <p className="text-xs text-muted truncate">{t('cases.insights.collapsed', { scope: scopeLabel })}</p>
+          <button type="button" className="btn !py-1 !px-2 text-xs shrink-0" onClick={toggle} aria-expanded={false}>{t('cases.profile.show')}</button>
         </div>
       </Card>
     );
@@ -106,7 +112,7 @@ export default function ScanInsights({ rows, scopeLabel, statuses = [], statusId
 
   const weekdayOption = {
     grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
-    xAxis: { type: 'category', data: DAY_LABELS },
+    xAxis: { type: 'category', data: dayLabels },
     yAxis: { type: 'value', minInterval: 1 },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     series: [{
@@ -121,45 +127,48 @@ export default function ScanInsights({ rows, scopeLabel, statuses = [], statusId
   };
 
   return (
-    <div className="space-y-3 animate-fade-in" aria-label="Scan insights">
+    <div className="space-y-3 animate-fade-in" aria-label={t('cases.insights.aria')}>
       <Card>
         <div className="flex items-center justify-between gap-3 -mt-1 mb-3">
-          <p className="text-xs text-muted truncate">Scan insights · {scopeLabel}</p>
-          <button type="button" className="btn !py-1 !px-2 text-xs shrink-0" onClick={toggle} aria-expanded>Hide</button>
+          <p className="text-xs text-muted truncate">{t('cases.insights.title', { scope: scopeLabel })}</p>
+          <button type="button" className="btn !py-1 !px-2 text-xs shrink-0" onClick={toggle} aria-expanded>{t('cases.profile.hide')}</button>
         </div>
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <KpiTile
-            label="Anomalies"
+            label={t('cases.insights.kpi.anomalies')}
             value={agg.anomalies}
             accent={agg.anomalies > 0 ? 'red' : 'teal'}
             pulse={agg.anomalies > 0}
-            hint={`${fmtPct(pct(agg.anomalies))} of ${fmtInt(agg.total)} scanned`}
+            hint={t('cases.insights.kpi.anomaliesHint', { pct: fmtPct(pct(agg.anomalies)), n: fmtInt(agg.total) })}
           />
           <KpiTile
-            label="Heinous"
+            label={t('cases.insights.kpi.heinous')}
             value={agg.heinous}
             accent={pct(agg.heinous) > 25 ? 'amber' : 'teal'}
-            hint={`${fmtPct(pct(agg.heinous))} of scanned cases`}
+            hint={t('cases.insights.kpi.heinousHint', { pct: fmtPct(pct(agg.heinous)) })}
           />
           <KpiTile
-            label="Median age"
+            label={t('cases.insights.kpi.medianAge')}
             value={agg.medianAge === null ? '—' : `${fmtInt(agg.medianAge)}d`}
             accent={agg.medianAge !== null && agg.medianAge > 90 ? 'amber' : 'teal'}
-            hint="days since registration (scanned rows)"
+            hint={t('cases.insights.kpi.medianAgeHint')}
           />
           <KpiTile
-            label="Busiest month"
+            label={t('cases.insights.kpi.busiestMonth')}
             value={agg.busiest ? monthLabel(agg.busiest[0]) : '—'}
             accent="amber"
-            hint={agg.busiest ? `${fmtInt(agg.busiest[1])} registrations` : 'no dated rows'}
+            hint={agg.busiest
+              ? t('cases.insights.kpi.busiestMonthHint', { n: fmtInt(agg.busiest[1]) })
+              : t('cases.insights.kpi.noDatedRows')}
           />
         </div>
         {agg.statusList.length > 1 && (
-          <div className="mt-3 pt-3 border-t border-grid/60 flex flex-wrap items-center gap-1.5" aria-label="Status mix — tap to filter">
-            <span className="eyebrow">Status mix</span>
+          <div className="mt-3 pt-3 border-t border-grid/60 flex flex-wrap items-center gap-1.5" aria-label={t('cases.insights.statusMixAria')}>
+            <span className="eyebrow">{t('cases.insights.statusMix')}</span>
             {agg.statusList.map(([name, count]) => {
               const lk = statuses.find((s) => s.name === name);
               const active = !!lk && statusId === lk.id;
+              const shown = trName('statuses', name);
               return (
                 <button
                   key={name}
@@ -167,10 +176,12 @@ export default function ScanInsights({ rows, scopeLabel, statuses = [], statusId
                   className={`chip !py-1 num transition-colors ${active ? '!border-amber/70 !text-amber' : lk ? 'hover:border-amber/50 hover:text-amber' : 'opacity-70 cursor-default'}`}
                   aria-pressed={active}
                   disabled={!lk}
-                  title={lk ? (active ? `Clear the ${name} filter` : `Filter to ${name}`) : `${name} (not in lookups)`}
+                  title={lk
+                    ? t(active ? 'cases.insights.statusClear' : 'cases.insights.statusFilter', { name: shown })
+                    : t('cases.insights.statusMissing', { name: shown })}
                   onClick={() => lk && onStatus(active ? '' : lk.id)}
                 >
-                  {name} · {fmtInt(count)}
+                  {shown} · {fmtInt(count)}
                 </button>
               );
             })}
@@ -180,11 +191,11 @@ export default function ScanInsights({ rows, scopeLabel, statuses = [], statusId
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <ChartPanel
-          title="Registration density"
-          subtitle={monthOption ? 'per month · click a bar to filter that month' : 'per month'}
+          title={t('cases.insights.density')}
+          subtitle={monthOption ? t('cases.insights.densitySub') : t('cases.insights.densitySubPlain')}
           option={monthOption}
           empty={!monthOption}
-          emptyMessage="Not enough dated rows for a monthly profile."
+          emptyMessage={t('cases.insights.densityEmpty')}
           height={190}
           onEvents={monthOption ? {
             click: (p) => {
@@ -194,8 +205,8 @@ export default function ScanInsights({ rows, scopeLabel, statuses = [], statusId
           } : undefined}
         />
         <ChartPanel
-          title="Day-of-week profile"
-          subtitle={`registrations by weekday · peak ${DAY_LABELS[agg.peakDay]} highlighted`}
+          title={t('cases.insights.weekday')}
+          subtitle={t('cases.insights.weekdaySub', { day: dayLabels[agg.peakDay] })}
           option={weekdayOption}
           height={190}
         />

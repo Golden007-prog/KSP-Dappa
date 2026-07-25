@@ -10,6 +10,7 @@ import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { dateLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 import { readJson, writeJson } from './explorerState.js';
 
 const STORAGE_KEY = 'dappa-cases-presets';
@@ -20,6 +21,7 @@ const readPresets = () => {
 };
 
 export default function PresetsSheet({ open, onClose, currentParams, activeCount = 0, onApply, currentView, onApplyView }) {
+  const t = useT();
   const toast = useToast();
   const [presets, setPresets] = useState(readPresets);
   const [name, setName] = useState('');
@@ -48,23 +50,23 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
     const existing = presets.some((p) => p.name === trimmed);
     persist([entry, ...presets.filter((p) => p.name !== trimmed)]);
     setName('');
-    toast.success(existing ? `Preset “${trimmed}” updated` : `Preset “${trimmed}” saved`);
+    toast.success(t(existing ? 'cases.presets.updated' : 'cases.presets.saved', { name: trimmed }));
   };
 
   const apply = (p) => {
     onApply(p.params);
     if (p.view && typeof onApplyView === 'function') onApplyView(p.view);
     onClose();
-    toast.info(`Preset “${p.name}” applied`);
+    toast.info(t('cases.presets.applied', { name: p.name }));
   };
 
   const remove = (p) => {
     persist(presets.filter((x) => x.name !== p.name));
-    toast.success(`Preset “${p.name}” deleted`);
+    toast.success(t('cases.presets.deleted', { name: p.name }));
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title="Filter presets">
+    <Sheet open={open} onClose={onClose} title={t('cases.presets.title')}>
       <div className="space-y-3 px-1 pb-1">
         <form
           className="flex items-center gap-2"
@@ -72,15 +74,15 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
         >
           <input
             className="input-dark flex-1 min-w-0 !py-2.5"
-            placeholder={activeCount ? 'Name this filter set…' : 'Set some filters first'}
+            placeholder={activeCount ? t('cases.presets.namePlaceholder') : t('cases.presets.nameDisabled')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={activeCount === 0}
-            aria-label="Preset name"
+            aria-label={t('cases.presets.nameAria')}
             maxLength={40}
           />
           <button type="submit" className="btn-primary shrink-0" disabled={!name.trim() || activeCount === 0}>
-            Save
+            {t('common.action.save')}
           </button>
         </form>
         <label className="flex min-h-[36px] items-center gap-2 text-xs text-muted cursor-pointer select-none -mt-1">
@@ -91,19 +93,19 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
             disabled={activeCount === 0}
             onChange={(e) => setIncludeView(e.target.checked)}
           />
-          Also capture visible columns &amp; sort
+          {t('cases.presets.captureView')}
         </label>
         {activeCount > 0 && (
           <p className="text-[11px] text-muted -mt-2">
-            Saves the current {activeCount}-filter combination for one-tap reuse.
+            {t('cases.presets.saveHint', { n: activeCount })}
           </p>
         )}
 
         {presets.length === 0 ? (
           <EmptyState
             compact
-            title="No saved presets"
-            message="Build a filter combination you use often, name it above, and it will live here."
+            title={t('cases.presets.emptyTitle')}
+            message={t('cases.presets.emptyMessage')}
           />
         ) : (
           <ul className="space-y-1.5">
@@ -112,16 +114,16 @@ export default function PresetsSheet({ open, onClose, currentParams, activeCount
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-ink truncate">{p.name}</p>
                   <p className="text-[11px] text-muted num">
-                    {Object.keys(p.params).length} params · saved {dateLabel(p.savedAt)}
+                    {t('cases.presets.meta', { n: Object.keys(p.params).length, date: dateLabel(p.savedAt) })}
                   </p>
                 </div>
-                {p.view ? <Badge tone="teal">+view</Badge> : null}
+                {p.view ? <Badge tone="teal">{t('cases.presets.withView')}</Badge> : null}
                 <Badge tone="slate">{Object.keys(p.params).length}</Badge>
-                <button type="button" className="btn !py-1 !px-2.5 text-xs" onClick={() => apply(p)}>Apply</button>
+                <button type="button" className="btn !py-1 !px-2.5 text-xs" onClick={() => apply(p)}>{t('cases.presets.apply')}</button>
                 <button
                   type="button"
                   className="btn-ghost !p-0 flex h-9 w-9 items-center justify-center text-signal"
-                  aria-label={`Delete preset ${p.name}`}
+                  aria-label={t('cases.presets.delete', { name: p.name })}
                   onClick={() => remove(p)}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

@@ -7,12 +7,14 @@ import { differenceInCalendarDays } from 'date-fns';
 import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
 import { dateLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
+import { useCaseNames } from './names.js';
 import {
   toDate, pickDate, pickValue, firstArrest,
   CS_DATE_KEYS, CS_TYPE_KEYS,
 } from './caseDates.js';
 
-function buildSteps(d) {
+function buildSteps(d, t) {
   const arrests = Array.isArray(d.arrests) ? d.arrests : [];
   // Key names vary per payload shape (arrestDate/dateOfArrest/…,
   // chargesheetDate/csDate/…) — resolved via the shared tolerant pickers.
@@ -24,15 +26,15 @@ function buildSteps(d) {
   const steps = [
     {
       key: 'incident',
-      label: 'Incident',
+      label: t('cases.timeline.incident'),
       date: toDate(d.incidentFrom),
       dateLabel: dateLabel(d.incidentFrom),
-      detail: d.incidentTo && d.incidentTo !== d.incidentFrom ? `until ${dateLabel(d.incidentTo)}` : null,
+      detail: d.incidentTo && d.incidentTo !== d.incidentFrom ? t('cases.timeline.until', { date: dateLabel(d.incidentTo) }) : null,
       done: !!toDate(d.incidentFrom),
     },
     {
       key: 'info',
-      label: 'Info at PS',
+      label: t('cases.timeline.info'),
       date: toDate(d.infoReceivedDate),
       dateLabel: dateLabel(d.infoReceivedDate),
       detail: null,
@@ -40,7 +42,7 @@ function buildSteps(d) {
     },
     {
       key: 'fir',
-      label: 'FIR registered',
+      label: t('cases.timeline.fir'),
       date: toDate(d.registeredDate),
       dateLabel: dateLabel(d.registeredDate),
       detail: null,
@@ -48,15 +50,17 @@ function buildSteps(d) {
     },
     {
       key: 'arrest',
-      label: 'Arrest',
+      label: t('cases.timeline.arrest'),
       date: arrest?.date || null,
       dateLabel: arrest ? dateLabel(arrest.raw) : '—',
-      detail: arrests.length ? `${arrests.length} record${arrests.length > 1 ? 's' : ''}` : null,
+      detail: arrests.length
+        ? t(arrests.length > 1 ? 'cases.timeline.records' : 'cases.timeline.recordOne', { n: arrests.length })
+        : null,
       done: arrests.length > 0,
     },
     {
       key: 'chargesheet',
-      label: 'Chargesheet',
+      label: t('cases.timeline.chargesheet'),
       date: cs?.date || null,
       dateLabel: cs ? dateLabel(cs.raw) : '—',
       detail: csType !== undefined ? String(csType) : null,
@@ -64,7 +68,7 @@ function buildSteps(d) {
     },
     {
       key: 'court',
-      label: 'Court',
+      label: t('cases.timeline.court'),
       date: null,
       dateLabel: d.court?.courtName ? '' : '—',
       detail: d.court?.courtName ? String(d.court.courtName) : null,
@@ -84,8 +88,10 @@ function buildSteps(d) {
 }
 
 export default function CaseTimeline({ caseData }) {
+  const t = useT();
+  const trName = useCaseNames();
   const d = caseData || {};
-  const steps = buildSteps(d);
+  const steps = buildSteps(d, t);
   const lastDone = steps.reduce((acc, s, i) => (s.done ? i : acc), -1);
 
   // Completion % + time sitting in the current stage (days since the last
@@ -99,13 +105,13 @@ export default function CaseTimeline({ caseData }) {
 
   return (
     <Card
-      title="Case lifecycle"
-      subtitle="Incident to court — derived from the FIR joins"
+      title={t('cases.timeline.title')}
+      subtitle={t('cases.timeline.subtitle')}
       actions={
         <span className="flex flex-wrap items-center justify-end gap-2">
           <span
             className="num inline-flex items-center gap-1.5 text-[11px] text-muted"
-            title={`${doneCount} of ${steps.length} lifecycle stages complete`}
+            title={t('cases.timeline.progressTip', { done: doneCount, total: steps.length })}
           >
             <span className="inline-block h-1.5 w-14 rounded-full bg-grid overflow-hidden" aria-hidden="true">
               <span className="block h-full rounded-full bg-amber" style={{ width: `${progressPct}%` }} />
@@ -113,13 +119,13 @@ export default function CaseTimeline({ caseData }) {
             {progressPct}%
           </span>
           {Number.isFinite(stageDays) && stageDays > 0 && (
-            <Badge tone={stageDays > 60 ? 'amber' : 'slate'}>{stageDays}d in stage</Badge>
+            <Badge tone={stageDays > 60 ? 'amber' : 'slate'}>{t('cases.timeline.inStage', { n: stageDays })}</Badge>
           )}
-          {d.statusName ? <Badge tone="amber">{d.statusName}</Badge> : null}
+          {d.statusName ? <Badge tone="amber">{trName('statuses', d.statusName)}</Badge> : null}
         </span>
       }
     >
-      <ol className="case-timeline flex items-stretch overflow-x-auto no-scrollbar -mx-1 px-1" aria-label="Case lifecycle">
+      <ol className="case-timeline flex items-stretch overflow-x-auto no-scrollbar -mx-1 px-1" aria-label={t('cases.timeline.aria')}>
         {steps.map((s, i) => {
           const current = i === lastDone;
           return (

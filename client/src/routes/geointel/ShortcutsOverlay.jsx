@@ -3,22 +3,26 @@
 // layered Escape handler closes this first). Focus lands on the close button
 // when it opens so keyboard users are not stranded on the map.
 import { useEffect, useRef } from 'react';
+import { useT } from '../../lib/i18n.jsx';
 
+// Key caps stay literal (they are what is printed on the keyboard); only the
+// description is translated.
 const SHORTCUTS = [
-  ['F', 'Toggle fullscreen map'],
-  ['Esc', 'Close help / measure / probe / popup / panel, then selection, compare, fullscreen'],
-  ['␣ Space', 'Play or pause the month animation'],
-  ['← →', 'Step the scrub month back / forward'],
-  ['H', 'Toggle the hour lens (hotspots by hour of day)'],
-  ['C', 'Toggle month compare (A/B heat swipe)'],
-  ['P', 'Toggle the patrol-route suggestion'],
-  ['M', 'Toggle the distance measure tool'],
-  ['/', 'Focus the locate search'],
-  ['?', 'Show this help'],
+  ['F', 'geointel.shortcuts.fullscreen'],
+  ['Esc', 'geointel.shortcuts.esc'],
+  ['␣ Space', 'geointel.shortcuts.space'],
+  ['← →', 'geointel.shortcuts.arrows'],
+  ['H', 'geointel.shortcuts.hour'],
+  ['C', 'geointel.shortcuts.compare'],
+  ['P', 'geointel.shortcuts.patrol'],
+  ['M', 'geointel.shortcuts.measure'],
+  ['/', 'geointel.shortcuts.locate'],
+  ['?', 'geointel.shortcuts.help'],
 ];
 
 export default function ShortcutsOverlay({ onClose }) {
   const closeRef = useRef(null);
+  const t = useT();
   useEffect(() => { closeRef.current?.focus(); }, []);
   return (
     <div
@@ -29,18 +33,18 @@ export default function ShortcutsOverlay({ onClose }) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Keyboard shortcuts"
+        aria-label={t('geointel.shortcuts.title')}
         className="w-full max-w-xs bg-panel border border-grid rounded-xl shadow-lift p-4 animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-ink">Keyboard shortcuts</h2>
+          <h2 className="text-sm font-semibold text-ink">{t('geointel.shortcuts.title')}</h2>
           <button
             ref={closeRef}
             type="button"
             className="btn gi-tap !px-2 !py-1"
             onClick={onClose}
-            aria-label="Close shortcuts help"
+            aria-label={t('geointel.shortcuts.close')}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
@@ -53,12 +57,12 @@ export default function ShortcutsOverlay({ onClose }) {
                   {key}
                 </kbd>
               </dt>
-              <dd className="text-xs text-muted leading-snug pt-0.5">{desc}</dd>
+              <dd className="text-xs text-muted leading-snug pt-0.5">{t(desc)}</dd>
             </div>
           ))}
         </dl>
         <p className="mt-3 text-[10px] text-muted">
-          Shortcuts pause while you are typing in an input.
+          {t('geointel.shortcuts.note')}
         </p>
       </div>
     </div>

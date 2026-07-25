@@ -6,9 +6,11 @@
 // Proper tablist semantics with ←/→/Home/End roving focus; 44px touch targets;
 // horizontally scrollable when tabs overflow on small screens.
 import { useRef } from 'react';
+import { useT } from '../lib/i18n.jsx';
 
-export default function Tabs({ tabs = [], value, onChange, ariaLabel = 'Tabs', className = '' }) {
+export default function Tabs({ tabs = [], value, onChange, ariaLabel, className = '' }) {
   const listRef = useRef(null);
+  const t = useT();
 
   const focusTab = (idx) => {
     const btns = listRef.current?.querySelectorAll('[role="tab"]');
@@ -27,7 +29,7 @@ export default function Tabs({ tabs = [], value, onChange, ariaLabel = 'Tabs', c
     <div
       ref={listRef}
       role="tablist"
-      aria-label={ariaLabel}
+      aria-label={ariaLabel || t('shell.tabs.aria')}
       className={`flex items-end gap-1 border-b border-grid overflow-x-auto no-scrollbar ${className}`}
     >
       {tabs.map((t, i) => {

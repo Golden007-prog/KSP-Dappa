@@ -7,27 +7,30 @@ import Card from '../../components/Card.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import Badge from '../../components/Badge.jsx';
 import { dateLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 export const NAME_KEYS = [
   'name', 'personName', 'fullName', 'canonicalName', 'PersonName', 'FullName',
   'complainantName', 'victimName', 'accusedName',
 ];
 
+// `label` stays English on purpose — exportCaseJson slugs it into the JSON keys,
+// so translating it would rename exported fields. `labelKey` drives the UI.
 export const PERSON_FIELDS = [
-  { label: 'Age', keys: ['age', 'Age', 'ageYears'] },
-  { label: 'Gender', keys: ['gender', 'sex', 'Gender'] },
-  { label: 'Occupation', keys: ['occupation', 'Occupation'] },
-  { label: 'Phone', keys: ['phone', 'mobile', 'contact', 'mobileNo', 'phoneNo'] },
-  { label: 'Address', keys: ['address', 'presentAddress', 'Address', 'addressLine'] },
-  { label: 'Injury', keys: ['injuryType', 'injury', 'InjuryType'] },
-  { label: 'Status', keys: ['statusName', 'accusedStatus', 'personStatus'] },
+  { label: 'Age', labelKey: 'cases.party.age', keys: ['age', 'Age', 'ageYears'] },
+  { label: 'Gender', labelKey: 'cases.party.gender', keys: ['gender', 'sex', 'Gender'] },
+  { label: 'Occupation', labelKey: 'cases.party.occupation', keys: ['occupation', 'Occupation'] },
+  { label: 'Phone', labelKey: 'cases.party.phone', keys: ['phone', 'mobile', 'contact', 'mobileNo', 'phoneNo'] },
+  { label: 'Address', labelKey: 'cases.party.address', keys: ['address', 'presentAddress', 'Address', 'addressLine'] },
+  { label: 'Injury', labelKey: 'cases.party.injury', keys: ['injuryType', 'injury', 'InjuryType'] },
+  { label: 'Status', labelKey: 'cases.party.status', keys: ['statusName', 'accusedStatus', 'personStatus'] },
 ];
 
 export const ARREST_FIELDS = [
-  { label: 'Arrested on', keys: ['arrestDate', 'dateOfArrest', 'arrestedOn', 'date'], fmt: 'date' },
-  { label: 'Type', keys: ['arrestTypeName', 'arrestType', 'type', 'mode'] },
-  { label: 'Station', keys: ['unitName', 'station', 'stationName'] },
-  { label: 'Status', keys: ['statusName', 'bailStatus', 'custodyStatus'] },
+  { label: 'Arrested on', labelKey: 'cases.party.arrestedOn', keys: ['arrestDate', 'dateOfArrest', 'arrestedOn', 'date'], fmt: 'date' },
+  { label: 'Type', labelKey: 'cases.party.arrestType', keys: ['arrestTypeName', 'arrestType', 'type', 'mode'] },
+  { label: 'Station', labelKey: 'cases.party.arrestStation', keys: ['unitName', 'station', 'stationName'] },
+  { label: 'Status', labelKey: 'cases.party.status', keys: ['statusName', 'bailStatus', 'custodyStatus'] },
 ];
 
 function pick(obj, keys) {
@@ -38,7 +41,7 @@ function pick(obj, keys) {
   return undefined;
 }
 
-function PersonCard({ person, fields, action = null }) {
+function PersonCard({ person, fields, action = null, t }) {
   if (person === null || person === undefined) return null;
   if (typeof person !== 'object') {
     return (
@@ -48,7 +51,7 @@ function PersonCard({ person, fields, action = null }) {
       </div>
     );
   }
-  const name = pick(person, NAME_KEYS) || 'Unnamed';
+  const name = pick(person, NAME_KEYS) || t('cases.party.unnamed');
   const aliases = Array.isArray(person.aliases) ? person.aliases.filter(Boolean) : [];
   const details = fields
     .map((f) => ({ ...f, value: pick(person, f.keys) }))
@@ -60,7 +63,7 @@ function PersonCard({ person, fields, action = null }) {
       {aliases.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1.5">
           {aliases.map((a, i) => (
-            <span key={`${a}-${i}`} className="chip !py-0.5 !text-[11px]">alias: {String(a)}</span>
+            <span key={`${a}-${i}`} className="chip !py-0.5 !text-[11px]">{t('cases.party.alias', { name: String(a) })}</span>
           ))}
         </div>
       )}
@@ -68,7 +71,7 @@ function PersonCard({ person, fields, action = null }) {
         <dl className="mt-2 space-y-1">
           {details.map((f) => (
             <div key={f.label} className="flex items-start justify-between gap-2 text-xs">
-              <dt className="text-muted shrink-0">{f.label}</dt>
+              <dt className="text-muted shrink-0">{f.labelKey ? t(f.labelKey) : f.label}</dt>
               <dd className="text-ink text-right break-words min-w-0">
                 {f.fmt === 'date' ? dateLabel(f.value) : String(f.value)}
               </dd>
@@ -84,6 +87,7 @@ function PersonCard({ person, fields, action = null }) {
 // `personAction(person)` (optional) renders a per-person footer node — e.g.
 // the accused → offender-registry pivot on the case detail.
 export default function PartyList({ title, subtitle, people, tone = 'neutral', fields = PERSON_FIELDS, emptyMessage, personAction }) {
+  const t = useT();
   const list = Array.isArray(people) ? people : [];
   return (
     <Card
@@ -92,11 +96,11 @@ export default function PartyList({ title, subtitle, people, tone = 'neutral', f
       actions={<Badge tone={list.length ? tone : 'slate'}>{list.length}</Badge>}
     >
       {list.length === 0 ? (
-        <EmptyState compact title="None on record" message={emptyMessage || 'No entries for this case.'} />
+        <EmptyState compact title={t('cases.party.noneTitle')} message={emptyMessage || t('cases.party.noneMessage')} />
       ) : (
         <div className="space-y-2">
           {list.map((p, i) => (
-            <PersonCard key={i} person={p} fields={fields} action={personAction ? personAction(p) : null} />
+            <PersonCard key={i} person={p} fields={fields} action={personAction ? personAction(p) : null} t={t} />
           ))}
         </div>
       )}

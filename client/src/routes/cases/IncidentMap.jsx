@@ -9,8 +9,11 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import EmptyState from '../../components/EmptyState.jsx';
 import PulseDot from '../../components/PulseDot.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
-export default function IncidentMap({ lat, lng, label, height = 260, others = [], onOtherClick, othersLabel = 'related incident' }) {
+export default function IncidentMap({ lat, lng, label, height = 260, others = [], onOtherClick, othersLabel }) {
+  const t = useT();
+  const legendOthers = othersLabel || t('cases.map.related');
   const elRef = useRef(null);
   const mapRef = useRef(null);
   const clickRef = useRef(onOtherClick);
@@ -97,7 +100,7 @@ export default function IncidentMap({ lat, lng, label, height = 260, others = []
   }, []);
 
   if (!hasCoords) {
-    return <EmptyState compact title="No coordinates" message="This case has no recorded incident location." />;
+    return <EmptyState compact title={t('cases.map.noCoords')} message={t('cases.map.noCoordsMsg')} />;
   }
   const shownOthers = (others || []).filter((o) => Number.isFinite(Number(o.lat)) && Number.isFinite(Number(o.lng)));
   const anyHighlight = shownOthers.some((o) => o.highlight);
@@ -108,19 +111,19 @@ export default function IncidentMap({ lat, lng, label, height = 260, others = []
       {tileError && (
         <p className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-amber print:hidden">
           <PulseDot color="amber" />
-          Basemap tiles unreachable — markers still plot on the blank canvas.
+          {t('cases.map.tileError')}
         </p>
       )}
       {shownOthers.length > 0 && (
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted print:hidden" aria-label="Map legend">
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber ring-1 ring-signal shrink-0" aria-hidden="true" />this case</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-teal/70 shrink-0" aria-hidden="true" />{othersLabel}</span>
-          {anyHighlight && <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber shrink-0" aria-hidden="true" />similar match</span>}
-          <span>tap a dot to open that case</span>
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted print:hidden" aria-label={t('cases.map.legendAria')}>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber ring-1 ring-signal shrink-0" aria-hidden="true" />{t('cases.map.thisCase')}</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-teal/70 shrink-0" aria-hidden="true" />{legendOthers}</span>
+          {anyHighlight && <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber shrink-0" aria-hidden="true" />{t('cases.map.similarMatch')}</span>}
+          <span>{t('cases.map.tapHint')}</span>
         </p>
       )}
       <p className="hidden print:block num text-xs text-muted">
-        Incident location: {la.toFixed(5)}, {ln.toFixed(5)} (WGS84)
+        {t('cases.map.printCoords', { lat: la.toFixed(5), lng: ln.toFixed(5) })}
       </p>
     </>
   );

@@ -3,13 +3,21 @@
 // useAlertPrefs as dappa-alerts-firstseen, so countdowns survive reloads).
 // Pure helpers plus a ticking-clock hook; nothing here talks to the API.
 import { useEffect, useState } from 'react';
+import { translate } from '../../lib/i18n.jsx';
+
+/** Fallback translator for callers that have no hook in scope (tests, plain JS). */
+const en = (key, vars) => translate('en', key, vars);
 
 /** Hours allowed to triage an alert of each severity. */
 export const SLA_HOURS = { critical: 4, high: 12, medium: 24, low: 48 };
 export const DEFAULT_SLA_HOURS = 24;
 
+/** English policy sentence — kept for callers that predate the translator. */
 export const SLA_POLICY_TEXT =
   'critical 4h · high 12h · medium 24h · low 48h, counted from first sighting in this console';
+
+/** Localised policy sentence for the SLA badge tooltip and the brief annex. */
+export const slaPolicyText = (t = en) => t('alerts.sla.policy');
 
 /** SLA state for one alert. firstSeen: ms epoch (absent → clock starts now). */
 export function slaFor(alert, firstSeen, now = Date.now()) {
@@ -28,13 +36,14 @@ export function slaFor(alert, firstSeen, now = Date.now()) {
   };
 }
 
-/** |ms| → '42m' / '3h 05m' / '2d 4h' (rounded down to minutes). */
-export function slaDuration(ms) {
+/** |ms| → '42m' / '3h 05m' / '2d 4h' (rounded down to minutes), in the active
+ * language when a translator is passed. */
+export function slaDuration(ms, t = en) {
   const mins = Math.floor(Math.abs(Number(ms) || 0) / 60000);
-  if (mins < 60) return `${mins}m`;
+  if (mins < 60) return t('alerts.sla.minutes', { m: mins });
   const h = Math.floor(mins / 60);
-  if (h < 48) return `${h}h ${String(mins % 60).padStart(2, '0')}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
+  if (h < 48) return t('alerts.sla.hours', { h, m: String(mins % 60).padStart(2, '0') });
+  return t('alerts.sla.days', { d: Math.floor(h / 24), h: h % 24 });
 }
 
 /** Re-render tick for the countdown badges (default: every 30 s). */

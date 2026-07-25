@@ -10,16 +10,19 @@
 //   classification — 'unclassified'|'internal'|'confidential': header banner,
 //                repeating print footer text, and (confidential) a diagonal
 //                print watermark
+// Every heading, column and note is translated: the brief is an official
+// document, so a Kannada or Hindi reader gets a fully native page.
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
 import { useLookups } from '../../lib/api.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
 import {
   sevRank, selectOpenAlerts, selectTopHotspots, selectCommunities,
-  selectForecastRows, selectRiskRows,
+  selectForecastRows, selectRiskRows, hotspotLabel,
 } from './select.js';
-import { DEFAULT_ORDER, normalizeOrder, SECTION_LABELS } from './briefSections.js';
+import { DEFAULT_ORDER, normalizeOrder } from './briefSections.js';
 import { composeExecutiveSummary } from './exec.js';
 import { annexNotes } from './annex.js';
-import { CLASS_META, normalizeClass } from './classification.js';
+import { classMeta, normalizeClass } from './classification.js';
 
 const INK = '#111827';
 const MUTED = '#6b7280';
@@ -48,9 +51,12 @@ function Note({ children }) {
   return <p style={{ fontSize: 12, color: MUTED, margin: '2px 0' }}>{children}</p>;
 }
 
-function SectionBody({ query, empty, children }) {
-  if (query.isLoading) return <Note>Loading…</Note>;
-  if (query.error) return <Note>Section unavailable — {query.error.message}</Note>;
+/** Loading / error / empty gate around one section's body. `t` is passed in so
+ * this stays a stable module-level component (defining it inside BriefContent
+ * would remount every table on each render). */
+function SectionBody({ query, empty, t, children }) {
+  if (query.isLoading) return <Note>{t('common.state.loading')}</Note>;
+  if (query.error) return <Note>{t('alerts.brief.sectionUnavailable', { msg: query.error.message })}</Note>;
   if (empty) return <Note>{empty}</Note>;
   return children;
 }
@@ -94,23 +100,27 @@ function Delta({ cur, prev, goodDown = true }) {
 export default function BriefContent({
   data, sections, style, order, density, preparedBy, execText, classification,
 }) {
+  const t = useT();
+  const tName = useNames();
   const { win, kpis, prevKpis, alerts, hotspots, network, forecast, risk } = data;
   const lookups = useLookups();
-  const classMeta = CLASS_META[normalizeClass(classification)];
+  const cls = normalizeClass(classification);
+  const meta = classMeta(cls, t);
+
   // Section toggles from the /reports builder (and ?sections= on /print/brief).
   // Absent prop / absent key → section on, so existing callers are unchanged.
-  const show = (k) => !sections || sections[k] !== false;
+  const show = (key) => !sections || sections[key] !== false;
   const sectionOrder = order ? normalizeOrder(order) : DEFAULT_ORDER;
-  const noneOn = DEFAULT_ORDER.every((k) => !show(k));
+  const noneOn = DEFAULT_ORDER.every((key) => !show(key));
   const k = kpis.data || {};
   const pk = prevKpis?.data || {};
   const asPct = (v) => Number(v); // server contract: detectionRate is a PERCENT (0-100)
   const detectionPct = asPct(k.detectionRate);
 
-  const districtName = (id) => {
-    if (!id) return '—';
+  const districtName = (id, apiName) => {
+    if (!id && !apiName) return '—';
     const hit = (lookups.data?.districts || []).find((d) => String(d.districtId) === String(id));
-    return hit?.districtName || String(id);
+    return tName('districts', id, apiName || hit?.districtName || String(id || '')) || String(id || '—');
   };
 
   const openAlerts = selectOpenAlerts(data, 8);
@@ -119,7 +129,7 @@ export default function BriefContent({
   const forecastRows = selectForecastRows(data, 3);
   const riskRows = selectRiskRows(data, 5);
 
-  const priorLabel = `vs prior ${win.days}d`;
+  const priorLabel = t('alerts.brief.priorLabel', { n: win.days });
 
   // Coverage line: what this brief actually spans, computed from loaded data.
   const coveredDistricts = new Set([
@@ -128,22 +138,19 @@ export default function BriefContent({
   ]).size;
   const openAlertCount = selectOpenAlerts(data, Infinity).length;
   const coverage = [
-    coveredDistricts ? `${fmtInt(coveredDistricts)} districts` : null,
-    alerts.data ? `${fmtInt(openAlertCount)} open alerts` : null,
-    hotspots.data ? `${fmtInt((hotspots.data || []).length)} hotspot clusters` : null,
-    risk.data ? `${fmtInt((risk.data || []).length)} stations scored` : null,
+    coveredDistricts ? t('alerts.brief.cov.districts', { n: fmtInt(coveredDistricts) }) : null,
+    alerts.data ? t('alerts.brief.cov.openAlerts', { n: fmtInt(openAlertCount) }) : null,
+    hotspots.data ? t('alerts.brief.cov.hotspots', { n: fmtInt((hotspots.data || []).length) }) : null,
+    risk.data ? t('alerts.brief.cov.stations', { n: fmtInt((risk.data || []).length) }) : null,
   ].filter(Boolean);
 
-  const enabledLabels = (order ? normalizeOrder(order) : DEFAULT_ORDER)
-    .filter(show)
-    .map((key) => SECTION_LABELS[key])
-    .filter(Boolean);
+  const enabledLabels = sectionOrder.filter(show).map((key) => t(`alerts.section.${key}`));
 
   const SECTION_RENDERERS = {
     exec: () => {
-      const text = (execText && String(execText).trim()) || composeExecutiveSummary(data);
+      const text = (execText && String(execText).trim()) || composeExecutiveSummary(data, t, tName);
       return (
-        <Section title="Executive summary" key="exec">
+        <Section title={t('alerts.brief.h.exec')} key="exec">
           {text ? (
             <>
               {text.split(/\n{2,}/).map((para, i) => (
@@ -152,21 +159,21 @@ export default function BriefContent({
               ))}
               <Note>
                 {execText && String(execText).trim()
-                  ? 'Edited by the preparing officer (auto-compose available in the Reports builder).'
-                  : 'Auto-composed from this window’s data — editable in the Reports builder.'}
+                  ? t('alerts.brief.execEdited')
+                  : t('alerts.brief.execAuto')}
               </Note>
             </>
           ) : (
-            <Note>Not enough loaded data to compose a summary for this window.</Note>
+            <Note>{t('alerts.brief.execNotEnough')}</Note>
           )}
         </Section>
       );
     },
     annex: () => (
-      <Section title="Annex — methodology notes" key="annex">
+      <Section title={t('alerts.brief.h.annex')} key="annex">
         <ol style={{ margin: 0, paddingLeft: 18 }}>
-          {annexNotes(data).map((n) => (
-            <li key={n.title} style={{ fontSize: 11.5, color: INK, margin: '0 0 5px', lineHeight: 1.5 }}>
+          {annexNotes(data, t).map((n) => (
+            <li key={n.key} style={{ fontSize: 11.5, color: INK, margin: '0 0 5px', lineHeight: 1.5 }}>
               <strong>{n.title}.</strong> <span style={{ color: '#374151' }}>{n.body}</span>
             </li>
           ))}
@@ -174,89 +181,97 @@ export default function BriefContent({
       </Section>
     ),
     kpis: () => (
-      <Section title="Headline indicators" key="kpis">
-        <SectionBody query={kpis}>
+      <Section title={t('alerts.brief.h.kpis')} key="kpis">
+        <SectionBody query={kpis} t={t}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <StatBox
-              label="Total FIRs"
+              label={t('alerts.brief.kpi.totalFirs')}
               value={fmtInt(k.totalFirs)}
-              sub={<>registered this window{' '}<Delta cur={k.totalFirs} prev={pk.totalFirs} /> {Number.isFinite(Number(pk.totalFirs)) ? priorLabel : ''}</>}
+              sub={<>{t('alerts.brief.kpi.totalFirsSub')}{' '}<Delta cur={k.totalFirs} prev={pk.totalFirs} /> {Number.isFinite(Number(pk.totalFirs)) ? priorLabel : ''}</>}
             />
             <StatBox
-              label="MoM change"
+              label={t('alerts.brief.kpi.mom')}
               value={Number.isFinite(Number(k.momPct)) ? fmtPct(Number(k.momPct), { sign: true, fraction: false }) : '—'}
               color={Number(k.momPct) > 0 ? RED : TEAL}
-              sub="vs previous month"
+              sub={t('alerts.brief.kpi.momSub')}
             />
             <StatBox
-              label="Heinous cases"
+              label={t('alerts.brief.kpi.heinous')}
               value={fmtInt(k.heinousCount)}
               color={RED}
-              sub={<>gravity: heinous{' '}<Delta cur={k.heinousCount} prev={pk.heinousCount} /> {Number.isFinite(Number(pk.heinousCount)) ? priorLabel : ''}</>}
+              sub={<>{t('alerts.brief.kpi.heinousSub')}{' '}<Delta cur={k.heinousCount} prev={pk.heinousCount} /> {Number.isFinite(Number(pk.heinousCount)) ? priorLabel : ''}</>}
             />
             <StatBox
-              label="Detection rate"
+              label={t('alerts.brief.kpi.detection')}
               value={Number.isFinite(detectionPct) ? `${detectionPct.toFixed(1)}%` : '—'}
               color={TEAL}
-              sub={<>chargesheet A / (A + C){' '}<Delta cur={asPct(k.detectionRate)} prev={asPct(pk.detectionRate)} goodDown={false} /></>}
+              sub={<>{t('alerts.brief.kpi.detectionSub')}{' '}<Delta cur={asPct(k.detectionRate)} prev={asPct(pk.detectionRate)} goodDown={false} /></>}
             />
-            <StatBox label="Active alerts" value={fmtInt(k.activeAlerts)} color={Number(k.activeAlerts) > 0 ? RED : INK} sub="unacknowledged anomalies" />
+            <StatBox
+              label={t('alerts.brief.kpi.activeAlerts')}
+              value={fmtInt(k.activeAlerts)}
+              color={Number(k.activeAlerts) > 0 ? RED : INK}
+              sub={t('alerts.brief.kpi.activeAlertsSub')}
+            />
           </div>
         </SectionBody>
       </Section>
     ),
     alerts: () => (
-      <Section title="New anomaly alerts" key="alerts">
-        <SectionBody query={alerts} empty={openAlerts.length ? '' : 'No open anomaly alerts in this window.'}>
+      <Section title={t('alerts.brief.h.alerts')} key="alerts">
+        <SectionBody query={alerts} t={t} empty={openAlerts.length ? '' : t('alerts.brief.empty.alerts')}>
           <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th style={th}>District</th>
-                <th style={th}>Crime head</th>
-                <th style={th}>Narrative</th>
-                <th style={{ ...th, textAlign: 'right' }}>Obs / Exp</th>
-                <th style={{ ...th, textAlign: 'right' }}>z</th>
-                <th style={th}>Severity</th>
+                <th style={th}>{t('alerts.brief.col.district')}</th>
+                <th style={th}>{t('alerts.brief.col.crimeHead')}</th>
+                <th style={th}>{t('alerts.brief.col.narrative')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.obsExp')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.z')}</th>
+                <th style={th}>{t('alerts.brief.col.severity')}</th>
               </tr>
             </thead>
             <tbody>
-              {openAlerts.map((a) => (
-                <tr key={a.alertId}>
-                  <td style={td}>{a.districtName || districtName(a.districtId)}</td>
-                  <td style={td}>{a.headName || '—'}</td>
-                  <td style={{ ...td, maxWidth: 260 }}>{a.narrative || '—'}</td>
-                  <td style={tdNum}>{fmtInt(a.observed)} / {fmtInt(a.expected)}</td>
-                  <td style={tdNum}>{fmtNum(a.zScore, 1)}</td>
-                  <td style={{ ...td, color: sevRank(a.severity) >= 3 ? RED : INK, fontWeight: 600 }}>
-                    {String(a.severity || '—')}
-                  </td>
-                </tr>
-              ))}
+              {openAlerts.map((a) => {
+                const sevKey = String(a.severity || '').toLowerCase();
+                return (
+                  <tr key={a.alertId}>
+                    <td style={td}>{districtName(a.districtId, a.districtName)}</td>
+                    <td style={td}>{tName('crimeHeads', a.crimeHeadId, a.headName) || '—'}</td>
+                    <td style={{ ...td, maxWidth: 260 }}>{a.narrative || '—'}</td>
+                    <td style={tdNum}>{fmtInt(a.observed)} / {fmtInt(a.expected)}</td>
+                    <td style={tdNum}>{fmtNum(a.zScore, 1)}</td>
+                    <td style={{ ...td, color: sevRank(a.severity) >= 3 ? RED : INK, fontWeight: 600 }}>
+                      {sevKey ? t(`alerts.sevLower.${sevKey}`) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </SectionBody>
       </Section>
     ),
     hotspots: () => (
-      <Section title="Top hotspots" key="hotspots">
-        <SectionBody query={hotspots} empty={topHotspots.length ? '' : 'No hotspot clusters for this window.'}>
+      <Section title={t('alerts.brief.h.hotspots')} key="hotspots">
+        <SectionBody query={hotspots} t={t} empty={topHotspots.length ? '' : t('alerts.brief.empty.hotspots')}>
           <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th style={th}>Hotspot</th>
-                <th style={th}>Crime subhead</th>
-                <th style={th}>District unit</th>
-                <th style={th}>Hour band</th>
-                <th style={{ ...th, textAlign: 'right' }}>Cases</th>
-                <th style={{ ...th, textAlign: 'right' }}>Intensity</th>
+                <th style={th}>{t('alerts.brief.col.hotspot')}</th>
+                <th style={th}>{t('alerts.brief.col.crimeSubhead')}</th>
+                <th style={th}>{t('alerts.brief.col.districtUnit')}</th>
+                <th style={th}>{t('alerts.brief.col.hourBand')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.cases')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.intensity')}</th>
               </tr>
             </thead>
             <tbody>
               {topHotspots.map((h) => (
                 <tr key={h.clusterId}>
-                  <td style={{ ...td, fontWeight: 600 }}>{h.label || `Cluster ${h.clusterId}`}</td>
-                  <td style={td}>{h.subHeadName || '—'}</td>
-                  <td style={td}>{h.districtName || districtName(h.districtId)}</td>
+                  <td style={{ ...td, fontWeight: 600 }}>{hotspotLabel(h, t, tName)}</td>
+                  <td style={td}>{tName('crimeHeads', h.crimeHeadId, h.subHeadName) || '—'}</td>
+                  <td style={td}>{districtName(h.districtId, h.districtName)}</td>
                   <td style={td}>{hourFmt(h.hourBandStart)}–{hourFmt(h.hourBandEnd)}</td>
                   <td style={tdNum}>{fmtInt(h.caseCount)}</td>
                   <td style={tdNum}>{fmtNum(h.intensity, 2)}</td>
@@ -268,29 +283,31 @@ export default function BriefContent({
       </Section>
     ),
     network: () => (
-      <Section title="Network changes — largest co-offending clusters" key="network">
-        <SectionBody query={network} empty={communities.length ? '' : 'No network communities resolved.'}>
+      <Section title={t('alerts.brief.h.network')} key="network">
+        <SectionBody query={network} t={t} empty={communities.length ? '' : t('alerts.brief.empty.network')}>
           <ul style={{ margin: 0, paddingLeft: 16 }}>
             {communities.map((g) => (
               <li key={g.id} style={{ fontSize: 12, color: INK, margin: '3px 0' }}>
-                <strong>Group #{g.id}</strong> — {fmtInt(g.members)} members · {fmtInt(g.cases)} linked cases
-                {g.top?.label ? <> · key node: {g.top.label}</> : null}
+                <strong>{t('alerts.brief.group', { id: g.id })}</strong>
+                {' — '}{t('alerts.brief.members', { n: fmtInt(g.members) })}
+                {' · '}{t('alerts.brief.linkedCases', { n: fmtInt(g.cases) })}
+                {g.top?.label ? <> · {t('alerts.brief.keyNode', { label: g.top.label })}</> : null}
               </li>
             ))}
           </ul>
-          <Note>Communities from the identity-resolved co-accused graph (shared-case edges).</Note>
+          <Note>{t('alerts.brief.networkNote')}</Note>
         </SectionBody>
       </Section>
     ),
     forecast: () => (
-      <Section title="Forecast risks — next quarter" key="forecast">
-        <SectionBody query={forecast} empty={forecastRows.length ? '' : 'No forecast available.'}>
+      <Section title={t('alerts.brief.h.forecast')} key="forecast">
+        <SectionBody query={forecast} t={t} empty={forecastRows.length ? '' : t('alerts.brief.empty.forecast')}>
           <table style={{ width: '55%', minWidth: 280, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th style={th}>Month</th>
-                <th style={{ ...th, textAlign: 'right' }}>Predicted FIRs</th>
-                <th style={{ ...th, textAlign: 'right' }}>Interval</th>
+                <th style={th}>{t('alerts.brief.col.month')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.predicted')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.interval')}</th>
               </tr>
             </thead>
             <tbody>
@@ -304,19 +321,22 @@ export default function BriefContent({
             </tbody>
           </table>
           <Note>
-            Model: {forecast.data?.model || '—'}
+            {t('alerts.brief.model', { model: forecast.data?.model || '—' })}
             {forecast.data?.mape !== null && forecast.data?.mape !== undefined
-              ? ` · backtest MAPE ${fmtNum(forecast.data.mape, 1)}%` : ''}
+              ? t('alerts.brief.mape', { v: fmtNum(forecast.data.mape, 1) }) : ''}
           </Note>
         </SectionBody>
         <div style={{ marginTop: 10 }}>
-          <SectionBody query={risk} empty={riskRows.length ? '' : 'No station-risk scores available.'}>
-            <p style={{ fontSize: 11, color: MUTED, margin: '0 0 4px' }}>Highest-risk stations (30-day horizon):</p>
+          <SectionBody query={risk} t={t} empty={riskRows.length ? '' : t('alerts.brief.empty.risk')}>
+            <p style={{ fontSize: 11, color: MUTED, margin: '0 0 4px' }}>{t('alerts.brief.riskHeading')}</p>
             <ul style={{ margin: 0, paddingLeft: 16 }}>
               {riskRows.map((s) => (
                 <li key={s.unitId} style={{ fontSize: 12, color: INK, margin: '3px 0' }}>
-                  <strong>{s.unitName || s.unitId}</strong> — risk {fmtNum(s.riskScore, 2)}
-                  {Array.isArray(s.drivers) && s.drivers.length ? <> · drivers: {s.drivers.slice(0, 3).join(', ')}</> : null}
+                  <strong>{s.unitName || s.unitId}</strong>
+                  {' — '}{t('alerts.brief.riskScore', { v: fmtNum(s.riskScore, 2) })}
+                  {Array.isArray(s.drivers) && s.drivers.length
+                    ? <> · {t('alerts.brief.drivers', { list: s.drivers.slice(0, 3).join(', ') })}</>
+                    : null}
                 </li>
               ))}
             </ul>
@@ -328,74 +348,72 @@ export default function BriefContent({
 
   return (
     <div className={`print-page${density === 'compact' ? ' brief-compact' : ''}`} style={style}>
-      {normalizeClass(classification) === 'confidential' && (
-        <div className="brief-watermark" aria-hidden="true">CONFIDENTIAL</div>
+      {cls === 'confidential' && (
+        <div className="brief-watermark" aria-hidden="true">{t('alerts.class.watermark')}</div>
       )}
       <header>
-        {classMeta?.banner && (
+        {meta.banner && (
           <p style={{
             textAlign: 'center', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
             textTransform: 'uppercase', margin: '0 0 8px',
-            color: normalizeClass(classification) === 'confidential' ? RED : AMBER,
+            color: cls === 'confidential' ? RED : AMBER,
           }}
           >
-            {classMeta.banner}
+            {meta.banner}
           </p>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#0b1220' }}>
-              Weekly Intelligence Brief
+              {t('alerts.brief.title')}
             </h1>
             <p style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
-              Karnataka State Police · DAPPA decision-support prototype
+              {t('alerts.brief.org')}
             </p>
           </div>
           <div style={{ textAlign: 'right', fontSize: 11, color: MUTED }}>
-            <div>Period: <span style={{ color: INK }}>{dateLabel(win.from)} – {dateLabel(win.to)}</span></div>
-            <div>Window: {win.label}</div>
-            <div>Generated: {dateLabel(new Date().toISOString().slice(0, 10))}</div>
-            {preparedBy ? <div>Prepared by: <span style={{ color: INK }}>{preparedBy}</span></div> : null}
+            <div>{t('alerts.brief.period')}: <span style={{ color: INK }}>{dateLabel(win.from)} – {dateLabel(win.to)}</span></div>
+            <div>{t('alerts.brief.window')}: {win.label}</div>
+            <div>{t('alerts.brief.generated')}: {dateLabel(new Date().toISOString().slice(0, 10))}</div>
+            {preparedBy ? <div>{t('alerts.brief.preparedBy')}: <span style={{ color: INK }}>{preparedBy}</span></div> : null}
           </div>
         </div>
         <p style={{ fontSize: 10, color: RED, marginTop: 6 }}>
-          Synthetic demonstration data — KSP Datathon 2026 prototype. Not real crime records.
+          {t('alerts.brief.disclaimer')}
         </p>
         {coverage.length > 0 && (
           <p style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
-            Coverage: {coverage.join(' · ')}
+            {t('alerts.brief.coverage')}: {coverage.join(' · ')}
           </p>
         )}
         {enabledLabels.length > 1 && (
           <p style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-            Contents: {enabledLabels.join(' · ')}
+            {t('alerts.brief.contents')}: {enabledLabels.join(' · ')}
           </p>
         )}
-        <hr style={{ margin: '12px 0 0', border: 0, borderTop: `2px solid #0b1220` }} />
+        <hr style={{ margin: '12px 0 0', border: 0, borderTop: '2px solid #0b1220' }} />
       </header>
 
-      {noneOn && (
-        <Note>Every section is toggled off — enable at least one section in the brief builder.</Note>
-      )}
+      {noneOn && <Note>{t('alerts.brief.noneOn')}</Note>}
 
       {sectionOrder.filter(show).map((key) => SECTION_RENDERERS[key]?.())}
 
       <footer style={{ marginTop: 24, paddingTop: 8, borderTop: `1px solid ${BORDER}`, fontSize: 10, color: MUTED, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <span>Generated by DAPPA — Data Analytics &amp; Predictive Policing Assistant (Zoho Catalyst)</span>
-        <span>All figures derive from synthetic data · caste/religion are never used in analytics</span>
+        <span>{t('alerts.brief.footerLeft')}</span>
+        <span>{t('alerts.brief.footerRight')}</span>
       </footer>
 
       {/* Repeats on every printed page (position:fixed in print — briefStyles.jsx). */}
       <div className="brief-print-footer" aria-hidden="true">
         <span style={{
           fontWeight: 700,
-          color: normalizeClass(classification) === 'confidential' ? RED : MUTED,
+          color: cls === 'confidential' ? RED : MUTED,
         }}
         >
-          {classMeta?.footer || 'DAPPA Weekly Intelligence Brief'}
+          {meta.footer}
         </span>
-        <span>Synthetic demo data — not real crime records</span>
-        <span>Generated {dateLabel(new Date().toISOString().slice(0, 10))}</span>
+        <span>{t('alerts.brief.printFooterMiddle')}</span>
+        <span>{t('alerts.brief.printFooterRight', { date: dateLabel(new Date().toISOString().slice(0, 10)) })}</span>
       </div>
     </div>
   );

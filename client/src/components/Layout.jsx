@@ -22,6 +22,7 @@ import { useQueryClient, useIsFetching } from '@tanstack/react-query';
 import { apiGet, useHealthz, useKpis, useLookups } from '../lib/api.js';
 import { filterSearchString, describeFilters, FILTER_KEYS } from '../lib/filters.js';
 import { useUiStore } from '../lib/store.js';
+import { useI18n, useT } from '../lib/i18n.jsx';
 import { useTheme } from './ThemeProvider.jsx';
 import CommandPalette, { recordRecentAction } from './CommandPalette.jsx';
 import DensityToggle from './DensityToggle.jsx';
@@ -67,77 +68,79 @@ const ICONS = {
   bookmark: <Svg size={16}><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4-6.5 4v-16a1 1 0 0 1 1-1Z" /></Svg>,
   install: <Svg size={16}><path d="M12 3v10m-4-4 4 4 4-4" /><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15" /></Svg>,
   filter: <Svg size={13}><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" /></Svg>,
+  globe: <Svg size={16}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18" /></Svg>,
 };
 
 // Route-local keyboard shortcuts surfaced in the global shortcuts sheet as an
 // "On this view" section. These mirror the handlers each route actually binds
 // (useDashShortcuts, useAlertShortcuts, Cases/Network/Copilot/GeoIntel effects).
+// Names and row labels are i18n keys — resolved in GlobalShortcutsSheet.
 const ROUTE_SHORTCUTS = [
   {
     match: (p) => p === '/',
-    name: 'Dashboard',
+    nameKey: 'common.nav.dashboard',
     rows: [
-      [['r'], 'Refresh all panels'],
-      [['a'], 'Toggle auto-refresh'],
-      [['/'], 'Focus the Ask-DAPPA omnibox'],
+      [['r'], 'shell.sc.refreshPanels'],
+      [['a'], 'shell.sc.autoRefresh'],
+      [['/'], 'shell.sc.focusOmnibox'],
     ],
   },
   {
     match: (p) => p === '/map',
-    name: 'GeoIntel',
+    nameKey: 'common.nav.geointel',
     rows: [
-      [['f'], 'Map fullscreen'],
-      [['Space'], 'Play / pause the month scrubber'],
-      [['←', '→'], 'Step months'],
-      [['/'], 'Focus locate search'],
-      [['?'], 'Map shortcuts overlay'],
+      [['f'], 'shell.sc.mapFullscreen'],
+      [['Space'], 'shell.sc.playScrubber'],
+      [['←', '→'], 'shell.sc.stepMonths'],
+      [['/'], 'shell.sc.focusLocate'],
+      [['?'], 'shell.sc.mapShortcuts'],
     ],
   },
   {
     match: (p) => p === '/alerts',
-    name: 'Alerts',
+    nameKey: 'common.nav.alerts',
     rows: [
-      [['j', 'k'], 'Move through the feed'],
-      [['a'], 'Acknowledge the focused alert'],
-      [['m'], 'Mark read'],
-      [['s'], 'Snooze 24 h'],
-      [['c'], 'Copy as text'],
-      [['u'], 'Toggle unread-only'],
-      [['e'], 'Export CSV'],
-      [['1', '–', '4'], 'Severity filter (0 clears)'],
-      [['/'], 'Focus search'],
+      [['j', 'k'], 'shell.sc.moveFeed'],
+      [['a'], 'shell.sc.ackAlert'],
+      [['m'], 'shell.sc.markRead'],
+      [['s'], 'shell.sc.snooze'],
+      [['c'], 'shell.sc.copyText'],
+      [['u'], 'shell.sc.unreadOnly'],
+      [['e'], 'common.action.exportCsv'],
+      [['1', '–', '4'], 'shell.sc.severityFilter'],
+      [['/'], 'shell.sc.focusSearch'],
     ],
   },
   {
     match: (p) => p === '/cases',
-    name: 'Case explorer',
+    nameKey: 'shell.view.caseExplorer',
     rows: [
-      [['/'], 'Focus search'],
-      [['e'], 'Export the current filter as CSV'],
+      [['/'], 'shell.sc.focusSearch'],
+      [['e'], 'shell.sc.exportFilterCsv'],
     ],
   },
   {
     match: (p) => /^\/cases\/./.test(p),
-    name: 'FIR detail',
-    rows: [[['←', '→'], 'Previous / next case in the filter']],
+    nameKey: 'shell.view.firDetail',
+    rows: [[['←', '→'], 'shell.sc.prevNextCase']],
   },
   {
     match: (p) => p === '/network',
-    name: 'Network',
+    nameKey: 'common.nav.network',
     rows: [
-      [['/'], 'Find a node'],
-      [['0'], 'Fit the graph'],
-      [['+', '−'], 'Zoom'],
-      [['Esc'], 'Clear selection'],
+      [['/'], 'shell.sc.findNode'],
+      [['0'], 'shell.sc.fitGraph'],
+      [['+', '−'], 'shell.sc.zoom'],
+      [['Esc'], 'shell.sc.clearSelection'],
     ],
   },
   {
     match: (p) => p === '/copilot',
-    name: 'Ask DAPPA',
+    nameKey: 'common.nav.copilot',
     rows: [
-      [['/'], 'Focus the question box'],
-      [['↑', '↓'], 'Recall input history'],
-      [['Esc'], 'Stop voice / blur'],
+      [['/'], 'shell.sc.focusQuestion'],
+      [['↑', '↓'], 'shell.sc.recallHistory'],
+      [['Esc'], 'shell.sc.stopVoice'],
     ],
   },
 ];
@@ -154,44 +157,46 @@ function readSavedViews() {
   }
 }
 
+// `labelKey` / `groupKey` are i18n keys in the shared `common` namespace —
+// every render site resolves them with t(), so nav text follows the language.
 const NAV_GROUPS = [
   {
-    label: 'Overview',
+    groupKey: 'common.nav.group.overview',
     items: [
-      { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
-      { to: '/map', label: 'GeoIntel', icon: 'map' },
-      { to: '/trends', label: 'Trends', icon: 'trends' },
+      { to: '/', labelKey: 'common.nav.dashboard', icon: 'dashboard', end: true },
+      { to: '/map', labelKey: 'common.nav.geointel', icon: 'map' },
+      { to: '/trends', labelKey: 'common.nav.trends', icon: 'trends' },
     ],
   },
   {
-    label: 'Intelligence',
+    groupKey: 'common.nav.group.intelligence',
     items: [
-      { to: '/alerts', label: 'Alerts', icon: 'alerts' },
-      { to: '/network', label: 'Network', icon: 'network' },
-      { to: '/offenders', label: 'Offenders', icon: 'offenders' },
+      { to: '/alerts', labelKey: 'common.nav.alerts', icon: 'alerts' },
+      { to: '/network', labelKey: 'common.nav.network', icon: 'network' },
+      { to: '/offenders', labelKey: 'common.nav.offenders', icon: 'offenders' },
     ],
   },
   {
-    label: 'AI tools',
+    groupKey: 'common.nav.group.aiTools',
     items: [
-      { to: '/predict', label: 'Predict', icon: 'predict' },
-      { to: '/copilot', label: 'Ask DAPPA', icon: 'copilot' },
+      { to: '/predict', labelKey: 'common.nav.predict', icon: 'predict' },
+      { to: '/copilot', labelKey: 'common.nav.copilot', icon: 'copilot' },
     ],
   },
   {
-    label: 'Records',
+    groupKey: 'common.nav.group.records',
     items: [
-      { to: '/cases', label: 'Cases', icon: 'cases' },
-      { to: '/reports', label: 'Reports', icon: 'reports' },
+      { to: '/cases', labelKey: 'common.nav.cases', icon: 'cases' },
+      { to: '/reports', labelKey: 'common.nav.reports', icon: 'reports' },
     ],
   },
   {
-    label: 'System',
-    items: [{ to: '/about', label: 'About', icon: 'about' }],
+    groupKey: 'common.nav.group.system',
+    items: [{ to: '/about', labelKey: 'common.nav.about', icon: 'about' }],
   },
 ];
 
-const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, section: g.label })));
+const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, sectionKey: g.groupKey })));
 
 // mobile: 4 primary tabs + More (rest live in the bottom sheet)
 const TAB_ROUTES = ['/', '/map', '/cases', '/predict'];
@@ -200,22 +205,23 @@ const MORE_ROUTES = ALL_NAV.filter((n) => !TAB_ROUTES.includes(n.to));
 
 // g-then-key go-to map for the global shortcut layer
 const GO_KEYS = [
-  ['d', '/', 'Dashboard'],
-  ['m', '/map', 'GeoIntel map'],
-  ['t', '/trends', 'Trends'],
-  ['a', '/alerts', 'Alerts'],
-  ['c', '/cases', 'Case explorer'],
-  ['n', '/network', 'Network'],
-  ['o', '/offenders', 'Offenders'],
-  ['p', '/predict', 'Predict'],
-  ['r', '/reports', 'Reports'],
+  ['d', '/', 'common.nav.dashboard'],
+  ['m', '/map', 'shell.view.geointelMap'],
+  ['t', '/trends', 'common.nav.trends'],
+  ['a', '/alerts', 'common.nav.alerts'],
+  ['c', '/cases', 'shell.view.caseExplorer'],
+  ['n', '/network', 'common.nav.network'],
+  ['o', '/offenders', 'common.nav.offenders'],
+  ['p', '/predict', 'common.nav.predict'],
+  ['r', '/reports', 'common.nav.reports'],
 ];
 
-function viewNameFor(pathname) {
-  if (pathname.startsWith('/offenders/') && pathname !== '/offenders') return 'Offender 360';
-  if (pathname.startsWith('/cases/') && pathname !== '/cases') return 'FIR detail';
+/** i18n key naming the current view (document title, print header). */
+function viewKeyFor(pathname) {
+  if (pathname.startsWith('/offenders/') && pathname !== '/offenders') return 'shell.view.offender360';
+  if (pathname.startsWith('/cases/') && pathname !== '/cases') return 'shell.view.firDetail';
   const hit = ALL_NAV.find((n) => (n.end ? pathname === n.to : pathname === n.to || pathname.startsWith(`${n.to}/`)));
-  return hit ? hit.label : 'Not found';
+  return hit ? hit.labelKey : 'shell.view.notFound';
 }
 
 function Shield({ size = 26 }) {
@@ -240,19 +246,20 @@ function AlertCountBadge({ count }) {
 }
 
 function HealthPill() {
+  const t = useT();
   const health = useHealthz();
   const state = health.isError ? 'down' : health.isPending ? 'checking' : 'live';
   const styles = {
-    live: { dot: 'teal', cls: 'border-teal/40 text-teal', text: 'Live' },
-    checking: { dot: 'amber', cls: 'border-grid text-muted', text: 'Checking' },
-    down: { dot: 'red', cls: 'border-signal/40 text-signal', text: 'API down' },
+    live: { dot: 'teal', cls: 'border-teal/40 text-teal', text: t('common.shell.live') },
+    checking: { dot: 'amber', cls: 'border-grid text-muted', text: t('shell.health.checking') },
+    down: { dot: 'red', cls: 'border-signal/40 text-signal', text: t('shell.health.down') },
   }[state];
   // dot-only below sm so mobile still gets a liveness signal
   return (
-    <Tooltip label={`Catalyst API health: ${styles.text}`} position="bottom">
+    <Tooltip label={t('shell.health.tooltip', { state: styles.text })} position="bottom">
       <span
         role="status"
-        aria-label={`API health: ${styles.text}`}
+        aria-label={t('shell.health.aria', { state: styles.text })}
         className={`inline-flex items-center gap-1.5 rounded-full border bg-panel/60 px-2 sm:px-2.5 py-1 text-[11px] font-medium ${styles.cls}`}
       >
         <PulseDot color={styles.dot} />
@@ -264,6 +271,7 @@ function HealthPill() {
 
 /** IST wall clock — command-center chrome, desktop only. */
 function SessionClock() {
+  const t = useT();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -276,7 +284,7 @@ function SessionClock() {
   return (
     <span
       className="num hidden xl:inline-flex items-center gap-1.5 rounded-full border border-grid bg-panel/60 px-2.5 py-1 text-[11px] text-muted"
-      title="Indian Standard Time"
+      title={t('shell.clock.ist')}
     >
       {fmt.format(now)} <span className="text-muted/70">IST</span>
     </span>
@@ -285,6 +293,7 @@ function SessionClock() {
 
 /** Data freshness + manual refresh — invalidates every react-query cache. */
 function RefreshControl() {
+  const t = useT();
   const qc = useQueryClient();
   const fetching = useIsFetching();
   const toast = useToast();
@@ -305,21 +314,23 @@ function RefreshControl() {
   const refresh = async () => {
     try {
       await qc.invalidateQueries();
-      toast.success('Data refreshed.');
+      toast.success(t('shell.refresh.done'));
     } catch {
-      toast.error('Refresh failed — check the API connection.');
+      toast.error(t('shell.refresh.failed'));
     }
   };
 
   const mins = Math.floor((Date.now() - lastDone) / 60000);
-  const freshness = fetching > 0 ? 'refreshing…' : mins < 1 ? 'updated just now' : `updated ${mins}m ago`;
+  const freshness = fetching > 0
+    ? t('shell.refresh.busy')
+    : mins < 1 ? t('common.shell.updatedJustNow') : t('shell.refresh.agoMins', { n: mins });
 
   return (
-    <Tooltip label={`Refresh all data (${freshness})`} position="bottom">
+    <Tooltip label={t('shell.refresh.tooltip', { freshness })} position="bottom">
       <button
         type="button"
         onClick={refresh}
-        aria-label={`Refresh all data — ${freshness}`}
+        aria-label={t('shell.refresh.aria', { freshness })}
         className="flex items-center gap-2 h-11 min-w-[44px] justify-center rounded-lg px-0 md:px-2.5 text-muted hover:text-primary hover:bg-grid/30 transition-colors"
       >
         <span className={fetching > 0 ? 'animate-spin' : ''}>{ICONS.refresh}</span>
@@ -347,18 +358,19 @@ function ShortcutRow({ keys, label }) {
 }
 
 function GlobalShortcutsSheet({ open, onClose, isMac, pathname = '/' }) {
+  const t = useT();
   const routeSection = ROUTE_SHORTCUTS.find((r) => r.match(pathname));
   return (
-    <Sheet open={open} onClose={onClose} title="Keyboard shortcuts">
+    <Sheet open={open} onClose={onClose} title={t('common.shell.shortcuts')}>
       <div className="space-y-4 px-1 pb-1">
         {routeSection && (
           <section>
-            <p className="eyebrow mb-1">On this view — {routeSection.name}</p>
+            <p className="eyebrow mb-1">{t('shell.shortcuts.onThisView', { name: t(routeSection.nameKey) })}</p>
             <ul className="divide-y divide-grid/40">
-              {routeSection.rows.map(([keys, label]) => (
+              {routeSection.rows.map(([keys, labelKey]) => (
                 <ShortcutRow
-                  key={label}
-                  label={label}
+                  key={labelKey}
+                  label={t(labelKey)}
                   keys={keys.map((k) => <Key key={k}>{k}</Key>)}
                 />
               ))}
@@ -366,26 +378,24 @@ function GlobalShortcutsSheet({ open, onClose, isMac, pathname = '/' }) {
           </section>
         )}
         <section>
-          <p className="eyebrow mb-1">Everywhere</p>
+          <p className="eyebrow mb-1">{t('shell.shortcuts.everywhere')}</p>
           <ul className="divide-y divide-grid/40">
-            <ShortcutRow label="Command palette" keys={<><Key>{isMac ? '⌘' : 'Ctrl'}</Key><Key>K</Key></>} />
-            <ShortcutRow label="Toggle dark / light theme" keys={<Key>t</Key>} />
-            <ShortcutRow label="Zen mode (hide chrome for wall displays)" keys={<Key>f</Key>} />
-            <ShortcutRow label="This shortcuts sheet" keys={<Key>?</Key>} />
-            <ShortcutRow label="Close a dialog or sheet" keys={<Key>Esc</Key>} />
+            <ShortcutRow label={t('common.shell.commandPalette')} keys={<><Key>{isMac ? '⌘' : 'Ctrl'}</Key><Key>K</Key></>} />
+            <ShortcutRow label={t('shell.shortcuts.themeToggle')} keys={<Key>t</Key>} />
+            <ShortcutRow label={t('shell.zen.label')} keys={<Key>f</Key>} />
+            <ShortcutRow label={t('shell.shortcuts.thisSheet')} keys={<Key>?</Key>} />
+            <ShortcutRow label={t('shell.shortcuts.closeDialog')} keys={<Key>Esc</Key>} />
           </ul>
         </section>
         <section>
-          <p className="eyebrow mb-1">Go to… (press g, then a letter)</p>
+          <p className="eyebrow mb-1">{t('shell.shortcuts.goto')}</p>
           <ul className="divide-y divide-grid/40">
-            {GO_KEYS.map(([key, , label]) => (
-              <ShortcutRow key={key} label={label} keys={<><Key>g</Key><Key>{key}</Key></>} />
+            {GO_KEYS.map(([key, , labelKey]) => (
+              <ShortcutRow key={key} label={t(labelKey)} keys={<><Key>g</Key><Key>{key}</Key></>} />
             ))}
           </ul>
         </section>
-        <p className="text-[11px] text-muted">
-          Shortcuts pause while you type in any input. On GeoIntel, <Key>f</Key> drives the map’s own fullscreen instead.
-        </p>
+        <p className="text-[11px] text-muted">{t('shell.shortcuts.note')}</p>
       </div>
     </Sheet>
   );
@@ -403,6 +413,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
+  const { t, tName, lang, setLang, langs } = useI18n();
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const zen = useUiStore((s) => s.zenMode);
@@ -495,15 +506,15 @@ export default function Layout() {
       const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches;
       if (!hinted && !standalone) {
         try { localStorage.setItem('dappa-install-hint', '1'); } catch { /* private mode */ }
-        toast.info('DAPPA can be installed as an app — a full-screen command center from your home screen or desktop.', {
+        toast.info(t('common.shell.installHint'), {
           duration: 12000,
-          action: { label: 'Install', onClick: () => e.prompt?.() },
+          action: { label: t('common.shell.install'), onClick: () => e.prompt?.() },
         });
       }
     };
     const onInstalled = () => {
       setInstallPrompt(null);
-      toast.success('DAPPA installed — launch it from your apps like any native tool.');
+      toast.success(t('shell.install.done'));
     };
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', onInstalled);
@@ -511,13 +522,13 @@ export default function Layout() {
       window.removeEventListener('beforeinstallprompt', onPrompt);
       window.removeEventListener('appinstalled', onInstalled);
     };
-  }, [toast]);
+  }, [toast, t]);
 
   // document title tracks the view (+ pending alert count for the tab strip)
   useEffect(() => {
-    const base = `${viewNameFor(location.pathname)} — KSP DAPPA`;
+    const base = `${t(viewKeyFor(location.pathname))} — KSP DAPPA`;
     document.title = activeAlerts > 0 ? `(${activeAlerts > 99 ? '99+' : activeAlerts}) ${base}` : base;
-  }, [location.pathname, activeAlerts]);
+  }, [location.pathname, activeAlerts, t]);
 
   // global Ctrl/Cmd-K
   useEffect(() => {
@@ -533,7 +544,7 @@ export default function Layout() {
 
   const copyLink = async () => {
     const url = window.location.href;
-    const done = () => toast.success('Link copied — filters travel with it.');
+    const done = () => toast.success(t('shell.copyLink.done'));
     try {
       await navigator.clipboard.writeText(url);
       done();
@@ -549,14 +560,14 @@ export default function Layout() {
       let ok = false;
       try { ok = document.execCommand('copy'); } catch { ok = false; }
       ta.remove();
-      if (ok) done(); else toast.error('Could not copy the link on this browser.');
+      if (ok) done(); else toast.error(t('shell.copyLink.failed'));
     }
   };
 
   const zenToast = () => {
     const turningOn = !useUiStore.getState().zenMode;
     toggleZen();
-    if (turningOn) toast.info('Zen mode — chrome hidden. Press f (or use the topbar button) to exit.');
+    if (turningOn) toast.info(t('shell.zen.on'));
   };
 
   // global shortcut layer: g,<letter> go-to · t theme · f zen · ? help.
@@ -628,18 +639,18 @@ export default function Layout() {
       // route's own 404-aware error state, never a crash
       out.push({
         id: `fir-${q}`,
-        label: `Open case record ${q}`,
-        section: 'Cases',
+        label: t('shell.palette.openCase', { n: q }),
+        section: t('common.nav.cases'),
         icon: ICONS.cases,
-        hint: 'by case ID',
+        hint: t('shell.palette.byCaseId'),
         perform: () => navigate(`/cases/${encodeURIComponent(q)}`),
       });
     }
     out.push({
       // sanitized — this becomes a DOM id via aria-activedescendant
       id: `case-search-${encodeURIComponent(q).replace(/%/g, '_')}`,
-      label: `Search case records for “${q}”`,
-      section: 'Cases',
+      label: t('shell.palette.searchCases', { q }),
+      section: t('common.nav.cases'),
       icon: ICONS.search,
       perform: () => navigate(`/cases?q=${encodeURIComponent(q)}`),
     });
@@ -652,9 +663,9 @@ export default function Layout() {
           out.push({
             id: `person-${r.personKey}`,
             label: String(r.canonicalName || r.personKey),
-            section: 'Offenders',
+            section: t('common.nav.offenders'),
             icon: ICONS.offenders,
-            hint: r.caseCount ? `${r.caseCount} cases` : undefined,
+            hint: r.caseCount ? t('shell.palette.caseCount', { n: r.caseCount }) : undefined,
             perform: () => navigate(`/offenders/${encodeURIComponent(r.personKey)}`),
           });
         }
@@ -664,111 +675,123 @@ export default function Layout() {
       }
     }
     return out;
-  }, [navigate]);
+  }, [navigate, t]);
 
+  // Labels and sections are translated; `keywords` stay English on purpose —
+  // they are invisible search aids, and the fuzzy matcher already scores the
+  // translated label, so an officer can type either script.
   const paletteActions = useMemo(() => [
     ...ALL_NAV.map((item) => ({
       id: `nav-${item.to}`,
-      label: item.label,
-      section: item.section,
+      label: t(item.labelKey),
+      section: t(item.sectionKey),
       icon: ICONS[item.icon],
       keywords: item.to,
       perform: () => navigate({ pathname: item.to, search }),
     })),
     {
       id: 'act-theme',
-      label: `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`,
-      section: 'Actions',
+      label: t(theme === 'dark' ? 'shell.theme.toLight' : 'shell.theme.toDark'),
+      section: t('shell.section.actions'),
       icon: theme === 'dark' ? ICONS.sun : ICONS.moon,
       keywords: 'theme dark light mode appearance',
       perform: toggleTheme,
     },
     ...(pref !== 'system' ? [{
       id: 'act-theme-system',
-      label: 'Theme: follow system (auto)',
-      section: 'Actions',
+      label: t('shell.palette.themeSystem'),
+      section: t('shell.section.actions'),
       icon: ICONS.auto,
       keywords: 'theme system auto os appearance',
       perform: () => setTheme('system'),
     }] : []),
+    // language actions — the switch must be reachable from the keyboard alone
+    ...langs.filter((l) => l.code !== lang).map((l) => ({
+      id: `act-lang-${l.code}`,
+      label: t('shell.palette.switchLang', { lang: l.native }),
+      section: t('shell.section.actions'),
+      icon: ICONS.globe,
+      keywords: `language lang bhashe basha ${l.code} ${l.label} ${l.native}`,
+      perform: () => setLang(l.code),
+    })),
     {
       id: 'act-density',
-      label: `Table density: switch to ${density === 'compact' ? 'cozy' : 'compact'}`,
-      section: 'Actions',
+      label: t(density === 'compact' ? 'shell.palette.densityToCozy' : 'shell.palette.densityToCompact'),
+      section: t('shell.section.actions'),
       keywords: 'compact comfortable cozy rows density',
       perform: () => setStoreDensity(density === 'compact' ? 'comfortable' : 'compact'),
     },
     {
       id: 'act-sidebar',
-      label: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
-      section: 'Actions',
+      label: t(collapsed ? 'shell.palette.expandSidebar' : 'shell.palette.collapseSidebar'),
+      section: t('shell.section.actions'),
       keywords: 'navigation sidebar collapse expand',
       perform: toggleSidebar,
     },
     {
       id: 'act-zen',
-      label: zen ? 'Exit zen mode' : 'Zen mode (hide chrome for wall displays)',
-      section: 'Actions',
+      label: t(zen ? 'shell.zen.exit' : 'shell.zen.label'),
+      section: t('shell.section.actions'),
       icon: zen ? ICONS.zenExit : ICONS.zen,
       keywords: 'zen fullscreen wall display presentation kiosk chrome',
       perform: zenToast,
     },
     {
       id: 'act-copy-link',
-      label: 'Copy link to this view',
-      section: 'Actions',
+      label: t('shell.copyLink.tooltip'),
+      section: t('shell.section.actions'),
       icon: ICONS.link,
       keywords: 'share copy url link clipboard',
       perform: copyLink,
     },
     {
       id: 'act-refresh',
-      label: 'Refresh all data',
-      section: 'Actions',
+      label: t('shell.refresh.label'),
+      section: t('shell.section.actions'),
       icon: ICONS.refresh,
       keywords: 'refresh reload invalidate data fetch',
       perform: () => {
         qc.invalidateQueries()
-          .then(() => toast.success('Data refreshed.'))
-          .catch(() => toast.error('Refresh failed — check the API connection.'));
+          .then(() => toast.success(t('shell.refresh.done')))
+          .catch(() => toast.error(t('shell.refresh.failed')));
       },
     },
     {
       id: 'act-motion',
-      label: motionReduced ? 'Motion: re-enable animations' : 'Motion: reduce animations',
-      section: 'Actions',
+      label: t(motionReduced ? 'shell.palette.motionRestore' : 'shell.palette.motionReduce'),
+      section: t('shell.section.actions'),
       icon: ICONS.motion,
       keywords: 'motion animation reduce accessibility vestibular',
       perform: () => setMotionReduced(!motionReduced),
     },
     {
       id: 'act-shortcuts',
-      label: 'Keyboard shortcuts…',
-      section: 'Actions',
+      label: t('shell.palette.shortcuts'),
+      section: t('shell.section.actions'),
       icon: ICONS.keyboard,
       keywords: 'keyboard shortcuts hotkeys help keys',
       perform: () => setShortcutsOpen(true),
     },
     {
       id: 'act-print',
-      label: 'Print this view',
-      section: 'Actions',
+      label: t('shell.palette.print'),
+      section: t('shell.section.actions'),
       icon: ICONS.print,
       keywords: 'print pdf paper export a4 hardcopy brief ctrl+p',
       perform: () => window.print(),
     },
     {
       id: 'act-print-brief',
-      label: 'Open the A4 print brief',
-      section: 'Actions',
+      label: t('shell.palette.printBrief'),
+      section: t('shell.section.actions'),
       icon: ICONS.reports,
       keywords: 'print brief a4 pdf export weekly report briefing',
       perform: () => navigate('/print/brief'),
     },
     ...(installPrompt ? [{
       id: 'act-install',
-      label: 'Install DAPPA as an app',
-      section: 'Actions',
+      label: t('shell.palette.install'),
+      section: t('shell.section.actions'),
       icon: ICONS.install,
       keywords: 'install pwa app home screen desktop standalone',
       perform: () => {
@@ -778,8 +801,8 @@ export default function Layout() {
     }] : []),
     ...(filtersActive ? [{
       id: 'act-clear-filters',
-      label: 'Clear all filters',
-      section: 'Filters',
+      label: t('shell.palette.clearFilters'),
+      section: t('shell.section.filters'),
       keywords: 'clear reset filters district crime head period',
       perform: clearAllFilters,
     }] : []),
@@ -787,7 +810,7 @@ export default function Layout() {
     ...((paletteOpen ? readSavedViews() : []).map((v) => ({
       id: `view-${v.id}`,
       label: v.name,
-      section: 'Saved views',
+      section: t('shell.section.savedViews'),
       icon: ICONS.bookmark,
       keywords: 'saved view filters apply recall',
       perform: () => applySavedView(v),
@@ -795,9 +818,9 @@ export default function Layout() {
     // hidden until the user types — jump-filter to any district on the current view
     ...((lookups.data?.districts || []).map((d) => ({
       id: `filter-district-${d.districtId}`,
-      label: `Filter: ${d.districtName}`,
-      section: 'Filters',
-      keywords: 'district filter jump focus',
+      label: t('shell.palette.filterTo', { name: tName('districts', d.districtId, d.districtName) }),
+      section: t('shell.section.filters'),
+      keywords: `district filter jump focus ${d.districtName}`,
       hidden: true,
       perform: () => {
         setSearchParams((prev) => {
@@ -810,9 +833,9 @@ export default function Layout() {
     // hidden until typed — filter the current view to a crime head
     ...((lookups.data?.crimeHeads || []).map((h) => ({
       id: `filter-head-${h.crimeHeadId}`,
-      label: `Filter: ${h.headName}`,
-      section: 'Filters',
-      keywords: 'crime head category filter jump',
+      label: t('shell.palette.filterTo', { name: tName('crimeHeads', h.crimeHeadId, h.headName) }),
+      section: t('shell.section.filters'),
+      keywords: `crime head category filter jump ${h.headName}`,
       hidden: true,
       perform: () => {
         setSearchParams((prev) => {
@@ -825,10 +848,10 @@ export default function Layout() {
   ], [navigate, search, theme, pref, setTheme, toggleTheme, collapsed, toggleSidebar,
     zen, density, setStoreDensity, motionReduced, setMotionReduced, filtersActive,
     lookups.data, qc, toast, setSearchParams, installPrompt, paletteOpen,
-    clearAllFilters, applySavedView]); // eslint-disable-line react-hooks/exhaustive-deps
+    clearAllFilters, applySavedView, t, tName, lang, setLang, langs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const moreActive = MORE_ROUTES.some((r) => location.pathname === r.to || (r.to !== '/' && location.pathname.startsWith(`${r.to}/`)));
-  const viewName = viewNameFor(location.pathname);
+  const viewName = t(viewKeyFor(location.pathname));
 
   // topbar filter pill — how many of the shared filters are pinning this view
   const rawRange = searchParams.get('range') || '';
@@ -840,7 +863,7 @@ export default function Layout() {
     range: rawRange,
     from: searchParams.get('from') || '',
     to: searchParams.get('to') || '',
-  }, lookups.data);
+  }, lookups.data, { t, tName });
 
   return (
     <div className="flex h-full min-h-screen bg-base">
@@ -854,28 +877,28 @@ export default function Layout() {
           document.getElementById('main-content')?.focus();
         }}
       >
-        Skip to content
+        {t('common.nav.skipToContent')}
       </a>
       <OfflineBanner />
 
       {/* ---- desktop sidebar (hidden entirely in zen mode) ---- */}
       <aside
-        aria-label="Primary"
+        aria-label={t('shell.aria.primaryNav')}
         className={`no-print ${zen ? 'hidden' : 'hidden md:flex'} flex-col border-r border-grid bg-panel/60 transition-all duration-200 ${collapsed ? 'w-[68px]' : 'w-60 xl:w-64'}`}
       >
         <div className={`flex items-center gap-2.5 h-14 border-b border-grid shrink-0 ${collapsed ? 'justify-center px-0' : 'px-4'}`}>
           <Shield />
           {!collapsed && (
             <div className="leading-tight min-w-0">
-              <div className="text-sm font-bold tracking-[0.08em] text-ink">DAPPA</div>
-              <div className="text-[10px] text-muted truncate">Karnataka State Police</div>
+              <div className="text-sm font-bold tracking-[0.08em] text-ink">{t('common.app.name')}</div>
+              <div className="text-[10px] text-muted truncate">{t('common.app.org')}</div>
             </div>
           )}
         </div>
-        <nav aria-label="Main navigation" className="flex-1 overflow-y-auto py-3">
+        <nav aria-label={t('shell.aria.mainNav')} className="flex-1 overflow-y-auto py-3">
           {NAV_GROUPS.map((group, gi) => (
-            <div key={group.label} className={gi > 0 ? 'mt-3' : ''}>
-              {!collapsed && <p className="eyebrow px-4.5 pb-1.5">{group.label}</p>}
+            <div key={group.groupKey} className={gi > 0 ? 'mt-3' : ''}>
+              {!collapsed && <p className="eyebrow px-4.5 pb-1.5">{t(group.groupKey)}</p>}
               {collapsed && gi > 0 && <div className="mx-4 mb-2 border-t border-grid/70" aria-hidden="true" />}
               <div className="space-y-0.5">
                 {group.items.map((item) => (
@@ -883,8 +906,8 @@ export default function Layout() {
                     key={item.to}
                     to={{ pathname: item.to, search }}
                     end={item.end}
-                    title={collapsed ? item.label : undefined}
-                    aria-label={item.label}
+                    title={collapsed ? t(item.labelKey) : undefined}
+                    aria-label={t(item.labelKey)}
                     className={({ isActive }) =>
                       `relative flex items-center gap-3 mx-2 px-2.5 py-2 min-h-[38px] rounded-lg text-sm transition-colors border-l-2 ${
                         isActive
@@ -894,7 +917,7 @@ export default function Layout() {
                     }
                   >
                     {ICONS[item.icon]}
-                    {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+                    {!collapsed && <span className="truncate flex-1">{t(item.labelKey)}</span>}
                     {!collapsed && item.to === '/alerts' && <AlertCountBadge count={activeAlerts} />}
                     {collapsed && item.to === '/alerts' && activeAlerts > 0 && <PulseDot className="absolute top-1.5 right-1.5" />}
                   </NavLink>
@@ -908,14 +931,14 @@ export default function Layout() {
             type="button"
             className="w-full flex items-center justify-center gap-2 rounded-lg px-2 py-2 min-h-[38px] text-xs text-muted hover:text-ink hover:bg-grid/25 transition-colors"
             onClick={toggleSidebar}
-            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-label={t(collapsed ? 'shell.nav.expandAria' : 'shell.nav.collapseAria')}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true" className={`transition-transform ${collapsed ? 'rotate-180' : ''}`}>
               <path d="M15 5l-7 7 7 7" />
             </svg>
-            {!collapsed && <span>Collapse</span>}
+            {!collapsed && <span>{t('common.nav.collapse')}</span>}
           </button>
-          {!collapsed && <p className="text-[10px] text-muted/70 text-center pt-1">KSP Datathon 2026 · v0.1</p>}
+          {!collapsed && <p className="text-[10px] text-muted/70 text-center pt-1">{t('shell.sidebar.version')}</p>}
         </div>
       </aside>
 
@@ -929,7 +952,7 @@ export default function Layout() {
             <svg width="11" height="11" viewBox="0 0 24 24" {...stroke} aria-hidden="true" className="shrink-0">
               <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
             </svg>
-            <span className="truncate">Synthetic demonstration data — KSP Datathon 2026 prototype</span>
+            <span className="truncate">{t('common.app.disclaimer')}</span>
           </div>
         )}
 
@@ -938,7 +961,7 @@ export default function Layout() {
           <header className="no-print sticky top-0 z-40 flex items-center gap-2 md:gap-3 h-14 px-3 md:px-5 border-b border-grid bg-base/75 backdrop-blur-md">
             <div className={`flex items-center gap-2 ${zen ? '' : 'md:hidden'} min-w-0`}>
               <Shield size={22} />
-              <span className="text-sm font-bold tracking-[0.08em] text-ink">DAPPA</span>
+              <span className="text-sm font-bold tracking-[0.08em] text-ink">{t('common.app.name')}</span>
             </div>
 
             {/* command palette trigger */}
@@ -946,16 +969,16 @@ export default function Layout() {
               type="button"
               onClick={() => setPaletteOpen(true)}
               className="hidden sm:flex flex-1 max-w-md items-center gap-2.5 rounded-lg border border-grid bg-panel/70 px-3 py-2 min-h-[38px] text-sm text-muted hover:border-primary/50 hover:text-ink transition-colors"
-              aria-label="Open command palette"
+              aria-label={t('shell.aria.openPalette')}
             >
               {ICONS.search}
-              <span className="flex-1 text-left truncate">Search or jump to…</span>
+              <span className="flex-1 text-left truncate">{t('common.shell.search')}</span>
               <kbd className="rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px]">{kbdHint}</kbd>
             </button>
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              aria-label="Open command palette"
+              aria-label={t('shell.aria.openPalette')}
               className="sm:hidden flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/30 transition-colors"
             >
               {ICONS.search}
@@ -967,11 +990,15 @@ export default function Layout() {
               <Tooltip label={filterSummary} position="bottom" className="hidden md:inline-flex">
                 <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 pl-2.5 pr-1 py-0.5 text-[11px] font-medium text-primary">
                   {ICONS.filter}
-                  <span className="num">{activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}</span>
+                  <span className="num">
+                    {activeFilterCount === 1
+                      ? t('shell.filterPill.one')
+                      : t('shell.filterPill.many', { n: activeFilterCount })}
+                  </span>
                   <button
                     type="button"
                     onClick={clearAllFilters}
-                    aria-label={`Clear all filters (${filterSummary})`}
+                    aria-label={t('shell.filterPill.clearAria', { summary: filterSummary })}
                     className="flex h-6 w-6 items-center justify-center rounded-full text-primary/80 hover:text-signal hover:bg-grid/40 transition-colors"
                   >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -981,11 +1008,11 @@ export default function Layout() {
             )}
             <SessionClock />
             <RefreshControl />
-            <Tooltip label="Copy link to this view" position="bottom">
+            <Tooltip label={t('shell.copyLink.tooltip')} position="bottom">
               <button
                 type="button"
                 onClick={copyLink}
-                aria-label="Copy link to this view"
+                aria-label={t('shell.copyLink.tooltip')}
                 className="hidden sm:flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/30 transition-colors"
               >
                 {ICONS.link}
@@ -995,22 +1022,22 @@ export default function Layout() {
             <LanguageToggle className="hidden lg:inline-flex" variant="compact" />
             <DensityToggle className="hidden md:inline-flex" />
             {zen && (
-              <Tooltip label="Exit zen mode" position="bottom">
+              <Tooltip label={t('shell.zen.exit')} position="bottom">
                 <button
                   type="button"
                   onClick={zenToast}
-                  aria-label="Exit zen mode"
+                  aria-label={t('shell.zen.exit')}
                   className="flex h-11 w-11 items-center justify-center rounded-lg text-primary hover:bg-grid/30 transition-colors"
                 >
                   {ICONS.zenExit}
                 </button>
               </Tooltip>
             )}
-            <Tooltip label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} position="bottom">
+            <Tooltip label={t(theme === 'dark' ? 'shell.theme.toLight' : 'shell.theme.toDark')} position="bottom">
               <button
                 type="button"
                 onClick={toggleTheme}
-                aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                aria-label={t(theme === 'dark' ? 'shell.theme.toLight' : 'shell.theme.toDark')}
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/30 transition-colors"
               >
                 {theme === 'dark' ? ICONS.sun : ICONS.moon}
@@ -1027,7 +1054,7 @@ export default function Layout() {
 
       {/* ---- mobile bottom tab bar ---- */}
       <nav
-        aria-label="Primary tabs"
+        aria-label={t('shell.aria.primaryTabs')}
         className="no-print md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-grid bg-base/90 backdrop-blur-md pb-safe"
       >
         <div className="grid grid-cols-5">
@@ -1036,9 +1063,9 @@ export default function Layout() {
               key={item.to}
               to={{ pathname: item.to, search }}
               end={item.end}
-              aria-label={item.label}
+              aria-label={t(item.labelKey)}
               className={({ isActive }) =>
-                `relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                `relative flex min-w-0 min-h-[52px] flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
                   isActive ? 'text-primary' : 'text-muted'
                 }`
               }
@@ -1047,7 +1074,7 @@ export default function Layout() {
                 <>
                   {isActive && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-primary" aria-hidden="true" />}
                   {ICONS[item.icon]}
-                  <span>{item.label}</span>
+                  <span className="truncate max-w-full px-0.5">{t(item.labelKey)}</span>
                 </>
               )}
             </NavLink>
@@ -1055,9 +1082,9 @@ export default function Layout() {
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
-            aria-label="More views"
+            aria-label={t('shell.more.aria')}
             aria-haspopup="dialog"
-            className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+            className={`relative flex min-w-0 min-h-[52px] flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
               moreActive ? 'text-primary' : 'text-muted'
             }`}
           >
@@ -1066,14 +1093,14 @@ export default function Layout() {
               {ICONS.more}
               {activeAlerts > 0 && <PulseDot className="absolute -top-0.5 -right-1.5" />}
             </span>
-            <span>More</span>
+            <span className="truncate max-w-full px-0.5">{t('common.nav.more')}</span>
           </button>
         </div>
       </nav>
 
       {/* ---- More sheet (mobile) ---- */}
-      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="More views">
-        <nav aria-label="More views" className="space-y-0.5">
+      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t('shell.more.title')}>
+        <nav aria-label={t('shell.more.aria')} className="space-y-0.5">
           {MORE_ROUTES.map((item) => (
             <NavLink
               key={item.to}
@@ -1086,45 +1113,45 @@ export default function Layout() {
               }
             >
               {ICONS[item.icon]}
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1 truncate">{t(item.labelKey)}</span>
               {item.to === '/alerts' && <AlertCountBadge count={activeAlerts} />}
-              <span className="eyebrow">{item.section}</span>
+              <span className="eyebrow shrink-0">{t(item.sectionKey)}</span>
             </NavLink>
           ))}
         </nav>
         <div className="mt-3 border-t border-grid pt-3 space-y-3 px-1">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-xs text-muted">Language · ಭಾಷೆ · भाषा</span>
+            <span className="text-xs text-muted">{t('shell.more.language')}</span>
             <LanguageToggle size="md" />
           </div>
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-xs text-muted">Theme</span>
+            <span className="text-xs text-muted">{t('common.shell.theme')}</span>
             <SegmentedControl
-              ariaLabel="Theme"
+              ariaLabel={t('common.shell.theme')}
               size="md"
               value={pref}
               onChange={(v) => setTheme(v)}
               options={[
-                { value: 'dark', label: 'Dark', icon: ICONS.moon },
-                { value: 'light', label: 'Light', icon: ICONS.sun },
-                { value: 'system', label: 'Auto', icon: ICONS.auto },
+                { value: 'dark', label: t('common.shell.themeDark'), icon: ICONS.moon },
+                { value: 'light', label: t('common.shell.themeLight'), icon: ICONS.sun },
+                { value: 'system', label: t('common.shell.themeAuto'), icon: ICONS.auto },
               ]}
             />
           </div>
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-xs text-muted">Table density</span>
+            <span className="text-xs text-muted">{t('shell.density.label')}</span>
             <DensityToggle size="md" />
           </div>
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-xs text-muted">Reduce motion</span>
+            <span className="text-xs text-muted">{t('common.shell.reduceMotion')}</span>
             <SegmentedControl
-              ariaLabel="Reduce motion"
+              ariaLabel={t('common.shell.reduceMotion')}
               size="md"
               value={motionReduced ? 'on' : 'off'}
               onChange={(v) => setMotionReduced(v === 'on')}
               options={[
-                { value: 'off', label: 'Off' },
-                { value: 'on', label: 'On', icon: ICONS.motion },
+                { value: 'off', label: t('shell.toggle.off') },
+                { value: 'on', label: t('shell.toggle.on'), icon: ICONS.motion },
               ]}
             />
           </div>

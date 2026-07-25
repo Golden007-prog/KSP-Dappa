@@ -5,40 +5,45 @@
 import Sheet from '../../components/Sheet.jsx';
 import Badge from '../../components/Badge.jsx';
 import { dateLabel, fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
+import { useCaseNames } from './names.js';
 import { splitCrimeNo, CrimeNoInline } from './CrimeNoBreakdown.jsx';
 
+// `nameKind` marks the rows whose API value has a translation table.
 const ROWS = [
-  { key: 'registeredDate', label: 'Registered', fmt: (v) => dateLabel(v) },
-  { key: 'ageDays', label: 'Age', fmt: (v) => (Number.isFinite(v) ? `${fmtInt(v)} days` : '—') },
-  { key: 'caseNo', label: 'Case no' },
-  { key: 'districtName', label: 'District' },
-  { key: 'unitName', label: 'Station' },
-  { key: 'headName', label: 'Crime head' },
-  { key: 'subHeadName', label: 'Subhead' },
-  { key: 'statusName', label: 'Status' },
-  { key: 'gravityName', label: 'Gravity' },
+  { key: 'registeredDate', labelKey: 'cases.col.registered', fmt: (v) => dateLabel(v) },
+  { key: 'ageDays', labelKey: 'cases.col.age', age: true },
+  { key: 'caseNo', labelKey: 'cases.col.caseNo' },
+  { key: 'districtName', labelKey: 'cases.col.district', nameKind: 'districts' },
+  { key: 'unitName', labelKey: 'cases.col.station' },
+  { key: 'headName', labelKey: 'cases.col.head', nameKind: 'crimeHeads' },
+  { key: 'subHeadName', labelKey: 'cases.col.subHead', nameKind: 'crimeSubHeads' },
+  { key: 'statusName', labelKey: 'cases.col.status', nameKind: 'statuses' },
+  { key: 'gravityName', labelKey: 'cases.col.gravity', nameKind: 'gravities' },
 ];
 
 export default function PeekSheet({ row, onClose, starred, onToggleStar, inCompare, onToggleCompare, onCopy, onOpen }) {
+  const t = useT();
+  const trName = useCaseNames();
   const open = !!row;
   const r = row || {};
   const parts = splitCrimeNo(r.crimeNo);
 
   return (
-    <Sheet open={open} onClose={onClose} title="Case quick-look">
+    <Sheet open={open} onClose={onClose} title={t('cases.peek.title')}>
       {open && (
         <div className="space-y-3 px-1 pb-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm break-all"><CrimeNoInline crimeNo={r.crimeNo} /></span>
-            {r.anomalyFlag ? <Badge tone="red" pulse>anomaly</Badge> : null}
-            {/hein/i.test(String(r.gravityName || '')) && <Badge tone="red">heinous</Badge>}
+            {r.anomalyFlag ? <Badge tone="red" pulse>{t('cases.badge.anomaly')}</Badge> : null}
+            {/hein/i.test(String(r.gravityName || '')) && <Badge tone="red">{t('cases.badge.heinous')}</Badge>}
           </div>
 
           {parts && (
-            <div className="flex flex-wrap gap-1.5" aria-label="CrimeNo segments">
+            <div className="flex flex-wrap gap-1.5" aria-label={t('cases.peek.segmentsAria')}>
               {parts.map((p) => (
                 <span key={p.key} className="chip !py-1 num">
-                  <span className="text-[10px] uppercase tracking-wide text-muted">{p.label}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-muted">{t(p.labelKey)}</span>
                   <span style={{ color: p.cssColor }}>{p.text}</span>
                 </span>
               ))}
@@ -48,10 +53,14 @@ export default function PeekSheet({ row, onClose, starred, onToggleStar, inCompa
           <dl className="space-y-1.5">
             {ROWS.map((a) => {
               const v = r[a.key];
-              const text = a.fmt ? a.fmt(v) : (v === undefined || v === null || v === '' ? '—' : String(v));
+              let text;
+              if (a.age) text = Number.isFinite(v) ? t('cases.peek.ageDays', { n: fmtInt(v) }) : '—';
+              else if (a.fmt) text = a.fmt(v);
+              else if (v === undefined || v === null || v === '') text = '—';
+              else text = a.nameKind ? trName(a.nameKind, v) : String(v);
               return (
                 <div key={a.key} className="flex items-start justify-between gap-3 text-sm">
-                  <dt className="text-muted shrink-0 text-xs pt-0.5">{a.label}</dt>
+                  <dt className="text-muted shrink-0 text-xs pt-0.5">{t(a.labelKey)}</dt>
                   <dd className="text-ink text-right num break-words min-w-0">{text}</dd>
                 </div>
               );
@@ -65,7 +74,7 @@ export default function PeekSheet({ row, onClose, starred, onToggleStar, inCompa
               onClick={onToggleStar}
               aria-pressed={starred}
             >
-              {starred ? '★ Starred' : '☆ Star'}
+              {starred ? t('cases.peek.starred') : t('cases.peek.star')}
             </button>
             <button
               type="button"
@@ -73,11 +82,11 @@ export default function PeekSheet({ row, onClose, starred, onToggleStar, inCompa
               onClick={onToggleCompare}
               aria-pressed={inCompare}
             >
-              {inCompare ? 'In compare ✓' : '+ Compare'}
+              {inCompare ? t('cases.peek.inCompare') : t('cases.peek.addCompare')}
             </button>
-            <button type="button" className="btn !py-2 text-xs" onClick={onCopy}>Copy no</button>
+            <button type="button" className="btn !py-2 text-xs" onClick={onCopy}>{t('cases.peek.copyNo')}</button>
             <span className="flex-1" />
-            <button type="button" className="btn-primary !py-2 text-xs" onClick={onOpen}>Full detail →</button>
+            <button type="button" className="btn-primary !py-2 text-xs" onClick={onOpen}>{t('cases.peek.fullDetail')}</button>
           </div>
         </div>
       )}

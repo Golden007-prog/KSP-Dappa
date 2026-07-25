@@ -42,6 +42,7 @@ import {
   playChime, desktopSupported, ensureDesktopPermission, showDesktopNotification,
 } from './alerts/notify.js';
 import { fmtInt, dateLabel } from '../lib/format.js';
+import { useT, useNames } from '../lib/i18n.jsx';
 
 const SEV_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
 const sevRank = (s) => SEV_RANK[String(s || '').toLowerCase()] || 0;
@@ -61,28 +62,7 @@ const CMPS = {
     || bySeverity(a, b),
 };
 
-const SEV_FILTERS = [
-  ['', 'All'], ['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low'],
-];
-
-const GROUP_OPTIONS = [
-  { value: 'severity', label: 'Severity' },
-  { value: 'district', label: 'District' },
-  { value: 'date', label: 'Date' },
-];
-
-const SORT_OPTIONS = [
-  { value: 'severity', label: 'Severity' },
-  { value: 'z', label: 'z-score' },
-  { value: 'recent', label: 'Recent' },
-];
-
-const VIEW_OPTIONS = [
-  { value: 'feed', label: 'Feed' },
-  { value: 'board', label: 'Board' },
-];
-
-const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const SEV_FILTER_KEYS = ['', 'critical', 'high', 'medium', 'low'];
 
 /** Resolve the "affected stations" chip list for one alert from the lookups. */
 function stationsForAlert(a, units) {
@@ -101,7 +81,7 @@ function stationsForAlert(a, units) {
 }
 
 /** Partition the (already sorted) open alerts into labelled groups. */
-function groupAlerts(open, groupBy) {
+function groupAlerts(open, groupBy, t, tName) {
   const groups = new Map();
   const push = (key, label, a) => {
     if (!groups.has(key)) groups.set(key, { key, label, items: [] });
@@ -109,14 +89,15 @@ function groupAlerts(open, groupBy) {
   };
   for (const a of open) {
     if (groupBy === 'district') {
-      const label = a.districtName || a.districtId || 'Unknown district';
+      const label = tName('districts', a.districtId, a.districtName || a.districtId)
+        || t('alerts.unknownDistrict');
       push(label, label, a);
     } else if (groupBy === 'date') {
       const key = String(a.periodEnd || a.periodStart || '').slice(0, 10) || 'undated';
-      push(key, key === 'undated' ? 'Undated' : dateLabel(key), a);
+      push(key, key === 'undated' ? t('alerts.group.undated') : dateLabel(key), a);
     } else {
       const sev = String(a.severity || '').toLowerCase() || 'unrated';
-      push(sev, cap(sev), a);
+      push(sev, t(`alerts.sev.${sev}`), a);
     }
   }
   const list = [...groups.values()];
@@ -148,6 +129,8 @@ function ToggleChip({ on, onClick, label, tip, className = '', children }) {
 }
 
 export default function Alerts() {
+  const t = useT();
+  const tName = useNames();
   const { apiParams, districtId, setFilter } = useUrlFilters();
   const [searchParams, setSearchParams] = useSearchParams();
   const alerts = useAlerts(apiParams);
@@ -168,6 +151,21 @@ export default function Alerts() {
   const searchRef = useRef(null);
   // 30s tick for the SLA countdown badges.
   const now = useNow(30000);
+
+  const GROUP_OPTIONS = [
+    { value: 'severity', label: t('alerts.group.severity') },
+    { value: 'district', label: t('alerts.group.district') },
+    { value: 'date', label: t('alerts.group.date') },
+  ];
+  const SORT_OPTIONS = [
+    { value: 'severity', label: t('alerts.sort.severity') },
+    { value: 'z', label: t('alerts.sort.z') },
+    { value: 'recent', label: t('alerts.sort.recent') },
+  ];
+  const VIEW_OPTIONS = [
+    { value: 'feed', label: t('alerts.view.feed') },
+    { value: 'board', label: t('alerts.view.board') },
+  ];
 
   /** Set/clear one URL search param in place (replace — no history spam). */
   const setParam = (key, value) => {
@@ -240,7 +238,7 @@ export default function Alerts() {
     [openActive, breachedOnly, firstSeen, now],
   );
   const acked = useMemo(() => [...filtered.filter(isAcked)].sort(cmp), [filtered, cmp]);
-  const groups = useMemo(() => groupAlerts(open, group), [open, group]);
+  const groups = useMemo(() => groupAlerts(open, group, t, tName), [open, group, t, tName]);
   const flatOpen = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
   const unreadOpenCount = useMemo(
@@ -280,12 +278,17 @@ export default function Alerts() {
     if (notify.sound) playChime();
     if (notify.desktop) {
       const top = fresh.sort(bySeverity)[0];
+      const sevKey = String(top.severity || '').toLowerCase() || 'unrated';
       showDesktopNotification(
-        `DAPPA — ${fresh.length} new anomaly alert${fresh.length > 1 ? 's' : ''}`,
-        `${cap(String(top.severity || ''))} · ${top.headName || 'Anomaly'} — ${top.districtName || top.districtId || ''}`,
+        t(fresh.length === 1 ? 'alerts.notify.title.one' : 'alerts.notify.title.other', { n: fresh.length }),
+        t('alerts.notify.body', {
+          sev: t(`alerts.sev.${sevKey}`),
+          head: tName('crimeHeads', top.crimeHeadId, top.headName) || t('alerts.anomaly'),
+          district: tName('districts', top.districtId, top.districtName || top.districtId) || '',
+        }),
       );
     }
-  }, [alerts.data, filterSig, notify.sound, notify.desktop]);
+  }, [alerts.data, filterSig, notify.sound, notify.desktop, t, tName]);
 
   // Poll for fresh anomalies while either notification channel is on.
   const watching = notify.sound || notify.desktop;
@@ -300,7 +303,7 @@ export default function Alerts() {
     setNotify({ sound: next });
     if (next) {
       playChime(); // primes the AudioContext inside the user gesture + previews it
-      toast.info('Sound on — you’ll hear a chime when new anomalies arrive (checked every 60s).');
+      toast.info(t('alerts.toast.soundOn'));
     }
   };
 
@@ -309,22 +312,19 @@ export default function Alerts() {
     const granted = await ensureDesktopPermission();
     if (granted) {
       setNotify({ desktop: true });
-      toast.success('Desktop notifications on — new anomalies will pop up even in another tab.');
+      toast.success(t('alerts.toast.desktopOn'));
     } else {
-      toast.error('Notifications are blocked for this site — allow them in the browser to enable desktop alerts.');
+      toast.error(t('alerts.toast.desktopBlocked'));
     }
   };
 
   const testNotification = () => {
     playChime();
     if (notify.desktop) {
-      showDesktopNotification(
-        'DAPPA — test alert',
-        'Critical · Vehicle Theft — sample anomaly. Your desktop alerts are working.',
-      );
-      toast.info('Test chime played and a sample desktop notification was sent.');
+      showDesktopNotification(t('alerts.notify.testTitle'), t('alerts.notify.testBody'));
+      toast.info(t('alerts.toast.testSent'));
     } else {
-      toast.info('Test chime played — enable Desktop to also get pop-up notifications.');
+      toast.info(t('alerts.toast.testChimeOnly'));
     }
   };
 
@@ -332,28 +332,28 @@ export default function Alerts() {
     const ids = rows.map((a) => String(a.alertId)).filter((id) => !readIds.has(id));
     if (!ids.length) return;
     markRead(ids);
-    toast.success(`Marked ${fmtInt(ids.length)} alert${ids.length === 1 ? '' : 's'} as read`);
+    toast.success(t(ids.length === 1 ? 'alerts.toast.markedRead.one' : 'alerts.toast.markedRead.other', { n: fmtInt(ids.length) }));
   };
 
   const exportCsv = () => {
     const exportRows = unreadOnly ? openVisible : filtered;
-    if (!exportRows.length) { toast.info('Nothing to export for the current filters.'); return; }
-    const n = exportAlertsCsv(exportRows);
-    toast.success(`Exported ${fmtInt(n)} alert${n === 1 ? '' : 's'} to CSV`);
+    if (!exportRows.length) { toast.info(t('alerts.toast.nothingToExport')); return; }
+    const n = exportAlertsCsv(exportRows, t, tName);
+    toast.success(t(n === 1 ? 'alerts.toast.exported.one' : 'alerts.toast.exported.other', { n: fmtInt(n) }));
   };
 
   const doSnooze = (id) => {
     snooze(id);
-    toast.info('Snoozed for 24 h — it moves to the Snoozed section below (unsnooze anytime).');
+    toast.info(t('alerts.toast.snoozed'));
   };
   const doUnsnooze = (id) => {
     unsnooze(id);
-    toast.success('Alert restored to the open feed.');
+    toast.success(t('alerts.toast.unsnoozed'));
   };
   const copyAlert = async (a) => {
-    const ok = await copyText(alertShareText(a));
-    if (ok) toast.success('Alert copied as text — paste into WhatsApp or e-mail.');
-    else toast.error('Copy failed in this browser.');
+    const ok = await copyText(alertShareText(a, t, tName));
+    if (ok) toast.success(t('alerts.toast.copied'));
+    else toast.error(t('alerts.toast.copyFailed'));
   };
 
   // Alert detail sheet (feed info button, board card tap, or `o` shortcut).
@@ -439,47 +439,47 @@ export default function Alerts() {
     );
   };
 
-  const emptyTitle = snoozedList.length ? 'All matching alerts are snoozed'
-    : breachedOnly ? 'No SLA-breached alerts'
-      : unreadOnly ? 'No unread alerts'
-        : q ? 'No alerts match your search'
-          : sev ? `No open ${sev} alerts`
-            : 'No active alerts';
+  const emptyTitle = snoozedList.length ? t('alerts.empty.snoozed.title')
+    : breachedOnly ? t('alerts.empty.breached.title')
+      : unreadOnly ? t('alerts.empty.unread.title')
+        : q ? t('alerts.empty.search.title')
+          : sev ? t('alerts.empty.sev.title', { sev: t(`alerts.sevLower.${sev}`) })
+            : t('alerts.empty.none.title');
   const emptyMessage = snoozedList.length
-    ? 'Every open alert matching these filters is snoozed — expand the Snoozed section below or unsnooze them.'
-    : breachedOnly ? 'Nothing has overrun its triage SLA — clear the breached filter to see the rest of the feed.'
-      : unreadOnly ? 'Everything matching the current filters has been read.'
-        : q ? `Nothing matches “${q}” — try a district, crime head or narrative keyword.`
-          : sev ? 'Nothing at this severity in the current window — clear the severity filter to see the rest.'
-            : 'No anomalies flagged for the current filters. All clear.';
+    ? t('alerts.empty.snoozed.msg')
+    : breachedOnly ? t('alerts.empty.breached.msg')
+      : unreadOnly ? t('alerts.empty.unread.msg')
+        : q ? t('alerts.empty.search.msg', { q })
+          : sev ? t('alerts.empty.sev.msg')
+            : t('alerts.empty.none.msg');
   const emptyAction = breachedOnly
-    ? <button type="button" className="btn" onClick={() => setParam('breached', '')}>Show all open alerts</button>
+    ? <button type="button" className="btn" onClick={() => setParam('breached', '')}>{t('alerts.empty.showAllOpen')}</button>
     : q
-      ? <button type="button" className="btn" onClick={() => setParam('q', '')}>Clear search</button>
+      ? <button type="button" className="btn" onClick={() => setParam('q', '')}>{t('alerts.empty.clearSearch')}</button>
       : unreadOnly
-        ? <button type="button" className="btn" onClick={() => setParam('unread', '')}>Show all alerts</button>
+        ? <button type="button" className="btn" onClick={() => setParam('unread', '')}>{t('alerts.empty.showAll')}</button>
         : sev
-          ? <button type="button" className="btn" onClick={() => setSev('')}>Show all severities</button>
+          ? <button type="button" className="btn" onClick={() => setSev('')}>{t('alerts.empty.showAllSev')}</button>
           : null;
 
   return (
     <div className="space-y-4 max-w-[1200px] mx-auto">
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="page-title">Alerts</h1>
+          <h1 className="page-title">{t('alerts.title')}</h1>
           <p className="page-subtitle">
-            Anomaly feed — observed vs expected
+            {t('alerts.subtitle')}
             {!alerts.isLoading && !alerts.error && (
-              <span className="num"> · {fmtInt(openAll.length)} open · {fmtInt(rows.length - openAll.length)} acknowledged
-                {unreadOpenCount > 0 && <span className="text-primary"> · {fmtInt(unreadOpenCount)} unread</span>}
-                {breachedCount > 0 && <span className="text-signal"> · {fmtInt(breachedCount)} SLA-breached</span>}
+              <span className="num"> · {t('alerts.count.open', { n: fmtInt(openAll.length) })} · {t('alerts.count.acknowledged', { n: fmtInt(rows.length - openAll.length) })}
+                {unreadOpenCount > 0 && <span className="text-primary"> · {t('alerts.count.unread', { n: fmtInt(unreadOpenCount) })}</span>}
+                {breachedCount > 0 && <span className="text-signal"> · {t('alerts.count.breached', { n: fmtInt(breachedCount) })}</span>}
               </span>
             )}
           </p>
         </div>
         {openAll.length > 0 && (
           <span className="inline-flex items-center gap-1.5 text-xs text-signal ml-auto">
-            <PulseDot /> {watching ? 'watching for anomalies' : 'live anomalies'}
+            <PulseDot /> {watching ? t('alerts.live.watching') : t('alerts.live.anomalies')}
           </span>
         )}
       </div>
@@ -489,8 +489,8 @@ export default function Alerts() {
       )}
 
       <FilterBar>
-        <div className="flex items-center gap-1" role="group" aria-label="Severity filter">
-          {SEV_FILTERS.map(([v, label]) => (
+        <div className="flex items-center gap-1" role="group" aria-label={t('alerts.aria.severityFilter')}>
+          {SEV_FILTER_KEYS.map((v) => (
             <button
               key={v || 'all'}
               type="button"
@@ -498,7 +498,7 @@ export default function Alerts() {
               aria-pressed={sev === v}
               onClick={() => setSev(v)}
             >
-              {label}
+              {t(`alerts.sev.${v || 'all'}`)}
               {v && sevCounts[v] ? <span className="num text-muted"> {sevCounts[v]}</span> : null}
             </button>
           ))}
@@ -509,7 +509,7 @@ export default function Alerts() {
         views={views}
         currentSearch={searchParams.toString()}
         onApply={(search) => setSearchParams(new URLSearchParams(search))}
-        onSave={(name) => { saveView(name, searchParams.toString()); toast.success(`View “${name}” saved`); }}
+        onSave={(name) => { saveView(name, searchParams.toString()); toast.success(t('alerts.toast.viewSaved', { name })); }}
         onDelete={deleteView}
       />
 
@@ -534,8 +534,8 @@ export default function Alerts() {
             className="input-dark w-full !pl-8 !py-2.5 sm:!py-1.5 !text-sm"
             value={searchParams.get('q') || ''}
             onChange={(e) => setParam('q', e.target.value)}
-            placeholder="Search district, crime head, narrative…  ( / )"
-            aria-label="Search alerts"
+            placeholder={t('alerts.search.placeholder')}
+            aria-label={t('alerts.search.aria')}
             type="search"
             enterKeyHint="search"
           />
@@ -550,36 +550,36 @@ export default function Alerts() {
             className={`h-1.5 w-1.5 rounded-full ${unreadOnly ? 'bg-primary' : 'bg-muted/50'}`}
             aria-hidden="true"
           />
-          Unread only
+          {t('alerts.toggle.unreadOnly')}
           {unreadOpenCount > 0 && <span className="num text-muted"> {fmtInt(unreadOpenCount)}</span>}
         </button>
         <button
           type="button"
           aria-pressed={breachedOnly}
           onClick={() => setParam('breached', breachedOnly ? '' : '1')}
-          title="Only open alerts that have overrun their triage SLA"
+          title={t('alerts.toggle.slaBreachedTip')}
           className={`chip !py-1 min-h-[44px] sm:min-h-[30px] transition-colors ${breachedOnly ? '!border-signal/60 !text-signal' : 'hover:border-signal/40'}`}
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${breachedCount ? 'bg-signal' : 'bg-muted/50'}`}
             aria-hidden="true"
           />
-          SLA breached
+          {t('alerts.toggle.slaBreached')}
           {breachedCount > 0 && <span className="num text-muted"> {fmtInt(breachedCount)}</span>}
         </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="hidden sm:flex items-center gap-2">
-          <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={changeView} ariaLabel="Alerts view mode" />
+          <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={changeView} ariaLabel={t('alerts.aria.viewMode')} />
           {view === 'feed' && (
             <>
-              <span className="text-xs text-muted">Group</span>
-              <SegmentedControl options={GROUP_OPTIONS} value={group} onChange={changeGroup} ariaLabel="Group alerts by" />
+              <span className="text-xs text-muted">{t('alerts.group.label')}</span>
+              <SegmentedControl options={GROUP_OPTIONS} value={group} onChange={changeGroup} ariaLabel={t('alerts.aria.groupBy')} />
             </>
           )}
-          <span className="text-xs text-muted">Sort</span>
-          <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={changeSort} ariaLabel="Sort alerts by" />
+          <span className="text-xs text-muted">{t('alerts.sort.label')}</span>
+          <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={changeSort} ariaLabel={t('alerts.aria.sortBy')} />
         </div>
         <button
           type="button"
@@ -590,27 +590,27 @@ export default function Alerts() {
           <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
             <path d="M4 7h10m4 0h2M4 12h2m4 0h10M4 17h10m4 0h2" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="12" r="2" /><circle cx="16" cy="17" r="2" />
           </svg>
-          Options
+          {t('alerts.tool.options')}
         </button>
         <div className="ml-auto flex items-center gap-1.5">
-          <Tooltip label="Locally mark every listed alert as read">
+          <Tooltip label={t('alerts.tool.markAllReadTip')}>
             <button
               type="button"
               className={TOOL_BTN}
               disabled={totalUnread === 0}
               onClick={markAllRead}
-              aria-label="Mark all alerts read"
+              aria-label={t('alerts.tool.markAllReadAria')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="m2 13 4 4L14 9" /><path d="m10 13 4 4 8-10" /></svg>
-              <span className="hidden md:inline">Mark all read</span>
+              <span className="hidden md:inline">{t('alerts.tool.markAllRead')}</span>
               {totalUnread > 0 && <span className="num">{fmtInt(totalUnread)}</span>}
             </button>
           </Tooltip>
           <ToggleChip
             on={notify.sound}
             onClick={toggleSound}
-            label="Sound"
-            tip={notify.sound ? 'Chime on new anomalies — click to turn off' : 'Play a chime when new anomalies arrive'}
+            label={t('alerts.tool.sound')}
+            tip={notify.sound ? t('alerts.tool.soundOnTip') : t('alerts.tool.soundOffTip')}
             className="hidden sm:inline-flex"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
@@ -624,8 +624,8 @@ export default function Alerts() {
             <ToggleChip
               on={notify.desktop}
               onClick={toggleDesktop}
-              label="Desktop"
-              tip={notify.desktop ? 'Desktop notifications on — click to turn off' : 'Pop a desktop notification for new anomalies'}
+              label={t('alerts.tool.desktop')}
+              tip={notify.desktop ? t('alerts.tool.desktopOnTip') : t('alerts.tool.desktopOffTip')}
               className="hidden sm:inline-flex"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
@@ -634,19 +634,19 @@ export default function Alerts() {
               </svg>
             </ToggleChip>
           )}
-          <Tooltip label="Play the chime (and a sample desktop pop-up if enabled) to verify your opt-ins" className="hidden sm:inline-flex">
-            <button type="button" className={TOOL_BTN} onClick={testNotification} aria-label="Send a test notification">
+          <Tooltip label={t('alerts.tool.testTip')} className="hidden sm:inline-flex">
+            <button type="button" className={TOOL_BTN} onClick={testNotification} aria-label={t('alerts.tool.testAria')}>
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                 <path d="M18 9a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6" />
                 <path d="M10.3 19a2 2 0 0 0 3.4 0" /><path d="m20 3 1.5 1.5M4 3 2.5 4.5" />
               </svg>
-              <span className="hidden md:inline">Test</span>
+              <span className="hidden md:inline">{t('alerts.tool.test')}</span>
             </button>
           </Tooltip>
-          <Tooltip label="Download the filtered alerts as CSV">
-            <button type="button" className={TOOL_BTN} onClick={exportCsv} aria-label="Export filtered alerts as CSV">
+          <Tooltip label={t('alerts.tool.csvTip')}>
+            <button type="button" className={TOOL_BTN} onClick={exportCsv} aria-label={t('alerts.tool.csvAria')}>
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5" /><path d="M4 19h16" /></svg>
-              <span className="hidden md:inline">CSV</span>
+              <span className="hidden md:inline">{t('alerts.tool.csv')}</span>
             </button>
           </Tooltip>
         </div>
@@ -657,11 +657,11 @@ export default function Alerts() {
       )}
 
       <p className="hidden md:block text-[11px] text-muted">
-        Shortcuts: <span className="num">j/k</span> navigate · <span className="num">a</span> acknowledge ·{' '}
-        <span className="num">m</span> read · <span className="num">s</span> snooze · <span className="num">c</span> copy ·{' '}
-        <span className="num">o</span> details · <span className="num">v</span> board ·{' '}
-        <span className="num">u</span> unread · <span className="num">e</span> CSV · <span className="num">/</span> search ·{' '}
-        <span className="num">1–4</span> severity · <span className="num">0</span> all
+        {t('alerts.shortcut.label')} <span className="num">j/k</span> {t('alerts.shortcut.navigate')} · <span className="num">a</span> {t('alerts.shortcut.acknowledge')} ·{' '}
+        <span className="num">m</span> {t('alerts.shortcut.read')} · <span className="num">s</span> {t('alerts.shortcut.snooze')} · <span className="num">c</span> {t('alerts.shortcut.copy')} ·{' '}
+        <span className="num">o</span> {t('alerts.shortcut.details')} · <span className="num">v</span> {t('alerts.shortcut.board')} ·{' '}
+        <span className="num">u</span> {t('alerts.shortcut.unread')} · <span className="num">e</span> {t('alerts.shortcut.csv')} · <span className="num">/</span> {t('alerts.shortcut.search')} ·{' '}
+        <span className="num">1–4</span> {t('alerts.shortcut.severity')} · <span className="num">0</span> {t('alerts.shortcut.all')}
       </p>
 
       {alerts.isLoading ? (
@@ -673,9 +673,9 @@ export default function Alerts() {
       ) : alerts.error ? (
         <Card>
           <EmptyState
-            title="Couldn't load alerts"
+            title={t('alerts.error.title')}
             message={alerts.error.message}
-            action={<button type="button" className="btn" onClick={() => alerts.refetch()}>Retry</button>}
+            action={<button type="button" className="btn" onClick={() => alerts.refetch()}>{t('common.action.retry')}</button>}
           />
         </Card>
       ) : view === 'board' ? (
@@ -707,7 +707,7 @@ export default function Alerts() {
           ) : (
             <div className="space-y-4">
               {groups.map((g) => (
-                <section key={g.key} aria-label={`${g.label} alerts`} className="space-y-3">
+                <section key={g.key} aria-label={t('alerts.aria.groupSection', { label: g.label })} className="space-y-3">
                   <div className="flex items-center gap-2">
                     <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{g.label}</h2>
                     <Badge tone="slate" className="num">{fmtInt(g.items.length)}</Badge>
@@ -733,7 +733,7 @@ export default function Alerts() {
                 >
                   <path d="m9 6 6 6-6 6" />
                 </svg>
-                Snoozed
+                {t('alerts.feed.snoozed')}
                 <Badge tone="slate" className="num">{fmtInt(snoozedList.length)}</Badge>
               </button>
               {showSnoozed && snoozedList.map((a) => renderCard(a, { snoozed: true }))}
@@ -743,7 +743,7 @@ export default function Alerts() {
           {acked.length > 0 && (
             <div className="space-y-3 pt-2">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-ink">Acknowledged</h2>
+                <h2 className="text-sm font-semibold text-ink">{t('alerts.feed.acknowledged')}</h2>
                 <Badge tone="slate" className="num">{fmtInt(acked.length)}</Badge>
               </div>
               {acked.map((a) => renderCard(a, { acked: true }))}

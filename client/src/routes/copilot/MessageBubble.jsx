@@ -9,6 +9,7 @@
 import Badge from '../../components/Badge.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 import AnswerInsights from './AnswerInsights.jsx';
 import CopilotChart from './CopilotChart.jsx';
 import {
@@ -32,19 +33,21 @@ function Avatar() {
 }
 
 export function EngineBadge({ engine }) {
+  const t = useT();
   if (!engine) return null;
-  if (engine === 'quickml-rag') return <Badge tone="amber">QuickML LLM · RAG</Badge>;
-  if (engine === 'demo-static') return <Badge tone="slate">Static demo snapshot</Badge>;
-  if (engine === 'deterministic' || engine === 'parser') return <Badge tone="slate">Deterministic parser</Badge>;
+  if (engine === 'quickml-rag') return <Badge tone="amber">{t('copilot.engine.quickmlRag')}</Badge>;
+  if (engine === 'demo-static') return <Badge tone="slate">{t('copilot.engine.demoStatic')}</Badge>;
+  if (engine === 'deterministic' || engine === 'parser') return <Badge tone="slate">{t('copilot.engine.deterministic')}</Badge>;
   // unknown engines (e.g. a future ConvoKraft fallback) are shown verbatim
   // instead of being mislabelled as the parser
   return <Badge tone="neutral">{engine}</Badge>;
 }
 
 export function LatencyChip({ ms }) {
+  const t = useT();
   const label = latencyLabel(ms);
   if (!label) return null;
-  return <span className="num text-[10px] text-muted whitespace-nowrap">answered in {label}</span>;
+  return <span className="num text-[10px] text-muted whitespace-nowrap">{t('copilot.answer.answeredIn', { t: label })}</span>;
 }
 
 export function TypingBubble() {
@@ -63,10 +66,11 @@ export function TypingBubble() {
 }
 
 function Time({ ts, now, className = '' }) {
+  const t = useT();
   if (!ts) return null;
   return (
     <Tooltip label={fullTimeLabel(ts)}>
-      <span className={`num text-[10px] text-muted whitespace-nowrap ${className}`}>{relativeTimeLabel(ts, now)}</span>
+      <span className={`num text-[10px] text-muted whitespace-nowrap ${className}`}>{relativeTimeLabel(ts, now, t)}</span>
     </Tooltip>
   );
 }
@@ -76,6 +80,7 @@ export default function MessageBubble({
   onAsk, onToggleCompare, compareSelected = false, readAloud,
 }) {
   const toast = useToast();
+  const t = useT();
 
   if (message.role === 'user') {
     const shareLink = async () => {
@@ -83,8 +88,8 @@ export default function MessageBubble({
       const base = window.location.href.split('#')[0];
       const url = `${base}#/copilot?q=${encodeURIComponent(message.text || '')}`;
       const ok = await copyText(url);
-      if (ok) toast.success('Link copied — opening it re-asks this question');
-      else toast.error('Copy failed — copy the address bar URL instead.');
+      if (ok) toast.success(t('copilot.share.copied'));
+      else toast.error(t('copilot.share.failed'));
     };
     return (
       <div className="flex flex-col items-end">
@@ -94,13 +99,13 @@ export default function MessageBubble({
         <div className="mt-1.5 mr-1 flex items-center">
           <Time ts={message.ts} now={now} className="mr-1.5" />
           {onTogglePin && (
-            <Tooltip label={pinned ? 'Unpin from suggestions' : 'Pin to suggestions'}>
+            <Tooltip label={t(pinned ? 'copilot.pin.unpinTip' : 'copilot.pin.pinTip')}>
               <button
                 type="button"
                 className={`no-print ${ICON_BTN} ${pinned ? 'text-amber' : 'hover:text-amber'}`}
                 onClick={() => onTogglePin(message.text)}
                 aria-pressed={pinned}
-                aria-label={pinned ? 'Unpin this question from suggestions' : 'Pin this question to suggestions'}
+                aria-label={t(pinned ? 'copilot.pin.unpinAria' : 'copilot.pin.pinAria')}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" {...ICON} fill={pinned ? 'currentColor' : 'none'} aria-hidden="true">
                   <path d="m12 3 2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9l-5.4 2.9 1.1-6.1L3.2 9.4l6.1-.8L12 3Z" />
@@ -108,12 +113,12 @@ export default function MessageBubble({
               </button>
             </Tooltip>
           )}
-          <Tooltip label="Copy a shareable link to this question">
+          <Tooltip label={t('copilot.share.tooltip')}>
             <button
               type="button"
               className={`no-print ${ICON_BTN} hover:text-primary`}
               onClick={shareLink}
-              aria-label="Copy shareable link to this question"
+              aria-label={t('copilot.share.aria')}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                 <path d="M10 14a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 5.93" />
@@ -131,11 +136,11 @@ export default function MessageBubble({
       <div className="flex gap-2.5">
         <Avatar />
         <div className="max-w-[88%] md:max-w-[80%] rounded-2xl rounded-tl-sm bg-panel border border-signal/40 px-3.5 py-3">
-          <p className="text-sm text-ink">Sorry — that question failed.</p>
+          <p className="text-sm text-ink">{t('copilot.error.title')}</p>
           <p className="text-xs text-muted mt-1">{message.error}</p>
           {onRetry && (
             <button type="button" className="btn mt-2 min-h-[40px] text-xs no-print" onClick={() => onRetry(message)}>
-              Retry
+              {t('common.action.retry')}
             </button>
           )}
         </div>
@@ -145,20 +150,20 @@ export default function MessageBubble({
 
   const copyAnswer = async () => {
     const ok = await copyText(message.text || '');
-    if (ok) toast.success('Answer copied to clipboard');
-    else toast.error('Copy failed — select the text and copy manually.');
+    if (ok) toast.success(t('copilot.copy.answerDone'));
+    else toast.error(t('copilot.copy.failedText'));
   };
 
   const copyZcql = async () => {
     const ok = await copyText(String(message.zcql || ''));
-    if (ok) toast.success('ZCQL copied to clipboard');
-    else toast.error('Copy failed — select the query and copy manually.');
+    if (ok) toast.success(t('copilot.copy.zcqlDone'));
+    else toast.error(t('copilot.copy.failedQuery'));
   };
 
   const copyMarkdown = async () => {
     const ok = await copyText(answerToMarkdown(message));
-    if (ok) toast.success('Answer copied as Markdown (with provenance and ZCQL)');
-    else toast.error('Copy failed — select the text and copy manually.');
+    if (ok) toast.success(t('copilot.copy.mdDone'));
+    else toast.error(t('copilot.copy.failedText'));
   };
 
   const speaking = readAloud?.speakingId === message.id;
@@ -170,7 +175,7 @@ export default function MessageBubble({
       <div className="max-w-[88%] md:max-w-[80%] min-w-0 rounded-2xl rounded-tl-sm bg-panel border border-grid px-3.5 py-3">
         <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">{message.text}</p>
         {suggestions.length > 0 && onAsk && (
-          <div className="no-print mt-2 flex flex-wrap gap-1.5" aria-label="Suggested rephrasings">
+          <div className="no-print mt-2 flex flex-wrap gap-1.5" aria-label={t('copilot.suggestions.aria')}>
             {suggestions.map((q) => (
               <button
                 key={q}
@@ -188,20 +193,20 @@ export default function MessageBubble({
         {message.zcql && (
           <details className="mt-2.5">
             <summary className="cursor-pointer text-[11px] text-muted hover:text-amber transition-colors select-none py-2 -my-2">
-              Show ZCQL
+              {t('copilot.zcql.show')}
             </summary>
             <div className="mt-1.5 flex items-center justify-end">
               <button
                 type="button"
                 className="no-print inline-flex items-center gap-1 min-h-[40px] -my-2.5 px-2 rounded-lg text-[11px] text-muted hover:text-primary transition-colors"
                 onClick={copyZcql}
-                aria-label="Copy ZCQL query"
+                aria-label={t('copilot.zcql.copyAria')}
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                   <rect x="9" y="9" width="11" height="11" rx="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                Copy ZCQL
+                {t('copilot.zcql.copy')}
               </button>
             </div>
             <pre className="mt-1 text-[11px] leading-relaxed text-teal/90 bg-base border border-grid rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap font-mono">
@@ -216,30 +221,30 @@ export default function MessageBubble({
             type="button"
             className="no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] text-muted hover:text-primary transition-colors"
             onClick={copyAnswer}
-            aria-label="Copy answer"
+            aria-label={t('copilot.copy.answerAria')}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
               <rect x="9" y="9" width="11" height="11" rx="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-            Copy
+            {t('common.action.copy')}
           </button>
-          <Tooltip label="Copy answer as Markdown, with provenance and ZCQL">
+          <Tooltip label={t('copilot.copy.mdTip')}>
             <button
               type="button"
               className="no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] text-muted hover:text-primary transition-colors"
               onClick={copyMarkdown}
-              aria-label="Copy answer as Markdown"
+              aria-label={t('copilot.copy.mdAria')}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                 <rect x="3" y="5" width="18" height="14" rx="2" />
                 <path d="M6 15v-5l2.5 2.5L11 10v5m3-5h3m-1.5 0v5" />
               </svg>
-              MD
+              {t('copilot.copy.mdLabel')}
             </button>
           </Tooltip>
           {readAloud?.supported && (
-            <Tooltip label={speaking ? 'Stop reading this answer' : 'Read this answer aloud'}>
+            <Tooltip label={t(speaking ? 'copilot.read.stopTip' : 'copilot.read.startTip')}>
               <button
                 type="button"
                 className={`no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] transition-colors ${
@@ -247,18 +252,18 @@ export default function MessageBubble({
                 }`}
                 onClick={() => readAloud.toggle(message.id, message.text)}
                 aria-pressed={speaking}
-                aria-label={speaking ? 'Stop reading this answer aloud' : 'Read this answer aloud'}
+                aria-label={t(speaking ? 'copilot.read.stopAria' : 'copilot.read.startAria')}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                   <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
                   {speaking ? <path d="M16 9l5 6m0-6-5 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M18.4 6a9 9 0 0 1 0 12" />}
                 </svg>
-                {speaking ? 'Stop' : 'Listen'}
+                {t(speaking ? 'copilot.read.stop' : 'copilot.read.listen')}
               </button>
             </Tooltip>
           )}
           {onToggleCompare && (
-            <Tooltip label={compareSelected ? 'Remove from comparison' : 'Pick for side-by-side comparison (choose two answers)'}>
+            <Tooltip label={t(compareSelected ? 'copilot.compare.removeTip' : 'copilot.compare.pickTip')}>
               <button
                 type="button"
                 className={`no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] transition-colors ${
@@ -266,28 +271,28 @@ export default function MessageBubble({
                 }`}
                 onClick={() => onToggleCompare(message.id)}
                 aria-pressed={compareSelected}
-                aria-label={compareSelected ? 'Remove this answer from comparison' : 'Pick this answer for comparison'}
+                aria-label={t(compareSelected ? 'copilot.compare.removeAria' : 'copilot.compare.pickAria')}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                   <rect x="3" y="5" width="7" height="14" rx="1.5" />
                   <rect x="14" y="5" width="7" height="14" rx="1.5" />
                 </svg>
-                {compareSelected ? 'Picked' : 'Compare'}
+                {compareSelected ? t('copilot.compare.picked') : t('common.action.compare')}
               </button>
             </Tooltip>
           )}
           {onRegenerate && message.question && (
-            <Tooltip label="Ask this question again (replaces this answer)">
+            <Tooltip label={t('copilot.regen.tip')}>
               <button
                 type="button"
                 className="no-print inline-flex items-center gap-1 rounded-lg px-2 min-h-[40px] -my-2 text-[11px] text-muted hover:text-primary transition-colors"
                 onClick={() => onRegenerate(message)}
-                aria-label="Regenerate this answer"
+                aria-label={t('copilot.regen.aria')}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                   <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
                 </svg>
-                Regenerate
+                {t('copilot.regen.label')}
               </button>
             </Tooltip>
           )}

@@ -5,33 +5,36 @@
 // Command (choropleth + alerts + hotspots), Patrol (heat + incidents +
 // stations), Analyst (everything).
 import { useUiStore } from '../../lib/store.js';
+import { useT } from '../../lib/i18n.jsx';
 
+// Labels/hints are translation keys — the chip text must stay short in all
+// three scripts, so the wording lives in locales/<lang>/geointel.js.
 const LAYERS = [
-  { key: 'choropleth', label: 'Choropleth' },
-  { key: 'heat', label: 'Incident heat' },
-  { key: 'incidents', label: 'Incident points', hint: 'Individual incidents with popup cards — visible from zoom 12' },
-  { key: 'hotspots', label: 'Hotspots' },
-  { key: 'stations', label: 'Stations' },
-  { key: 'alertPulse', label: 'Alert pulse' },
+  { key: 'choropleth', label: 'geointel.layers.choropleth' },
+  { key: 'heat', label: 'geointel.layers.heat' },
+  { key: 'incidents', label: 'geointel.layers.incidents', hint: 'geointel.layers.incidentsHint' },
+  { key: 'hotspots', label: 'geointel.layers.hotspots' },
+  { key: 'stations', label: 'geointel.layers.stations' },
+  { key: 'alertPulse', label: 'geointel.layers.alertPulse' },
 ];
 
 export const LAYER_PRESETS = [
   {
     key: 'command',
-    label: 'Command',
-    hint: 'Choropleth + alert pulse + hotspots — the situational overview',
+    label: 'geointel.preset.command',
+    hint: 'geointel.preset.commandHint',
     layers: { choropleth: true, heat: false, incidents: false, hotspots: true, stations: false, alertPulse: true },
   },
   {
     key: 'patrol',
-    label: 'Patrol',
-    hint: 'Incident heat + points + stations — where to be tonight',
+    label: 'geointel.preset.patrol',
+    hint: 'geointel.preset.patrolHint',
     layers: { choropleth: false, heat: true, incidents: true, hotspots: false, stations: true, alertPulse: false },
   },
   {
     key: 'analyst',
-    label: 'Analyst',
-    hint: 'Every layer on',
+    label: 'geointel.preset.analyst',
+    hint: 'geointel.preset.analystHint',
     layers: { choropleth: true, heat: true, incidents: true, hotspots: true, stations: true, alertPulse: true },
   },
 ];
@@ -39,6 +42,7 @@ export const LAYER_PRESETS = [
 export default function LayerToggles() {
   const mapLayers = useUiStore((s) => s.mapLayers);
   const setMapLayer = useUiStore((s) => s.setMapLayer);
+  const t = useT();
   const applyPreset = (p) => {
     for (const [k, v] of Object.entries(p.layers)) setMapLayer(k, v);
   };
@@ -51,14 +55,14 @@ export default function LayerToggles() {
             key={l.key}
             type="button"
             aria-pressed={on}
-            title={l.hint}
+            title={l.hint ? t(l.hint) : undefined}
             className={`chip gi-tap shrink-0 transition-colors ${
               on ? '!border-amber/60 !text-amber !bg-amber/10' : 'text-muted hover:text-ink hover:border-grid'
             }`}
             onClick={() => setMapLayer(l.key, !on)}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${on ? 'bg-amber' : 'bg-grid'}`} aria-hidden="true" />
-            {l.label}
+            {t(l.label)}
           </button>
         );
       })}
@@ -69,14 +73,14 @@ export default function LayerToggles() {
           <button
             key={p.key}
             type="button"
-            title={p.hint}
+            title={t(p.hint)}
             aria-pressed={active}
             className={`chip gi-tap shrink-0 transition-colors ${
               active ? '!border-primary/60 !text-primary !bg-primary/10' : 'text-muted hover:text-ink hover:border-grid'
             }`}
             onClick={() => applyPreset(p)}
           >
-            {p.label}
+            {t(p.label)}
           </button>
         );
       })}

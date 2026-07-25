@@ -18,6 +18,8 @@ import DataTable from '../components/DataTable.jsx';
 import PulseDot from '../components/PulseDot.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { dateLabel, fmtInt } from '../lib/format.js';
+import { useT } from '../lib/i18n.jsx';
+import { useCaseNames } from './cases/names.js';
 import CrimeNoBreakdown, { splitCrimeNo } from './cases/CrimeNoBreakdown.jsx';
 import PartyList, { ARREST_FIELDS, NAME_KEYS } from './cases/PartyList.jsx';
 import KeyValuePanel from './cases/KeyValuePanel.jsx';
@@ -35,18 +37,27 @@ import { readStars, toggleStar } from './cases/stars.js';
 import { pushRecent } from './cases/recent.js';
 import './cases/case-detail-print.css';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_KEYS = ['cases.detail.wd.sun', 'cases.detail.wd.mon', 'cases.detail.wd.tue',
+  'cases.detail.wd.wed', 'cases.detail.wd.thu', 'cases.detail.wd.fri', 'cases.detail.wd.sat'];
+// `band` stays the canonical English key — it drives the amber/slate tone below.
+const BAND_KEYS = {
+  night: 'cases.detail.band.night',
+  morning: 'cases.detail.band.morning',
+  afternoon: 'cases.detail.band.afternoon',
+  evening: 'cases.detail.band.evening',
+  'late night': 'cases.detail.band.lateNight',
+};
 
 /** Weekday + clock + day-part band from the incident timestamp — the list
  * rows are date-only, so hour-of-day context lives here on the detail. */
-function incidentTimeContext(iso) {
+function incidentTimeContext(iso, t) {
   if (!iso) return null;
   const dt = new Date(String(iso).replace(' ', 'T'));
   if (Number.isNaN(dt.getTime())) return null;
   const h = dt.getHours();
   const band = h < 6 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'late night';
   const hm = `${String(h).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
-  return { label: `${WEEKDAYS[dt.getDay()]} ${hm} · ${band}`, band };
+  return { label: `${t(WEEKDAY_KEYS[dt.getDay()])} ${hm} · ${t(BAND_KEYS[band])}`, band };
 }
 
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -90,6 +101,8 @@ function DetailSkeleton() {
 }
 
 export default function CaseDetail() {
+  const t = useT();
+  const trName = useCaseNames();
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -128,8 +141,8 @@ export default function CaseDetail() {
     return () => { document.title = prev; };
   }, []);
   useEffect(() => {
-    document.title = `Case ${d.crimeNo || id} · DAPPA`;
-  }, [d.crimeNo, id]);
+    document.title = t('cases.detail.docTitle', { no: d.crimeNo || id });
+  }, [d.crimeNo, id, t]);
 
   // Recently-viewed trail for the explorer's Recent row.
   const loaded = !c.isLoading && !c.error && !!c.data;
@@ -143,25 +156,25 @@ export default function CaseDetail() {
   const starred = !!stars[starKey];
   const handleStar = () => {
     setStars((prev) => toggleStar(prev, starKey, { crimeNo: d.crimeNo }));
-    toast.success(starred ? 'Removed from starred cases' : 'Added to starred cases');
+    toast.success(t(starred ? 'cases.detail.toast.starRemoved' : 'cases.detail.toast.starAdded'));
   };
 
   const copyNo = async () => {
     const ok = await copyText(d.crimeNo || id);
-    if (ok) toast.success(`CrimeNo ${d.crimeNo || id} copied`);
-    else toast.error('Could not copy — clipboard is blocked in this browser.');
+    if (ok) toast.success(t('cases.toast.copied', { no: d.crimeNo || id }));
+    else toast.error(t('cases.toast.copyBlocked'));
   };
   const copyLink = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.success('Shareable link copied');
-    else toast.error('Could not copy — clipboard is blocked in this browser.');
+    if (ok) toast.success(t('cases.detail.toast.linkCopied'));
+    else toast.error(t('cases.toast.copyBlocked'));
   };
   const exportJson = () => {
     downloadCaseJson(d);
-    toast.success('Case JSON downloaded (whitelisted fields only)');
+    toast.success(t('cases.detail.toast.jsonDownloaded'));
   };
 
-  const countdown = useMemo(() => hearingCountdown(d.court), [d.court]);
+  const countdown = useMemo(() => hearingCountdown(d.court, new Date(), t), [d.court, t]);
 
   // Lookup-resolved ids for pivots + the nearby-incident overlay.
   const lookups = useLookups();
@@ -196,14 +209,16 @@ export default function CaseDetail() {
         lat: p.lat,
         lng: p.lng,
         highlight: similarIds.has(String(p.caseMasterId)),
-        label: `case ${p.caseMasterId}${similarIds.has(String(p.caseMasterId)) ? ' · similar match' : ''} — tap to open`,
+        label: t(similarIds.has(String(p.caseMasterId))
+          ? 'cases.detail.nearbyMarkerSimilar'
+          : 'cases.detail.nearbyMarker', { id: p.caseMasterId }),
       }));
-  }, [nearby.data, showNearby, similarIds, d.caseMasterId, id]);
+  }, [nearby.data, showNearby, similarIds, d.caseMasterId, id, t]);
   const openOther = useCallback((o) => {
     if (o?.id) navigate({ pathname: `/cases/${o.id}`, search: location.search });
   }, [navigate, location.search]);
 
-  const timeCtx = useMemo(() => incidentTimeContext(d.incidentFrom), [d.incidentFrom]);
+  const timeCtx = useMemo(() => incidentTimeContext(d.incidentFrom, t), [d.incidentFrom, t]);
 
   const copySections = async () => {
     const list = Array.isArray(d.sections) ? d.sections : [];
@@ -211,16 +226,19 @@ export default function CaseDetail() {
       .map((s) => `${s.actCode ?? ''} §${s.sectionCode ?? ''}${s.description ? ` — ${s.description}` : ''}`.trim())
       .join('\n');
     const ok = await copyText(text);
-    if (ok) toast.success(`Copied ${list.length} section${list.length > 1 ? 's' : ''} (chargesheet-ready)`);
-    else toast.error('Could not copy — clipboard is blocked in this browser.');
+    if (ok) {
+      toast.success(t(list.length > 1
+        ? 'cases.detail.toast.sectionsCopied'
+        : 'cases.detail.toast.sectionsCopiedOne', { n: list.length }));
+    } else toast.error(t('cases.toast.copyBlocked'));
   };
 
   if (c.isLoading) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="page-title">FIR Detail</h1>
-          <p className="page-subtitle num">loading case {id}…</p>
+          <h1 className="page-title">{t('cases.detail.title')}</h1>
+          <p className="page-subtitle num">{t('cases.detail.loading', { id })}</p>
         </div>
         <DetailSkeleton />
       </div>
@@ -230,15 +248,15 @@ export default function CaseDetail() {
   if (c.error) {
     return (
       <div className="space-y-4">
-        <h1 className="page-title">FIR Detail</h1>
+        <h1 className="page-title">{t('cases.detail.title')}</h1>
         <Card>
           <EmptyState
-            title="Couldn't load this case"
+            title={t('cases.detail.error')}
             message={c.error.message}
             action={
               <div className="flex items-center gap-2">
-                <button type="button" className="btn" onClick={() => c.refetch()}>Retry</button>
-                <Link to={{ pathname: '/cases', search: location.search }} className="btn">← Back to cases</Link>
+                <button type="button" className="btn" onClick={() => c.refetch()}>{t('common.action.retry')}</button>
+                <Link to={{ pathname: '/cases', search: location.search }} className="btn">{t('cases.detail.backToCases')}</Link>
               </div>
             }
           />
@@ -257,40 +275,40 @@ export default function CaseDetail() {
     <div className="case-print-root space-y-4 max-w-[1500px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="page-title">FIR Detail</h1>
-          <p className="page-subtitle num break-all">{d.crimeNo || `case ${id}`}</p>
+          <h1 className="page-title">{t('cases.detail.title')}</h1>
+          <p className="page-subtitle num break-all">{d.crimeNo || t('cases.detail.caseFallback', { id })}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {d.statusName && <Badge tone="amber">{d.statusName}</Badge>}
-          {d.gravityName && <Badge tone={heinous ? 'red' : 'slate'}>{d.gravityName}</Badge>}
-          {d.anomalyFlag ? <Badge tone="red" pulse>anomaly</Badge> : null}
+          {d.statusName && <Badge tone="amber">{trName('statuses', d.statusName)}</Badge>}
+          {d.gravityName && <Badge tone={heinous ? 'red' : 'slate'}>{trName('gravities', d.gravityName)}</Badge>}
+          {d.anomalyFlag ? <Badge tone="red" pulse>{t('cases.badge.anomaly')}</Badge> : null}
         </div>
       </div>
 
       {/* action bar — sibling walk on the left, tools on the right */}
-      <div className="no-print flex flex-wrap items-center gap-2" role="group" aria-label="Case actions">
+      <div className="no-print flex flex-wrap items-center gap-2" role="group" aria-label={t('cases.detail.actionsAria')}>
         {siblings && siblings.length > 1 && sibIndex >= 0 && (
-          <span className="inline-flex items-center gap-1.5" role="group" aria-label="Filtered-list navigation">
+          <span className="inline-flex items-center gap-1.5" role="group" aria-label={t('cases.detail.walkAria')}>
             <button
               type="button"
               className="btn !py-2 sm:!py-1.5"
               disabled={sibIndex <= 0}
               onClick={() => goSibling(-1)}
-              aria-label="Previous case in the filtered list (left arrow key)"
+              aria-label={t('cases.detail.prevAria')}
             >
-              ‹ Prev
+              {t('cases.detail.prev')}
             </button>
             <span className="num text-xs text-muted whitespace-nowrap px-0.5" aria-live="polite">
-              {fmtInt(sibIndex + 1)} of {fmtInt(siblings.length)}
+              {t('cases.detail.position', { i: fmtInt(sibIndex + 1), n: fmtInt(siblings.length) })}
             </span>
             <button
               type="button"
               className="btn !py-2 sm:!py-1.5"
               disabled={sibIndex >= siblings.length - 1}
               onClick={() => goSibling(1)}
-              aria-label="Next case in the filtered list (right arrow key)"
+              aria-label={t('cases.detail.nextAria')}
             >
-              Next ›
+              {t('cases.detail.next')}
             </button>
           </span>
         )}
@@ -302,25 +320,25 @@ export default function CaseDetail() {
           aria-pressed={starred}
         >
           <StarIcon filled={starred} />
-          {starred ? 'Starred' : 'Star'}
+          {t(starred ? 'cases.detail.starred' : 'cases.detail.star')}
         </button>
-        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={copyNo} aria-label="Copy the CrimeNo">
+        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={copyNo} aria-label={t('cases.detail.copyNoAria')}>
           {ICONS.copy}
-          Copy no
+          {t('cases.detail.copyNo')}
         </button>
-        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={copyLink} aria-label="Copy a shareable link to this case">
+        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={copyLink} aria-label={t('cases.detail.linkAria')}>
           {ICONS.link}
-          Link
+          {t('cases.detail.link')}
         </button>
-        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={exportJson} aria-label="Download this case as JSON (whitelisted fields)">
+        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={exportJson} aria-label={t('cases.detail.jsonAria')}>
           {ICONS.json}
-          JSON
+          {t('cases.detail.json')}
         </button>
-        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={() => window.print()} aria-label="Print this FIR">
+        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={() => window.print()} aria-label={t('cases.detail.printAria')}>
           {ICONS.print}
-          Print
+          {t('cases.detail.print')}
         </button>
-        <Link to={{ pathname: '/cases', search: location.search }} className="btn !py-2 sm:!py-1.5">← Cases</Link>
+        <Link to={{ pathname: '/cases', search: location.search }} className="btn !py-2 sm:!py-1.5">{t('cases.detail.backShort')}</Link>
       </div>
 
       {d.anomalyFlag ? (
@@ -328,12 +346,12 @@ export default function CaseDetail() {
           <div className="flex items-start gap-3">
             <PulseDot className="mt-1.5" />
             <div>
-              <p className="text-sm font-medium text-signal">Flagged as an anomaly</p>
+              <p className="text-sm font-medium text-signal">{t('cases.detail.anomalyTitle')}</p>
               <p className="text-xs text-muted mt-0.5">
-                {anomalyReason || 'Statistical outlier for its station-month baseline (nightly z-score pass). Review the alert feed for the matching district spike.'}
+                {anomalyReason || t('cases.detail.anomalyDefault')}
               </p>
             </div>
-            <Link to="/alerts" className="btn ml-auto shrink-0 no-print">View alerts →</Link>
+            <Link to="/alerts" className="btn ml-auto shrink-0 no-print">{t('cases.detail.viewAlerts')}</Link>
           </div>
         </Card>
       ) : null}
@@ -343,54 +361,55 @@ export default function CaseDetail() {
         caseNo={d.caseNo}
         districtName={d.districtName}
         unitName={d.unitName}
+        districtLabel={trName('districts', d.districtName)}
       />
 
-      <Card title="Registration" subtitle="Core FIR attributes">
+      <Card title={t('cases.detail.registration')} subtitle={t('cases.detail.registrationSub')}>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          <InfoItem label="Registered" value={dateLabel(d.registeredDate)} />
-          <InfoItem label="Category" value={d.categoryName} />
-          <InfoItem label="District" value={d.districtName} />
-          <InfoItem label="Station" value={d.unitName} />
-          <InfoItem label="Crime head" value={d.headName} />
-          <InfoItem label="Subhead" value={d.subHeadName} />
-          <InfoItem label="Info received" value={dateLabel(d.infoReceivedDate)} />
-          <InfoItem label="Incident window" value={incidentWindow} />
+          <InfoItem label={t('cases.detail.registered')} value={dateLabel(d.registeredDate)} />
+          <InfoItem label={t('cases.detail.category')} value={trName('categories', d.categoryName)} />
+          <InfoItem label={t('cases.detail.district')} value={trName('districts', d.districtName)} />
+          <InfoItem label={t('cases.detail.station')} value={d.unitName} />
+          <InfoItem label={t('cases.detail.head')} value={trName('crimeHeads', d.headName)} />
+          <InfoItem label={t('cases.detail.subHead')} value={trName('crimeSubHeads', d.subHeadName)} />
+          <InfoItem label={t('cases.detail.infoReceived')} value={dateLabel(d.infoReceivedDate)} />
+          <InfoItem label={t('cases.detail.incidentWindow')} value={incidentWindow} />
         </div>
         {timeCtx && (
-          <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="Incident time context">
-            <span className="eyebrow">Incident time</span>
+          <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label={t('cases.detail.incidentTimeAria')}>
+            <span className="eyebrow">{t('cases.detail.incidentTime')}</span>
             <Badge tone={timeCtx.band === 'night' || timeCtx.band === 'late night' ? 'amber' : 'slate'}>
               {timeCtx.label}
             </Badge>
-            <span className="text-[11px]">hour band feeds the hotspot clustering &amp; similar-case scoring</span>
+            <span className="text-[11px]">{t('cases.detail.hourBandNote')}</span>
           </p>
         )}
         {(crimeNoParts || headId) && (
-          <div className="no-print mt-3 pt-3 border-t border-grid/60 flex flex-wrap items-center gap-1.5" aria-label="Pivot to explorer">
-            <span className="eyebrow">Pivot</span>
+          <div className="no-print mt-3 pt-3 border-t border-grid/60 flex flex-wrap items-center gap-1.5" aria-label={t('cases.detail.pivotAria')}>
+            <span className="eyebrow">{t('cases.detail.pivot')}</span>
             {crimeNoParts && (
               <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?districtId=${crimeNoParts[1].text}&unitId=${crimeNoParts[2].text}`}>
-                This station's cases
+                {t('cases.detail.pivotStation')}
               </Link>
             )}
             {crimeNoParts && (
               <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?districtId=${crimeNoParts[1].text}`}>
-                This district's cases
+                {t('cases.detail.pivotDistrict')}
               </Link>
             )}
             {headId && (
               <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?crimeHeadId=${headId}`}>
-                Same crime head
+                {t('cases.detail.pivotHead')}
               </Link>
             )}
             {headId && subId && (
               <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?crimeHeadId=${headId}&crimeSubHeadId=${subId}`}>
-                Same subhead
+                {t('cases.detail.pivotSubHead')}
               </Link>
             )}
             {crimeNoParts && /^\d{4}$/.test(crimeNoParts[3].text) && (
               <Link className="chip !py-1 hover:border-amber/60 hover:text-amber transition-colors" to={`/cases?from=${crimeNoParts[3].text}-01-01&to=${crimeNoParts[3].text}-12-31`}>
-                Year {crimeNoParts[3].text}
+                {t('cases.detail.pivotYear', { year: crimeNoParts[3].text })}
               </Link>
             )}
           </div>
@@ -406,11 +425,11 @@ export default function CaseDetail() {
           <NarrativePanel caseId={id} briefFacts={d.briefFacts} />
         </div>
         <Card
-          title="Incident location"
+          title={t('cases.detail.location')}
           subtitle={
             Number.isFinite(Number(d.latitude)) && Number.isFinite(Number(d.longitude)) && (Number(d.latitude) !== 0 || Number(d.longitude) !== 0)
               ? `${Number(d.latitude).toFixed(4)}, ${Number(d.longitude).toFixed(4)}`
-              : 'No coordinates recorded'
+              : t('cases.detail.noCoords')
           }
           actions={subId ? (
             <label className="no-print flex min-h-[32px] cursor-pointer select-none items-center gap-1.5 text-[11px] text-muted">
@@ -420,7 +439,7 @@ export default function CaseDetail() {
                 checked={showNearby}
                 onChange={(e) => setShowNearby(e.target.checked)}
               />
-              same-pattern nearby
+              {t('cases.detail.nearbyToggle')}
               {showNearby && !nearby.isLoading && Array.isArray(nearby.data)
                 ? <span className="num">({fmtInt(mapOthers.length)})</span>
                 : null}
@@ -434,16 +453,16 @@ export default function CaseDetail() {
             height={280}
             others={mapOthers}
             onOtherClick={openOther}
-            othersLabel="same-pattern nearby (~5 km)"
+            othersLabel={t('cases.detail.nearbyLegend')}
           />
         </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <PartyList title="Complainants" people={d.complainants} tone="amber" />
-        <PartyList title="Victims" people={d.victims} tone="teal" />
+        <PartyList title={t('cases.detail.complainants')} people={d.complainants} tone="amber" />
+        <PartyList title={t('cases.detail.victims')} people={d.victims} tone="teal" />
         <PartyList
-          title="Accused"
+          title={t('cases.detail.accused')}
           people={d.accused}
           tone="red"
           personAction={(p) => {
@@ -456,7 +475,7 @@ export default function CaseDetail() {
                 to={`/offenders?q=${encodeURIComponent(String(name))}`}
                 className="no-print inline-flex items-center gap-1 text-[11px] text-amber hover:underline"
               >
-                Search offender registry →
+                {t('cases.detail.searchOffender')}
               </Link>
             );
           }}
@@ -464,17 +483,17 @@ export default function CaseDetail() {
       </div>
 
       <Card
-        title="Sections invoked"
-        subtitle="Acts and sections attached to the FIR"
+        title={t('cases.detail.sections')}
+        subtitle={t('cases.detail.sectionsSub')}
         padded={false}
         actions={Array.isArray(d.sections) && d.sections.length ? (
           <button
             type="button"
             className="btn !py-1 !px-2 text-xs no-print"
             onClick={copySections}
-            aria-label="Copy the sections list as text"
+            aria-label={t('cases.detail.copyListAria')}
           >
-            Copy list
+            {t('cases.detail.copyList')}
           </button>
         ) : null}
       >
@@ -482,44 +501,44 @@ export default function CaseDetail() {
           <DataTable
             dense
             columns={[
-              { key: 'actCode', label: 'Act', width: 140, className: 'font-medium' },
-              { key: 'sectionCode', label: 'Section', width: 110 },
-              { key: 'description', label: 'Description' },
+              { key: 'actCode', label: t('cases.detail.act'), width: 140, className: 'font-medium' },
+              { key: 'sectionCode', label: t('cases.detail.section'), width: 110 },
+              { key: 'description', label: t('cases.detail.description') },
             ]}
             rows={d.sections}
             rowKey={(r, i) => `${r.actCode}-${r.sectionCode}-${i}`}
           />
         ) : (
-          <EmptyState compact title="No sections" message="No act/section rows joined for this case." />
+          <EmptyState compact title={t('cases.detail.noSections')} message={t('cases.detail.noSectionsMsg')} />
         )}
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <PartyList
-          title="Arrests"
+          title={t('cases.detail.arrests')}
           people={d.arrests}
           tone="amber"
           fields={ARREST_FIELDS}
-          emptyMessage="No arrests recorded yet."
+          emptyMessage={t('cases.detail.noArrests')}
         />
         <KeyValuePanel
-          title="Chargesheet"
+          title={t('cases.detail.chargesheet')}
           data={d.chargesheet}
           rows={CHARGESHEET_ROWS}
-          emptyMessage="No chargesheet filed yet."
+          emptyMessage={t('cases.detail.noChargesheet')}
         />
         <KeyValuePanel
-          title="Investigating officer"
+          title={t('cases.detail.io')}
           data={d.io}
           rows={IO_ROWS}
-          emptyMessage="No IO assignment on file."
+          emptyMessage={t('cases.detail.noIo')}
         />
         <KeyValuePanel
-          title="Court"
+          title={t('cases.detail.court')}
           data={d.court}
           rows={COURT_ROWS}
-          emptyMessage="Not yet before a court."
-          actions={countdown ? <Badge tone={countdown.tone}>hearing {countdown.label}</Badge> : null}
+          emptyMessage={t('cases.detail.noCourt')}
+          actions={countdown ? <Badge tone={countdown.tone}>{t('cases.detail.hearing', { when: countdown.label })}</Badge> : null}
         />
       </div>
 

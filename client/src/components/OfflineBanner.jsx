@@ -5,15 +5,18 @@
 // unreliable — e.g. captive Wi-Fi that drops packets without flipping onLine.
 // Shows how long you have been offline. No props; mount once in Layout.
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../lib/i18n.jsx';
 
-const fmtElapsed = (since) => {
+/** '' while under a minute — the caller then uses the plain offline message. */
+const fmtElapsed = (since, t) => {
   const mins = Math.floor((Date.now() - since) / 60000);
   if (mins < 1) return '';
-  if (mins < 60) return ` for ${mins}m`;
-  return ` for ${Math.floor(mins / 60)}h ${mins % 60}m`;
+  if (mins < 60) return t('shell.offline.elapsedMins', { n: mins });
+  return t('shell.offline.elapsedHours', { h: Math.floor(mins / 60), m: mins % 60 });
 };
 
 export default function OfflineBanner() {
+  const t = useT();
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
   const [showBack, setShowBack] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -68,6 +71,8 @@ export default function OfflineBanner() {
 
   if (online && !showBack) return null;
 
+  const elapsed = sinceRef.current ? fmtElapsed(sinceRef.current, t) : '';
+
   return (
     <div
       role="alert"
@@ -76,17 +81,17 @@ export default function OfflineBanner() {
       }`}
     >
       {online ? (
-        'Back online — data will refresh.'
+        t('shell.offline.back')
       ) : (
         <span className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-2">
-          <span>You are offline{sinceRef.current ? fmtElapsed(sinceRef.current) : ''} — showing cached data.</span>
+          <span>{elapsed ? t('shell.offline.messageFor', { elapsed }) : t('shell.offline.message')}</span>
           <button
             type="button"
             onClick={checkNow}
             disabled={checking}
             className="rounded-full border border-white/50 px-2.5 py-0.5 text-[11px] font-semibold hover:bg-white/15 transition-colors disabled:opacity-60"
           >
-            {checking ? 'Checking…' : 'Check now'}
+            {checking ? t('shell.offline.checking') : t('shell.offline.checkNow')}
           </button>
         </span>
       )}

@@ -4,10 +4,13 @@
 // collapsed (grab handle + peek row, e.g. the time scrubber) and expanded
 // (scrollable info content). Swipe up/down on the header or tap the handle.
 import { useRef, useState } from 'react';
+import { useT } from '../../lib/i18n.jsx';
 
-export default function MobileSheet({ open, onOpenChange, peek, title = 'Map info', children }) {
+export default function MobileSheet({ open, onOpenChange, peek, title, children }) {
+  const t = useT();
   const startY = useRef(null);
   const [dragDy, setDragDy] = useState(0);
+  const label = title || t('geointel.sheet.title');
 
   const onTouchStart = (e) => { startY.current = e.touches[0].clientY; };
   const onTouchMove = (e) => {
@@ -27,7 +30,7 @@ export default function MobileSheet({ open, onOpenChange, peek, title = 'Map inf
     <div
       className="gi-noprint md:hidden absolute inset-x-0 bottom-0 z-20 bg-panel/95 backdrop-blur-sm border-t border-grid rounded-t-2xl shadow-lift"
       style={{ transform: dragDy ? `translateY(${Math.max(0, dragDy)}px)` : undefined, transition: dragDy ? 'none' : 'transform 0.2s ease' }}
-      aria-label={title}
+      aria-label={label}
     >
       <div
         onTouchStart={onTouchStart}
@@ -39,12 +42,12 @@ export default function MobileSheet({ open, onOpenChange, peek, title = 'Map inf
           type="button"
           className="w-full flex flex-col items-center justify-center pt-1.5 pb-0.5 min-h-[40px] focus:outline-none"
           aria-expanded={open}
-          aria-label={open ? 'Collapse map info sheet' : 'Expand map info sheet'}
+          aria-label={open ? t('geointel.sheet.collapse') : t('geointel.sheet.expand')}
           onClick={() => onOpenChange(!open)}
         >
           <span className="h-1 w-10 rounded-full bg-grid" aria-hidden="true" />
           <span className="text-[9px] uppercase tracking-wider text-muted mt-0.5">
-            {open ? 'swipe down to collapse' : 'swipe up for details'}
+            {open ? t('geointel.sheet.swipeDown') : t('geointel.sheet.swipeUp')}
           </span>
         </button>
         {peek && <div className="px-2.5 pb-2">{peek}</div>}

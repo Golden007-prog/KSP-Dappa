@@ -19,6 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFocusTrap, useScrollLock } from '../lib/modal.js';
+import { useT } from '../lib/i18n.jsx';
 
 const RECENT_KEY = 'dappa-cmdk-recent';
 
@@ -102,6 +103,7 @@ export function fuzzyScore(query, text) {
 }
 
 export default function CommandPalette({ open, onClose, actions = [], remoteSearch }) {
+  const t = useT();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [recentIds, setRecentIds] = useState([]);
@@ -121,7 +123,7 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
       const recent = recentIds
         .map((id) => byId.get(id))
         .filter(Boolean)
-        .map((a) => ({ ...a, section: 'Recent' }));
+        .map((a) => ({ ...a, section: t('shell.section.recent') }));
       const recentSet = new Set(recent.map((a) => a.id));
       return [...recent, ...actions.filter((a) => !a.hidden && !recentSet.has(a.id))];
     }
@@ -130,7 +132,7 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
       .filter((r) => r.s >= 0)
       .sort((x, y) => y.s - x.s)
       .map((r) => r.a);
-  }, [query, actions, recentIds]);
+  }, [query, actions, recentIds, t]);
 
   const results = useMemo(() => {
     if (!remote.length) return staticResults;
@@ -211,7 +213,7 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t('common.shell.commandPalette')}
         onKeyDown={onKeyDown}
         className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-grid bg-panel shadow-lift animate-scale-in"
       >
@@ -223,8 +225,8 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Jump to a view, filter a district, run an action…"
-            aria-label="Search views and actions"
+            placeholder={t('shell.palette.placeholder')}
+            aria-label={t('shell.palette.inputAria')}
             role="combobox"
             aria-expanded="true"
             aria-controls="cmdk-list"
@@ -233,10 +235,11 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
           />
           <kbd className="hidden sm:block shrink-0 rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-muted">esc</kbd>
         </div>
-        <ul id="cmdk-list" role="listbox" ref={listRef} aria-label="Results" className="max-h-[46vh] overflow-y-auto p-1.5">
+        <ul id="cmdk-list" role="listbox" ref={listRef} aria-label={t('shell.palette.resultsAria')} className="max-h-[46vh] overflow-y-auto p-1.5">
           {results.length === 0 && !remoteBusy && (
             <li className="px-3 py-8 text-center text-sm text-muted" role="presentation">
-              Nothing matches “{query}”. Try a view name like <span className="text-ink">alerts</span>, a district, an offender name, or <span className="text-ink">theme</span>.
+              <span className="block text-ink">{t('shell.palette.noMatch', { q: query })}</span>
+              <span className="block mt-1">{t('shell.palette.noMatchHint')}</span>
             </li>
           )}
           {results.map((a, i) => (
@@ -264,15 +267,16 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
           {remoteBusy && (
             <li className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted" role="presentation" aria-live="polite">
               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-grid border-t-primary" aria-hidden="true" />
-              Searching offenders and case records…
+              {t('shell.palette.searching')}
             </li>
           )}
         </ul>
         <div className="flex items-center gap-3 border-t border-grid px-4 py-2 text-[10px] text-muted">
-          <span><kbd className="text-ink">↑↓</kbd> navigate</span>
-          <span><kbd className="text-ink">↵</kbd> open</span>
+          <span><kbd className="text-ink">↑↓</kbd> {t('shell.palette.navigate')}</span>
+          <span><kbd className="text-ink">↵</kbd> {t('shell.palette.open')}</span>
           <span className="ml-auto num">
-            {remoteBusy ? 'searching… · ' : ''}{results.length} result{results.length === 1 ? '' : 's'}
+            {remoteBusy ? `${t('shell.palette.searchingShort')} · ` : ''}
+            {results.length === 1 ? t('shell.palette.resultOne') : t('shell.palette.resultMany', { n: results.length })}
           </span>
         </div>
       </div>

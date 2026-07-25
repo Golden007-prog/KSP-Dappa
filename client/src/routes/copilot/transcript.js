@@ -25,12 +25,17 @@ export const fullTimeLabel = (ts) => {
   }
 };
 
-/** '4 min ago' / 'just now' for fresh messages; absolute HH:mm after an hour. */
-export function relativeTimeLabel(ts, now = Date.now()) {
+/** '4 min ago' / 'just now' for fresh messages; absolute HH:mm after an hour.
+ * Pass the `t` translator to localise the two relative phrasings; without it
+ * the English source strings are used (transcript exporters, tests). */
+export function relativeTimeLabel(ts, now = Date.now(), t) {
   const diff = now - Number(ts);
   if (!ts || Number.isNaN(diff)) return '';
-  if (diff < 45 * 1000) return 'just now';
-  if (diff < 60 * 60 * 1000) return `${Math.max(1, Math.round(diff / 60000))} min ago`;
+  if (diff < 45 * 1000) return t ? t('copilot.time.justNow') : 'just now';
+  if (diff < 60 * 60 * 1000) {
+    const n = Math.max(1, Math.round(diff / 60000));
+    return t ? t('copilot.time.minAgo', { n }) : `${n} min ago`;
+  }
   return timeLabel(ts);
 }
 

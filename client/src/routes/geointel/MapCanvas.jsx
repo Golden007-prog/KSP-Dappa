@@ -17,9 +17,10 @@ import L from 'leaflet';
 import 'leaflet.heat'; // side-effect plugin: adds L.heatLayer
 import { dateLabel, fmtInt, fmtNum } from '../../lib/format.js';
 import {
-  choroStroke, choroZeroFill, copyText, divergeColor, esc, haversineKm, hourBand,
+  choroStroke, choroZeroFill, copyText, divergeColor, esc, haversineKm, hotspotName, hourBand,
   rampColor, risk01, riskColor,
 } from './utils.js';
+import { useI18n } from '../../lib/i18n.jsx';
 
 const KARNATAKA_CENTER = [14.9, 76.1];
 // Individual incident markers only render from this zoom in (below it the heat
@@ -79,6 +80,11 @@ export default function MapCanvas({
   onCityClick,
   onHotspotClick,
 }) {
+  // Popups/tooltips are built as HTML strings inside imperative Leaflet
+  // effects. `t`/`tName` are read directly (not listed as effect deps): the
+  // LanguageProvider remounts the whole subtree on a language change, so every
+  // layer is rebuilt with the new strings anyway.
+  const { t, tName } = useI18n();
   const elRef = useRef(null);
   const mapRef = useRef(null);
   const hotspotLayersRef = useRef({});
@@ -190,7 +196,7 @@ export default function MapCanvas({
     const max = diverging
       ? Math.max(1e-9, ...nums.map((v) => Math.abs(v)))
       : Math.max(1e-9, ...nums);
-    const fmtValue = choroMetric?.fmtValue || ((v) => `${fmtInt(v)} cases`);
+    const fmtValue = choroMetric?.fmtValue || ((v) => t('geointel.metric.valueCases', { v: fmtInt(v) }));
     const zeroFill = choroZeroFill(light);
     const stroke = choroStroke(light);
     const selSet = new Set(selectedPolygons || []);
@@ -214,9 +220,10 @@ export default function MapCanvas({
       onEachFeature: (feature, lyr) => {
         const name = feature?.properties?.district;
         const v = Number(values[name]);
-        const label = Number.isFinite(v) ? fmtValue(v) : 'no data';
+        const label = Number.isFinite(v) ? fmtValue(v) : t('geointel.popup.noData');
+        const action = selectedPolygons ? t('geointel.popup.clickSelect') : t('geointel.popup.clickDrill');
         lyr.bindTooltip(
-          `<div class="text-xs"><strong>${esc(name)}</strong><br/>${esc(label)} · click to ${selectedPolygons ? 'select' : 'drill'}</div>`,
+          `<div class="text-xs"><strong>${esc(name)}</strong><br/>${esc(label)} · ${esc(action)}</div>`,
           { sticky: true, className: 'dappa-tooltip' },
         );
         lyr.on('click', () => {
@@ -341,13 +348,15 @@ export default function MapCanvas({
         fillColor: '#2DD4BF',
         fillOpacity: 0.85,
       });
-      const head = names[String(r.crimeHeadId)] || (r.crimeHeadId != null ? `Head ${r.crimeHeadId}` : 'Incident');
+      const rawHead = names[String(r.crimeHeadId)]
+        || (r.crimeHeadId != null ? t('geointel.popup.head', { id: r.crimeHeadId }) : t('geointel.popup.incident'));
+      const head = tName('crimeHeads', r.crimeHeadId, rawHead);
       marker.bindPopup(
         `<div class="text-xs leading-relaxed">`
           + `<strong>${esc(head)}</strong><br/>`
-          + `Registered ${esc(dateLabel(r.registeredDate))}`
+          + `${esc(t('geointel.popup.registered', { date: dateLabel(r.registeredDate) }))}`
           + (r.caseMasterId !== undefined && r.caseMasterId !== null
-            ? `<br/><a href="#/cases/${encodeURIComponent(String(r.caseMasterId))}">Open case →</a>`
+            ? `<br/><a href="#/cases/${encodeURIComponent(String(r.caseMasterId))}">${esc(t('geointel.popup.openCase'))}</a>`
             : '')
           + `</div>`,
         { className: 'geointel-popup', closeButton: false, offset: [0, -4] },
@@ -371,8 +380,9 @@ export default function MapCanvas({
       const lat = Number(h.centroidLat);
       const lng = Number(h.centroidLng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      const t = (Number(h.intensity) || 0) / maxIntensity;
-      const color = t >= 0.66 ? '#E5484D' : '#F5A623';
+      // `tIntensity`, not `t` — `t` is the translator in this scope.
+      const tIntensity = (Number(h.intensity) || 0) / maxIntensity;
+      const color = tIntensity >= 0.66 ? '#E5484D' : '#F5A623';
       const circle = L.circle([lat, lng], {
         pane: 'geointel-hotspots',
         radius: Math.max(300, Number(h.radiusM) || 0),
@@ -384,9 +394,9 @@ export default function MapCanvas({
       const band = hourBand(h.hourBandStart, h.hourBandEnd);
       circle.bindPopup(
         `<div class="text-xs leading-relaxed">`
-          + `<strong>${esc(h.label || h.subHeadName || 'Hotspot')}</strong><br/>`
-          + `${fmtInt(h.caseCount)} cases · intensity ${fmtNum(t, 2)}`
-          + (band ? `<br/>Peak hour band <strong class="num">${band}</strong>` : '')
+          + `<strong>${esc(hotspotName(h, tName, t('geointel.popup.hotspot')))}</strong><br/>`
+          + `${esc(t('geointel.popup.hotspotStats', { n: fmtInt(h.caseCount), v: fmtNum(tIntensity, 2) }))}`
+          + (band ? `<br/>${esc(t('geointel.popup.peakBand'))} <strong class="num">${band}</strong>` : '')
           + `</div>`,
         { className: 'geointel-popup', closeButton: false, offset: [0, -4] },
       );
@@ -426,9 +436,11 @@ export default function MapCanvas({
         fillColor: riskColor(r),
         fillOpacity: 0.85,
       });
+      const stats = r !== null
+        ? t('geointel.popup.stationRisk', { n: fmtInt(s.caseCount), r: Math.round(r * 100) })
+        : t('geointel.popup.stationCases', { n: fmtInt(s.caseCount) });
       marker.bindTooltip(
-        `<div class="text-xs"><strong>${esc(s.unitName)}</strong><br/>`
-          + `${fmtInt(s.caseCount)} cases${r !== null ? ` · risk ${Math.round(r * 100)}` : ''}</div>`,
+        `<div class="text-xs"><strong>${esc(s.unitName)}</strong><br/>${esc(stats)}</div>`,
         { sticky: true, className: 'dappa-tooltip' },
       );
       marker.on('click', () => {
@@ -459,8 +471,9 @@ export default function MapCanvas({
         fillOpacity: 0.95,
       });
       marker.bindTooltip(
-        `<div class="text-xs"><strong>${esc(c.name)}</strong><br/>City commissionerate`
-          + `${c.value !== undefined ? ` · ${fmtInt(c.value)} cases` : ''}</div>`,
+        `<div class="text-xs"><strong>${esc(tName('districts', c.unitId, c.name))}</strong><br/>`
+          + `${esc(t('geointel.popup.cityUnit'))}`
+          + `${c.value !== undefined ? ` ${esc(t('geointel.popup.cityCases', { n: fmtInt(c.value) }))}` : ''}</div>`,
         { sticky: true, className: 'dappa-tooltip' },
       );
       marker.on('click', () => {
@@ -544,8 +557,9 @@ export default function MapCanvas({
       });
       const m = L.marker([s.lat, s.lng], { icon, pane: 'geointel-city', keyboard: false });
       m.bindTooltip(
-        `<div class="text-xs"><strong>Patrol stop ${i + 1}</strong> · ${esc(s.label)}`
-          + `${i > 0 && Number.isFinite(s.legKm) ? `<br/>${s.legKm.toFixed(1)} km from stop ${i}` : ''}</div>`,
+        `<div class="text-xs"><strong>${esc(t('geointel.patrol.stop', { n: i + 1 }))}</strong> · ${esc(s.label)}`
+          + `${i > 0 && Number.isFinite(s.legKm)
+            ? `<br/>${esc(t('geointel.patrol.leg', { km: s.legKm.toFixed(1), n: i }))}` : ''}</div>`,
         { sticky: true, className: 'dappa-tooltip' },
       );
       group.addLayer(m);
@@ -622,7 +636,7 @@ export default function MapCanvas({
           pane: 'geointel-measure', color: '#5B9DFF', weight: 2.5, dashArray: '6 6',
         });
         line.bindTooltip(
-          `<div class="text-xs num"><strong>${km < 10 ? km.toFixed(2) : km.toFixed(1)} km</strong></div>`,
+          `<div class="text-xs num"><strong>${esc(t('geointel.patrol.km', { km: km < 10 ? km.toFixed(2) : km.toFixed(1) }))}</strong></div>`,
           { permanent: true, className: 'dappa-tooltip', direction: 'center' },
         );
         group.addLayer(line);
@@ -708,13 +722,13 @@ export default function MapCanvas({
       {/* nightDim class lives on a React-owned wrapper (never on the Leaflet
           container itself — Leaflet manages that element's class list) */}
       <div className={`absolute inset-0 z-0 ${nightDim ? 'gi-night' : ''}`}>
-        <div ref={elRef} className="absolute inset-0" aria-label="Karnataka operational map" />
+        <div ref={elRef} className="absolute inset-0" aria-label={t('geointel.mapAria')} />
       </div>
       {/* cursor coordinate readout — desktop only, click copies (briefings) */}
       <button
         type="button"
         onClick={copyCoords}
-        title="Click to copy cursor coordinates"
+        title={t('geointel.coords.title')}
         className="gi-noprint hidden md:flex absolute z-10 bottom-3 right-14 items-center gap-1 rounded-lg
           border border-grid bg-panel/90 px-2 py-1 text-[10px] num text-muted hover:text-ink transition-colors"
       >

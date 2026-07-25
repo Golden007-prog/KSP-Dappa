@@ -4,6 +4,7 @@
 // with comfortable touch targets. New props are optional (absent → old sheet).
 import Sheet from '../../components/Sheet.jsx';
 import SegmentedControl from '../../components/SegmentedControl.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 function ToggleRow({ on, onClick, label, hint }) {
   return (
@@ -35,37 +36,38 @@ export default function OptionsSheet({
   onTestNotification,
   viewOptions, view, onView,
 }) {
+  const t = useT();
   return (
-    <Sheet open={open} onClose={onClose} title="Alert options">
+    <Sheet open={open} onClose={onClose} title={t('alerts.options.title')}>
       <div className="space-y-4 px-1 pb-2">
         {viewOptions && (
           <div className="space-y-1.5">
-            <p className="text-xs text-muted">View</p>
-            <SegmentedControl options={viewOptions} value={view} onChange={onView} ariaLabel="Alerts view mode" size="md" />
+            <p className="text-xs text-muted">{t('alerts.options.view')}</p>
+            <SegmentedControl options={viewOptions} value={view} onChange={onView} ariaLabel={t('alerts.aria.viewMode')} size="md" />
           </div>
         )}
         <div className="space-y-1.5">
-          <p className="text-xs text-muted">Group by</p>
-          <SegmentedControl options={groupOptions} value={group} onChange={onGroup} ariaLabel="Group alerts by" size="md" />
+          <p className="text-xs text-muted">{t('alerts.options.groupBy')}</p>
+          <SegmentedControl options={groupOptions} value={group} onChange={onGroup} ariaLabel={t('alerts.aria.groupBy')} size="md" />
         </div>
         <div className="space-y-1.5">
-          <p className="text-xs text-muted">Sort by</p>
-          <SegmentedControl options={sortOptions} value={sort} onChange={onSort} ariaLabel="Sort alerts by" size="md" />
+          <p className="text-xs text-muted">{t('alerts.options.sortBy')}</p>
+          <SegmentedControl options={sortOptions} value={sort} onChange={onSort} ariaLabel={t('alerts.aria.sortBy')} size="md" />
         </div>
         <div className="space-y-2">
-          <p className="text-xs text-muted">Notifications (checked every 60 s while on)</p>
+          <p className="text-xs text-muted">{t('alerts.options.notifications')}</p>
           <ToggleRow
             on={notify.sound}
             onClick={onToggleSound}
-            label="Sound"
-            hint="Chime when new anomalies arrive"
+            label={t('alerts.tool.sound')}
+            hint={t('alerts.options.soundHint')}
           />
           {desktopAvailable && (
             <ToggleRow
               on={notify.desktop}
               onClick={onToggleDesktop}
-              label="Desktop notifications"
-              hint="Pop up even when this tab is in the background"
+              label={t('alerts.options.desktopLabel')}
+              hint={t('alerts.options.desktopHint')}
             />
           )}
           <button
@@ -73,7 +75,7 @@ export default function OptionsSheet({
             className="btn w-full justify-center min-h-[48px]"
             onClick={onTestNotification}
           >
-            Send a test notification
+            {t('alerts.options.sendTest')}
           </button>
         </div>
       </div>

@@ -4,15 +4,22 @@
 // in-app routes), architecture diagram (pure CSS/SVG), data-lineage strip
 // (generate.py → Data Store → API → UI), AI degradation-design explainer,
 // filterable Catalyst services matrix (live count computed from the data),
-// synthetic-data + ethics statement, accessibility statement, embedded
-// keyboard-shortcut reference, layered tech stack and team credits (degrades
-// to a single "Team Rainfall" card until names are added).
+// synthetic-data + ethics statement, accessibility statement, trilingual
+// (English · ಕನ್ನಡ · हिन्दी) support statement, embedded keyboard-shortcut
+// reference, layered tech stack and team credits (degrades to a single
+// "Team Rainfall" card until names are added).
+//
+// Every user-visible string lives in the `copilot` namespace under `about.*`.
+// Product names (Catalyst services, libraries), file paths, table names and
+// key glyphs stay verbatim in all three languages — translating them would
+// make the page unusable to a judge checking the submission against Catalyst.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Card from '../components/Card.jsx';
 import Badge from '../components/Badge.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
+import { useT } from '../lib/i18n.jsx';
 import { copyText } from './copilot/clipboard.js';
 
 const LINKS = {
@@ -21,40 +28,42 @@ const LINKS = {
   repo: 'https://github.com/Golden007-prog/KSP-Dappa',
 };
 
+// Service names are Catalyst product names — untranslated by design; the
+// "use" column is t('copilot.about.services.s<n>').
 const SERVICES = [
-  { n: 1, name: 'Web Client Hosting / Slate', use: 'React SPA hosting (Slate bonus: Git auto-deploy)' },
-  { n: 2, name: 'Serverless Functions — Advanced I/O', use: 'dappa_api Express REST API' },
-  { n: 3, name: 'Functions — Cron/Job Scheduling', use: 'dappa_nightly Python analytics refresh' },
-  { n: 4, name: 'Signals + Event Functions', use: 'New-FIR insert → incremental aggregates + anomaly check' },
-  { n: 5, name: 'Data Store (+ ZCQL)', use: 'Official ER schema (24 tables) + 8 analytics tables' },
-  { n: 6, name: 'NoSQL', use: 'Network graph snapshots; copilot RAG context docs' },
-  { n: 7, name: 'Stratus', use: 'Raw datasets, Karnataka GeoJSON, generated PDF briefs' },
-  { n: 8, name: 'Cache', use: 'KPI/choropleth aggregates (ms-level dashboard)' },
-  { n: 9, name: 'QuickML (tabular)', use: 'Case-outcome / high-risk-beat classifier endpoint' },
-  { n: 10, name: 'QuickML LLM Serving + RAG', use: '“Ask DAPPA” natural-language copilot' },
-  { n: 11, name: 'Zia Text Analytics', use: 'NER/keywords/sentiment → MO tags from BriefFacts' },
-  { n: 12, name: 'SmartBrowz', use: 'One-click Weekly Intelligence Brief PDF' },
-  { n: 13, name: 'Catalyst Mail', use: 'Anomaly alert digest to SCRB inbox' },
-  { n: 14, name: 'Authentication', use: 'Officer login + public read-only demo mode' },
-  { n: 15, name: 'API Gateway', use: 'Routing/throttling in front of dappa_api' },
-  { n: 16, name: 'Pipelines (CI/CD) + GitHub integration', use: 'Auto build-and-deploy from main' },
-  { n: 17, name: 'Circuits', use: 'Orchestrated multi-step nightly workflow', stretch: true },
-  { n: 18, name: 'ConvoKraft', use: 'Alternate copilot chip if LLM serving unavailable', stretch: true },
+  { n: 1, name: 'Web Client Hosting / Slate' },
+  { n: 2, name: 'Serverless Functions — Advanced I/O' },
+  { n: 3, name: 'Functions — Cron/Job Scheduling' },
+  { n: 4, name: 'Signals + Event Functions' },
+  { n: 5, name: 'Data Store (+ ZCQL)' },
+  { n: 6, name: 'NoSQL' },
+  { n: 7, name: 'Stratus' },
+  { n: 8, name: 'Cache' },
+  { n: 9, name: 'QuickML (tabular)' },
+  { n: 10, name: 'QuickML LLM Serving + RAG' },
+  { n: 11, name: 'Zia Text Analytics' },
+  { n: 12, name: 'SmartBrowz' },
+  { n: 13, name: 'Catalyst Mail' },
+  { n: 14, name: 'Authentication' },
+  { n: 15, name: 'API Gateway' },
+  { n: 16, name: 'Pipelines (CI/CD) + GitHub integration' },
+  { n: 17, name: 'Circuits', stretch: true },
+  { n: 18, name: 'ConvoKraft', stretch: true },
 ];
 
-// Layered tech stack (replaces the old flat chip list; grouping only — no
-// item was removed).
+// Layered tech stack (grouping only — no item was removed). Library names
+// stay as-is; only the group label is translated.
 const STACK_GROUPS = [
   {
-    label: 'Frontend',
+    key: 'frontend',
     items: ['React 18', 'Vite 5', 'Tailwind CSS', 'React Router 6', 'TanStack Query 5', 'Zustand', 'ECharts', 'Leaflet + heat', 'Cytoscape (fcose)'],
   },
   {
-    label: 'API & data',
+    key: 'api',
     items: ['Node 20 + Express', 'Catalyst Data Store + ZCQL', 'Cache', 'NoSQL', 'Stratus'],
   },
   {
-    label: 'Analytics & ML',
+    key: 'analytics',
     items: ['Python', 'pandas', 'scikit-learn', 'networkx', 'statsmodels'],
   },
 ];
@@ -64,136 +73,72 @@ const STACK_GROUPS = [
 // showing placeholder slots.
 const TEAM = [];
 
-const FLOW = [
-  ['Generate', 'A seeded synthetic engine writes 24 ER-schema tables of Kannada-region FIRs — deterministic, reproducible, fictional.'],
-  ['Precompute', 'The nightly Python pipeline distills them into 8 analytics tables: aggregates, DBSCAN hotspots, forecasts, anomaly z-scores, identity-resolved co-offender graph.'],
-  ['Serve', 'dappa_api answers every screen from indexed reads + Cache; live AI calls (QuickML, Zia, the copilot) are flagged and degrade to deterministic fallbacks.'],
-  ['Decide', 'An officer sees maps, trends, alerts, forecasts and briefs — with provenance badges on every AI-touched number, and stays in the loop.'],
-];
+const FLOW = ['generate', 'precompute', 'serve', 'decide'];
 
 // The 6 scored capability areas of the KSP Datathon challenge, mapped to the
-// app routes where each one is demonstrated.
+// app routes where each one is demonstrated. `areas` holds common-namespace
+// nav keys so a route chip reads the same here as in the sidebar.
 const CHALLENGE = [
-  {
-    n: 1,
-    name: 'Advanced Visualization',
-    desc: 'Interactive dashboards and geospatial maps; district → police-station drill-down; spatiotemporal clusters layering time-of-day with location; red-zone pulsing when a category spikes vs its historical average.',
-    areas: [['Dashboard', '/'], ['GeoIntel', '/map'], ['Trends', '/trends'], ['Alerts', '/alerts']],
-  },
-  {
-    n: 2,
-    name: 'Criminological Network & Link Analysis',
-    desc: 'Relationship mapping across suspects, victims and recurring locations; repeat-offender tracking with modus operandi across jurisdictions; hidden-association detection.',
-    areas: [['Network', '/network'], ['Offenders', '/offenders'], ['Cases', '/cases']],
-  },
-  {
-    n: 3,
-    name: 'Sociological & AI-Driven Predictive Dashboards',
-    desc: 'Socio-economic correlation overlays — the “why” behind the “where”; predictive risk scoring for high-risk areas; anomaly call-outs linking complex cases.',
-    areas: [['Predict', '/predict'], ['GeoIntel', '/map'], ['Alerts', '/alerts']],
-  },
-  {
-    n: 4,
-    name: 'Pattern & Trend Discovery',
-    desc: 'Statistical spatial and temporal hotspots — seasonality, day × hour heatmaps and DBSCAN clusters — aimed at resource deployment.',
-    areas: [['Trends', '/trends'], ['GeoIntel', '/map'], ['Reports', '/reports']],
-  },
-  {
-    n: 5,
-    name: 'Network & Behavioral Analysis',
-    desc: 'Co-offender communities and organized-crime clusters from the identity-resolved graph; recurring MO signatures per offender.',
-    areas: [['Network', '/network'], ['Offenders', '/offenders']],
-  },
-  {
-    n: 6,
-    name: 'AI/ML-Driven Intelligence',
-    desc: 'ML for hidden correlations, anomaly detection and emerging-risk prediction — plus a natural-language copilot whose every answer shows its query, sources and confidence.',
-    areas: [['Ask DAPPA', '/copilot'], ['Predict', '/predict'], ['Alerts', '/alerts']],
-  },
+  { n: 1, areas: [['dashboard', '/'], ['geointel', '/map'], ['trends', '/trends'], ['alerts', '/alerts']] },
+  { n: 2, areas: [['network', '/network'], ['offenders', '/offenders'], ['cases', '/cases']] },
+  { n: 3, areas: [['predict', '/predict'], ['geointel', '/map'], ['alerts', '/alerts']] },
+  { n: 4, areas: [['trends', '/trends'], ['geointel', '/map'], ['reports', '/reports']] },
+  { n: 5, areas: [['network', '/network'], ['offenders', '/offenders']] },
+  { n: 6, areas: [['copilot', '/copilot'], ['predict', '/predict'], ['alerts', '/alerts']] },
 ];
 
-// generate.py → Data Store → API → UI provenance pipeline (pure CSS).
+// generate.py → Data Store → API → UI provenance pipeline (pure CSS). The
+// stage is a repo path and stays verbatim.
 const LINEAGE = [
-  ['pipeline/generate.py', 'Seeded synthetic engine writes the 24-table official ER schema — 45k FIRs, deterministic and fully fictional.'],
-  ['scripts/bulk_load.js', 'Bulk-loads the generated CSVs into console-created Catalyst Data Store tables.'],
-  ['pipeline/analytics.py', 'Nightly distillation into 8 analytics tables: aggregates, hotspots, forecasts, anomaly z-scores, offender network.'],
-  ['functions/dappa_api', 'Express REST over ZCQL with a fixture fallback — every endpoint stays alive even with the Data Store unreachable.'],
-  ['client (React SPA)', 'Dashboards, maps, networks and the copilot — provenance badges on every AI-touched number.'],
+  ['pipeline/generate.py', 'd1'],
+  ['scripts/bulk_load.js', 'd2'],
+  ['pipeline/analytics.py', 'd3'],
+  ['functions/dappa_api', 'd4'],
+  ['client (React SPA)', 'd5'],
 ];
 
 // "Demo never dies": each AI feature's live path and its deterministic fallback.
-const AI_DESIGN = [
-  {
-    feature: 'Ask DAPPA copilot',
-    live: 'QuickML LLM Serving + RAG grounded on Data Store context',
-    fallback: 'Deterministic intent grammar → ZCQL → templated answer; the suggested questions always answer',
-  },
-  {
-    feature: 'Outcome prediction',
-    live: 'QuickML tabular classifier scoring case features',
-    fallback: 'Calibrated scorecard from historical outcome rates',
-  },
-  {
-    feature: 'Case narrative & MO tags',
-    live: 'Zia Text Analytics NER/keywords over BriefFacts',
-    fallback: 'Keyword/regex extraction with the same output shape',
-  },
-  {
-    feature: 'Weekly intelligence brief',
-    live: 'SmartBrowz renders the PDF server-side',
-    fallback: 'Print-optimised in-app brief route (Ctrl+P to PDF)',
-  },
-  {
-    feature: 'Forecasts & anomaly alerts',
-    live: 'Precomputed nightly (Holt-Winters + z-scores) — served as indexed reads',
-    fallback: 'Same tables from the bundled fixture snapshot',
-  },
-];
+const AI_DESIGN = ['r1', 'r2', 'r3', 'r4', 'r5'];
 
-const A11Y = [
-  ['Keyboard-first', 'Every control is reachable by Tab; tab lists and radio groups use roving arrow-key focus; press ? anywhere for the shortcut sheet.'],
-  ['Touch & small screens', 'Interactive targets are at least 40px and layouts are verified down to 360px-wide phones.'],
-  ['Screen readers', 'ARIA landmarks and labels throughout; the copilot chat is a polite live region; loading and status changes are announced via visually hidden text.'],
-  ['Charts have equals', 'Every chart offers an accessible data-table view and CSV export — no information is locked inside pixels.'],
-  ['Theme & contrast', 'Dark and light themes come from one contrast-checked token set; charts re-theme with the app.'],
-  ['Motion', 'prefers-reduced-motion is respected, with an additional manual motion toggle in the top bar; dialogs trap focus and restore it on close.'],
-];
+const A11Y = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'];
+
+const LANGUAGES = ['l1', 'l2', 'l3', 'l4', 'l5'];
 
 // Mirrors the global shortcut layer registered in Layout.jsx and the
-// copilot-local keys — keep in sync when either changes.
+// copilot-local keys — keep in sync when either changes. Key glyphs stay
+// literal; only the "g then d" row needs a translated connector word.
 const SHORTCUTS = [
   {
-    group: 'Anywhere', keys: [
-      ['Ctrl/⌘ K', 'Command palette — jump to any screen or action'],
-      ['g then d · m · t · a · c · n · o · p · r', 'Go to Dashboard, Map, Trends, Alerts, Cases, Network, Offenders, Predict, Reports'],
-      ['t', 'Toggle dark / light theme'],
-      ['f', 'Zen mode (on GeoIntel: map fullscreen)'],
-      ['?', 'Open the shortcut sheet'],
-      ['Esc', 'Close a dialog or sheet'],
+    group: 'anywhere',
+    rows: [
+      { keys: 'Ctrl/⌘ K', d: 'k1' },
+      { keysKey: 'goKeys', d: 'k2' },
+      { keys: 't', d: 'k3' },
+      { keys: 'f', d: 'k4' },
+      { keys: '?', d: 'k5' },
+      { keys: 'Esc', d: 'k6' },
     ],
   },
   {
-    group: 'Ask DAPPA', keys: [
-      ['/', 'Focus the question input'],
-      ['↑ ↓', 'Recall question history (shell-style)'],
-      ['Esc', 'Stop voice capture / blur the input'],
+    group: 'copilot',
+    rows: [
+      { keys: '/', d: 'c1' },
+      { keys: '↑ ↓', d: 'c2' },
+      { keys: 'Esc', d: 'c3' },
     ],
   },
 ];
 
 const SECTIONS = [
-  { id: 'story', label: 'Story' },
-  { id: 'links', label: 'Links' },
-  { id: 'challenge', label: 'Challenge' },
-  { id: 'architecture', label: 'Architecture' },
-  { id: 'lineage', label: 'Lineage' },
-  { id: 'ai', label: 'AI design' },
-  { id: 'services', label: 'Services' },
-  { id: 'ethics', label: 'Ethics' },
-  { id: 'access', label: 'Accessibility' },
-  { id: 'shortcuts', label: 'Shortcuts' },
-  { id: 'team', label: 'Team' },
+  'story', 'links', 'challenge', 'architecture', 'lineage', 'ai',
+  'services', 'ethics', 'access', 'languages', 'shortcuts', 'team',
 ];
+
+const ARCH_BOXES = {
+  api: ['gateway', 'api'],
+  data: ['datastore', 'cache', 'nosql', 'stratus', 'nightly', 'signals'],
+  ai: ['quickml', 'llm', 'zia', 'smartbrowz', 'mail', 'auth'],
+};
 
 function Stat({ value, label }) {
   return (
@@ -208,11 +153,12 @@ function Stat({ value, label }) {
 // HashRouter's route fragment, so we scroll programmatically instead. A
 // viewport IntersectionObserver highlights the section currently in view.
 function AnchorNav() {
-  const [active, setActive] = useState(SECTIONS[0].id);
+  const t = useT();
+  const [active, setActive] = useState(SECTIONS[0]);
 
   useEffect(() => {
     const els = SECTIONS
-      .map((s) => document.getElementById(`about-${s.id}`))
+      .map((s) => document.getElementById(`about-${s}`))
       .filter(Boolean);
     if (!els.length || typeof IntersectionObserver === 'undefined') return undefined;
     const io = new IntersectionObserver((entries) => {
@@ -234,15 +180,15 @@ function AnchorNav() {
   };
 
   return (
-    <nav aria-label="On this page" className="no-print sticky top-14 z-30 -mx-4 px-4 md:-mx-6 md:px-6 bg-base/85 backdrop-blur-md">
+    <nav aria-label={t('copilot.about.nav.aria')} className="no-print sticky top-14 z-30 -mx-4 px-4 md:-mx-6 md:px-6 bg-base/85 backdrop-blur-md">
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-2">
-        {SECTIONS.map((s) => {
-          const on = active === s.id;
+        {SECTIONS.map((id) => {
+          const on = active === id;
           return (
             <button
-              key={s.id}
+              key={id}
               type="button"
-              onClick={() => go(s.id)}
+              onClick={() => go(id)}
               aria-current={on ? 'true' : undefined}
               className={`shrink-0 min-h-[40px] rounded-full border px-3.5 text-xs transition-colors ${
                 on
@@ -250,7 +196,7 @@ function AnchorNav() {
                   : 'border-grid bg-panel text-muted hover:text-ink hover:border-primary/60'
               }`}
             >
-              {s.label}
+              {t(`copilot.about.sec.${id}`)}
             </button>
           );
         })}
@@ -286,19 +232,20 @@ function ExtLink({ href, title, sub, accent = false }) {
 // ExtLink + a copy-URL button, for judging machines where opening tabs is awkward.
 function LinkRow({ href, title, sub, accent = false }) {
   const toast = useToast();
+  const t = useT();
   const copy = async () => {
     const ok = await copyText(href);
-    if (ok) toast.success('Link copied to clipboard');
-    else toast.error('Copy failed — long-press the link and copy its address instead.');
+    if (ok) toast.success(t('copilot.about.links.copied'));
+    else toast.error(t('copilot.about.links.copyFailed'));
   };
   return (
     <div className="flex items-stretch gap-1.5">
       <ExtLink href={href} title={title} sub={sub} accent={accent} />
-      <Tooltip label="Copy this link">
+      <Tooltip label={t('copilot.about.links.copyTip')}>
         <button
           type="button"
           onClick={copy}
-          aria-label={`Copy link: ${title}`}
+          aria-label={t('copilot.about.links.copyAria', { title })}
           className="grid place-items-center w-11 min-h-[44px] shrink-0 rounded-lg border border-grid bg-base/40 text-muted hover:text-primary hover:border-primary/60 transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -335,9 +282,22 @@ const Arrow = ({ label }) => (
   </div>
 );
 
+// Bullet list shared by the ethics / accessibility / languages cards.
+const PointList = ({ items, dot = 'text-teal' }) => (
+  <ul className="space-y-2 text-xs text-muted leading-relaxed">
+    {items.map(([key, head, body]) => (
+      <li key={key} className="flex gap-2">
+        <span className={`${dot} shrink-0`}>•</span>
+        <span><strong className="text-ink">{head}</strong> {body}</span>
+      </li>
+    ))}
+  </ul>
+);
+
 const initials = (name) => name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 
 export default function About() {
+  const t = useT();
   const [svcFilter, setSvcFilter] = useState('all');
   const liveCount = SERVICES.filter((s) => !s.stretch).length;
   const roadmapCount = SERVICES.length - liveCount;
@@ -345,21 +305,24 @@ export default function About() {
     svcFilter === 'all' ? true : svcFilter === 'live' ? !s.stretch : !!s.stretch
   ));
   const filterChips = [
-    { key: 'all', label: `All ${SERVICES.length}` },
-    { key: 'live', label: `Live ${liveCount}` },
-    { key: 'roadmap', label: `Roadmap ${roadmapCount}` },
+    { key: 'all', label: t('copilot.about.services.all', { n: SERVICES.length }) },
+    { key: 'live', label: t('copilot.about.services.live', { n: liveCount }) },
+    { key: 'roadmap', label: t('copilot.about.services.roadmap', { n: roadmapCount }) },
   ];
+
+  // Keep `generate.py` in a mono span wherever the translation places it.
+  const lineageNote = t('copilot.about.lineage.note').split('generate.py');
 
   return (
     <div className="space-y-4 max-w-[1200px] mx-auto">
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="page-title">About DAPPA</h1>
-          <p className="page-subtitle">Data Analytics &amp; Predictive Policing Assistant — KSP Datathon 2026 prototype, built entirely on Zoho Catalyst</p>
+          <h1 className="page-title">{t('copilot.about.page.title')}</h1>
+          <p className="page-subtitle">{t('copilot.about.page.subtitle')}</p>
         </div>
         <div className="flex items-center gap-1.5 ml-auto">
-          <Badge tone="amber">prototype</Badge>
-          <Badge tone="teal">100% synthetic data</Badge>
+          <Badge tone="amber">{t('copilot.about.badge.prototype')}</Badge>
+          <Badge tone="teal">{t('copilot.about.badge.synthetic')}</Badge>
         </div>
       </div>
 
@@ -367,56 +330,55 @@ export default function About() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div id="about-story" className="scroll-mt-32 xl:col-span-2">
-          <Card title="The story" subtitle="From 30 lakh scattered FIR rows to one decision surface" className="h-full">
+          <Card title={t('copilot.about.story.title')} subtitle={t('copilot.about.story.subtitle')} className="h-full">
             <div className="space-y-3 text-xs text-muted leading-relaxed">
               <p>
-                District officers drown in registers: which beat is heating up, which burglary series is the same gang,
-                what next month looks like — the answers exist in FIR data but not at the speed of a morning briefing.
-                <strong className="text-ink"> DAPPA turns the official KSP FIR schema into a command center</strong>:
-                hotspot maps, seasonality, anomaly alerts, co-offending networks, station-risk forecasts, a
-                natural-language copilot and a one-click weekly brief — every screen answerable in milliseconds because
-                the heavy analytics run nightly, not per click.
+                {t('copilot.about.story.p1a')}
+                <strong className="text-ink"> {t('copilot.about.story.p1b')}</strong>
+                {t('copilot.about.story.p1c')}
               </p>
               <ol className="grid grid-cols-1 sm:grid-cols-2 gap-2 list-none">
-                {FLOW.map(([t, d], i) => (
-                  <li key={t} className="flex gap-2.5 rounded-lg border border-grid bg-base/40 p-2.5">
+                {FLOW.map((step, i) => (
+                  <li key={step} className="flex gap-2.5 rounded-lg border border-grid bg-base/40 p-2.5">
                     <span className="num shrink-0 grid place-items-center h-6 w-6 rounded-full border border-amber/40 text-amber text-[11px] font-bold">{i + 1}</span>
-                    <span><strong className="text-ink">{t}.</strong> {d}</span>
+                    <span>
+                      <strong className="text-ink">{t(`copilot.about.flow.${step}`)}.</strong>{' '}
+                      {t(`copilot.about.flow.${step}Desc`)}
+                    </span>
                   </li>
                 ))}
               </ol>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                <Stat value="14" label="app routes" />
-                <Stat value="24 + 8" label="ER + analytics tables" />
-                <Stat value={String(liveCount)} label="Catalyst services live" />
-                <Stat value="0" label="external services" />
+                <Stat value="14" label={t('copilot.about.stat.routes')} />
+                <Stat value="24 + 8" label={t('copilot.about.stat.tables')} />
+                <Stat value={String(liveCount)} label={t('copilot.about.stat.services')} />
+                <Stat value="0" label={t('copilot.about.stat.external')} />
               </div>
             </div>
           </Card>
         </div>
 
         <div id="about-links" className="scroll-mt-32">
-          <Card title="See it running" subtitle="Live deployment, static mirror, source" className="h-full">
+          <Card title={t('copilot.about.links.title')} subtitle={t('copilot.about.links.subtitle')} className="h-full">
             <div className="space-y-2">
               <LinkRow
                 accent
                 href={LINKS.live}
-                title="Live demo — Zoho Catalyst"
-                sub="project-rainfall · full API, flags & fallbacks"
+                title={t('copilot.about.links.liveTitle')}
+                sub={t('copilot.about.links.liveSub')}
               />
               <LinkRow
                 href={LINKS.pages}
-                title="Static demo — GitHub Pages"
-                sub="no backend needed · snapshotted fixture API"
+                title={t('copilot.about.links.pagesTitle')}
+                sub={t('copilot.about.links.pagesSub')}
               />
               <LinkRow
                 href={LINKS.repo}
-                title="Source — github.com/Golden007-prog/KSP-Dappa"
-                sub="client + functions + pipeline + scripts"
+                title={t('copilot.about.links.repoTitle')}
+                sub={t('copilot.about.links.repoSub')}
               />
               <p className="text-[11px] text-muted leading-relaxed pt-1">
-                The Catalyst deployment is the official submission; the Pages mirror serves the same synthetic
-                dataset from pre-generated JSON so the UI can be judged even offline.
+                {t('copilot.about.links.note')}
               </p>
             </div>
           </Card>
@@ -425,9 +387,9 @@ export default function About() {
 
       <div id="about-challenge" className="scroll-mt-32">
         <Card
-          title="Datathon challenge coverage"
-          subtitle="The 6 scored capability areas, and where each one lives in the app"
-          actions={<Badge tone="teal">6 / 6 covered</Badge>}
+          title={t('copilot.about.challenge.title')}
+          subtitle={t('copilot.about.challenge.subtitle')}
+          actions={<Badge tone="teal">{t('copilot.about.challenge.badge')}</Badge>}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             {CHALLENGE.map((c) => (
@@ -436,18 +398,18 @@ export default function About() {
                   <span className="num shrink-0 grid place-items-center h-6 w-6 rounded-full border border-amber/40 text-amber text-[11px] font-bold">{c.n}</span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="text-xs font-semibold text-ink">{c.name}</p>
-                      <Badge tone="teal" className="!text-[10px]">live</Badge>
+                      <p className="text-xs font-semibold text-ink">{t(`copilot.about.challenge.c${c.n}.name`)}</p>
+                      <Badge tone="teal" className="!text-[10px]">{t('copilot.about.challenge.live')}</Badge>
                     </div>
-                    <p className="text-[11px] text-muted mt-1 leading-relaxed">{c.desc}</p>
+                    <p className="text-[11px] text-muted mt-1 leading-relaxed">{t(`copilot.about.challenge.c${c.n}.desc`)}</p>
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {c.areas.map(([label, to]) => (
+                      {c.areas.map(([navKey, to]) => (
                         <Link
-                          key={`${c.n}-${to}-${label}`}
+                          key={`${c.n}-${to}-${navKey}`}
                           to={to}
                           className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-2.5 min-h-[32px] text-[11px] text-primary hover:border-primary hover:bg-primary/10 transition-colors"
                         >
-                          {label}
+                          {t(`common.nav.${navKey}`)}
                           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" /></svg>
                         </Link>
                       ))}
@@ -458,59 +420,46 @@ export default function About() {
             ))}
           </div>
           <p className="text-[11px] text-muted mt-3 leading-relaxed">
-            Every capability is reachable in at most two clicks from the dashboard — the chips above deep-link
-            straight into the relevant screen.
+            {t('copilot.about.challenge.note')}
           </p>
         </Card>
       </div>
 
       <div id="about-architecture" className="scroll-mt-32">
-        <Card title="Architecture" subtitle="Everything runs inside one Catalyst project (Project-Rainfall) — no external AI, hosting, database, or auth services">
+        <Card title={t('copilot.about.arch.title')} subtitle={t('copilot.about.arch.subtitle')}>
           <div className="space-y-1">
-            <Tier label="Browser">
-              <Box accent>React 18 SPA — dark command-center UI · Leaflet · ECharts · Cytoscape</Box>
+            <Tier label={t('copilot.about.arch.tier.browser')}>
+              <Box accent>{t('copilot.about.arch.box.spa')}</Box>
             </Tier>
-            <Arrow label="same-origin /server/dappa_api/api/v1" />
-            <Tier label="API layer">
-              <Box>API Gateway — routing &amp; throttling</Box>
-              <Box accent>dappa_api — Advanced I/O function (Node 20 + Express)</Box>
+            <Arrow label={t('copilot.about.arch.arrow.api')} />
+            <Tier label={t('copilot.about.arch.tier.api')}>
+              {ARCH_BOXES.api.map((b) => (
+                <Box key={b} accent={b === 'api'}>{t(`copilot.about.arch.box.${b}`)}</Box>
+              ))}
             </Tier>
-            <Arrow label="ZCQL reads · cached aggregates" />
-            <Tier label="Data & jobs">
-              <Box>Data Store — 24 ER tables + 8 analytics tables</Box>
-              <Box>Cache — hot aggregates</Box>
-              <Box>NoSQL — graph snapshots, RAG context</Box>
-              <Box>Stratus — CSVs, GeoJSON, PDF briefs</Box>
-              <Box>dappa_nightly — Cron job (Python): aggregates → hotspots → forecasts → anomalies → network</Box>
-              <Box>Signals + Event function — new FIR → live anomaly check</Box>
+            <Arrow label={t('copilot.about.arch.arrow.data')} />
+            <Tier label={t('copilot.about.arch.tier.data')}>
+              {ARCH_BOXES.data.map((b) => <Box key={b}>{t(`copilot.about.arch.box.${b}`)}</Box>)}
             </Tier>
-            <Arrow label="on-demand, every feature flag has a local fallback" />
-            <Tier label="Catalyst AI services">
-              <Box>QuickML — outcome classifier</Box>
-              <Box>QuickML LLM Serving + RAG — copilot</Box>
-              <Box>Zia Text Analytics — NER on BriefFacts</Box>
-              <Box>SmartBrowz — weekly brief PDF</Box>
-              <Box>Catalyst Mail — digests</Box>
-              <Box>Authentication — public demo mode</Box>
+            <Arrow label={t('copilot.about.arch.arrow.ai')} />
+            <Tier label={t('copilot.about.arch.tier.ai')}>
+              {ARCH_BOXES.ai.map((b) => <Box key={b}>{t(`copilot.about.arch.box.${b}`)}</Box>)}
             </Tier>
           </div>
           <p className="text-xs text-muted mt-3 leading-relaxed">
-            The nightly Python pipeline precomputes hotspots (DBSCAN), forecasts with confidence intervals, anomaly
-            z-scores, offender identity resolution and co-accused network communities into Data Store tables, so every
-            click in the demo is a fast indexed read. Live AI calls (QuickML scoring, Zia NER, the copilot) are
-            on-demand and degrade gracefully to deterministic local fallbacks with a visible source badge.
+            {t('copilot.about.arch.note')}
           </p>
         </Card>
       </div>
 
       <div id="about-lineage" className="scroll-mt-32">
-        <Card title="Data lineage" subtitle="From seed to screen — the provenance of every number on every page">
+        <Card title={t('copilot.about.lineage.title')} subtitle={t('copilot.about.lineage.subtitle')}>
           <ol className="flex flex-col md:flex-row md:items-stretch gap-1 list-none">
-            {LINEAGE.map(([stage, desc], i) => (
+            {LINEAGE.map(([stage, descKey], i) => (
               <li key={stage} className="flex flex-col md:flex-row md:items-stretch md:flex-1 min-w-0 gap-1">
                 <div className="flex-1 min-w-0 rounded-lg border border-grid bg-base/40 p-2.5">
                   <p className="text-[11px] font-mono font-semibold text-teal break-words">{stage}</p>
-                  <p className="text-[10px] text-muted mt-1 leading-relaxed">{desc}</p>
+                  <p className="text-[10px] text-muted mt-1 leading-relaxed">{t(`copilot.about.lineage.${descKey}`)}</p>
                 </div>
                 {i < LINEAGE.length - 1 && (
                   <span className="self-center shrink-0 text-muted px-0.5 rotate-90 md:rotate-0" aria-hidden="true">
@@ -521,53 +470,54 @@ export default function About() {
             ))}
           </ol>
           <p className="text-[11px] text-muted mt-3 leading-relaxed">
-            The whole chain is reproducible from one seed: re-running <span className="font-mono">generate.py</span> and
-            the analytics pass rebuilds byte-identical tables, which is why every copilot answer can cite the exact
-            ZCQL and source table it came from.
+            {lineageNote.map((part, i) => (
+              // eslint-disable-next-line react/no-array-index-key
+              <span key={i}>
+                {i > 0 && <span className="font-mono">generate.py</span>}
+                {part}
+              </span>
+            ))}
           </p>
         </Card>
       </div>
 
       <div id="about-ai" className="scroll-mt-32">
         <Card
-          title="AI degradation design"
-          subtitle="“The demo never dies” — every AI feature is flagged, falls back deterministically, and badges its source"
+          title={t('copilot.about.ai.title')}
+          subtitle={t('copilot.about.ai.subtitle')}
         >
           <div className="space-y-2">
             <div className="hidden md:grid grid-cols-[1.1fr_1.4fr_1.4fr] gap-2 px-3">
-              <p className="eyebrow">Feature</p>
-              <p className="eyebrow">Live path (flag on)</p>
-              <p className="eyebrow">Fallback (flag off / service down)</p>
+              <p className="eyebrow">{t('copilot.about.ai.colFeature')}</p>
+              <p className="eyebrow">{t('copilot.about.ai.colLive')}</p>
+              <p className="eyebrow">{t('copilot.about.ai.colFallback')}</p>
             </div>
             {AI_DESIGN.map((row) => (
-              <div key={row.feature} className="grid grid-cols-1 md:grid-cols-[1.1fr_1.4fr_1.4fr] gap-1.5 md:gap-2 rounded-lg border border-grid bg-base/40 p-3">
-                <p className="text-xs font-semibold text-ink">{row.feature}</p>
+              <div key={row} className="grid grid-cols-1 md:grid-cols-[1.1fr_1.4fr_1.4fr] gap-1.5 md:gap-2 rounded-lg border border-grid bg-base/40 p-3">
+                <p className="text-xs font-semibold text-ink">{t(`copilot.about.ai.${row}.feature`)}</p>
                 <p className="text-[11px] text-muted leading-relaxed">
-                  <span className="md:hidden text-[9px] uppercase tracking-wider text-amber mr-1.5">Live</span>
-                  {row.live}
+                  <span className="md:hidden text-[9px] uppercase tracking-wider text-amber mr-1.5">{t('copilot.about.ai.tagLive')}</span>
+                  {t(`copilot.about.ai.${row}.live`)}
                 </p>
                 <p className="text-[11px] text-muted leading-relaxed">
-                  <span className="md:hidden text-[9px] uppercase tracking-wider text-teal mr-1.5">Fallback</span>
-                  {row.fallback}
+                  <span className="md:hidden text-[9px] uppercase tracking-wider text-teal mr-1.5">{t('copilot.about.ai.tagFallback')}</span>
+                  {t(`copilot.about.ai.${row}.fallback`)}
                 </p>
               </div>
             ))}
           </div>
           <p className="text-[11px] text-muted mt-3 leading-relaxed">
-            The UI always tells you which path answered: engine and source badges on copilot answers, provenance chips
-            on predictions, and a fixture banner when the API is serving from its bundled snapshot. Ask DAPPA goes one
-            step further — each answer carries a confidence label, the parsed intent, and citation chips for the exact
-            Data Store tables its ZCQL read.
+            {t('copilot.about.ai.note')}
           </p>
         </Card>
       </div>
 
       <div id="about-services" className="scroll-mt-32">
         <Card
-          title="Catalyst services used"
-          subtitle={`${liveCount} of ${SERVICES.length} live in the prototype · ${roadmapCount} documented roadmap items`}
+          title={t('copilot.about.services.title')}
+          subtitle={t('copilot.about.services.subtitle', { live: liveCount, total: SERVICES.length, roadmap: roadmapCount })}
         >
-          <div className="flex flex-wrap items-center gap-1.5 mb-3" role="group" aria-label="Filter services">
+          <div className="flex flex-wrap items-center gap-1.5 mb-3" role="group" aria-label={t('copilot.about.services.filterAria')}>
             {filterChips.map((c) => (
               <button
                 key={c.key}
@@ -590,9 +540,9 @@ export default function About() {
                 <div className="flex items-center gap-2">
                   <span className="num text-[10px] text-muted w-5 shrink-0">{String(s.n).padStart(2, '0')}</span>
                   <span className="text-xs font-semibold text-ink">{s.name}</span>
-                  {s.stretch && <Badge tone="slate" className="ml-auto">roadmap</Badge>}
+                  {s.stretch && <Badge tone="slate" className="ml-auto">{t('copilot.about.services.roadmapTag')}</Badge>}
                 </div>
-                <p className="text-[11px] text-muted mt-1 ml-7">{s.use}</p>
+                <p className="text-[11px] text-muted mt-1 ml-7">{t(`copilot.about.services.s${s.n}`)}</p>
               </div>
             ))}
           </div>
@@ -601,82 +551,89 @@ export default function About() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div id="about-ethics" className="scroll-mt-32">
-          <Card title="Data ethics" subtitle="Synthetic by design, fair by constraint" className="h-full">
-            <ul className="space-y-2 text-xs text-muted leading-relaxed">
-              <li className="flex gap-2">
-                <span className="text-amber shrink-0">•</span>
-                <span><strong className="text-ink">100% synthetic data.</strong> Every person, case and narrative is generated
-                (Kannada-region name pools, seeded and deterministic). Nothing here describes a real individual or a real FIR,
-                and the banner above every screen says so.</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-amber shrink-0">•</span>
-                <span><strong className="text-ink">Caste and religion are never model inputs.</strong> The official ER schema
-                carries these columns for fidelity, but they are excluded from every ML feature set, every analytics output and
-                every screen of this application.</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-amber shrink-0">•</span>
-                <span><strong className="text-ink">Decision support, not automated decisions.</strong> Forecasts, risk scores and
-                identity-resolution links are advisory signals with visible model provenance (source badge, backtest MAPE,
-                precision estimates) — an officer stays in the loop.</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-amber shrink-0">•</span>
-                <span><strong className="text-ink">Public demo is read-only.</strong> Administrative actions (acknowledging
-                alerts, sending digests) sit behind Catalyst Authentication when demo mode is off.</span>
-              </li>
-            </ul>
+          <Card title={t('copilot.about.ethics.title')} subtitle={t('copilot.about.ethics.subtitle')} className="h-full">
+            <PointList
+              dot="text-amber"
+              items={['e1', 'e2', 'e3', 'e4'].map((k) => [
+                k,
+                t(`copilot.about.ethics.${k}.strong`),
+                t(`copilot.about.ethics.${k}.text`),
+              ])}
+            />
           </Card>
         </div>
 
         <div id="about-access" className="scroll-mt-32">
-          <Card title="Accessibility" subtitle="Built to be operable by every officer, on every device" className="h-full">
-            <ul className="space-y-2 text-xs text-muted leading-relaxed">
-              {A11Y.map(([t, d]) => (
-                <li key={t} className="flex gap-2">
-                  <span className="text-teal shrink-0">•</span>
-                  <span><strong className="text-ink">{t}.</strong> {d}</span>
-                </li>
-              ))}
-            </ul>
+          <Card title={t('copilot.about.access.title')} subtitle={t('copilot.about.access.subtitle')} className="h-full">
+            <PointList
+              items={A11Y.map((k) => [
+                k,
+                `${t(`copilot.about.access.${k}.t`)}.`,
+                t(`copilot.about.access.${k}.d`),
+              ])}
+            />
             <p className="text-[11px] text-muted mt-3 leading-relaxed">
-              Accessibility is a moving target — issues found during judging are welcome on the GitHub repository.
+              {t('copilot.about.access.note')}
             </p>
           </Card>
         </div>
       </div>
 
+      <div id="about-languages" className="scroll-mt-32">
+        <Card title={t('copilot.about.lang.title')} subtitle={t('copilot.about.lang.subtitle')}>
+          <p className="text-xs text-muted leading-relaxed mb-3">{t('copilot.about.lang.intro')}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0">
+            <PointList
+              items={LANGUAGES.slice(0, 3).map((k) => [
+                k,
+                `${t(`copilot.about.lang.${k}.t`)}.`,
+                t(`copilot.about.lang.${k}.d`),
+              ])}
+            />
+            <PointList
+              items={LANGUAGES.slice(3).map((k) => [
+                k,
+                `${t(`copilot.about.lang.${k}.t`)}.`,
+                t(`copilot.about.lang.${k}.d`),
+              ])}
+            />
+          </div>
+        </Card>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div id="about-shortcuts" className="scroll-mt-32">
-          <Card title="Keyboard shortcuts" subtitle="Also available anywhere by pressing ?" className="h-full">
+          <Card title={t('copilot.about.shortcuts.title')} subtitle={t('copilot.about.shortcuts.subtitle')} className="h-full">
             <div className="space-y-3">
               {SHORTCUTS.map((sec) => (
                 <section key={sec.group}>
-                  <p className="eyebrow mb-1">{sec.group}</p>
+                  <p className="eyebrow mb-1">{t(`copilot.about.shortcuts.group.${sec.group}`)}</p>
                   <ul className="divide-y divide-grid/40">
-                    {sec.keys.map(([keys, desc]) => (
-                      <li key={`${sec.group}-${keys}`} className="flex items-start justify-between gap-3 py-1.5">
-                        <span className="text-xs text-muted leading-relaxed">{desc}</span>
-                        <span className="shrink-0 flex flex-wrap justify-end gap-1">
-                          {keys.split(' · ').map((k) => (
-                            <kbd key={k} className="num rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-ink whitespace-nowrap">{k}</kbd>
-                          ))}
-                        </span>
-                      </li>
-                    ))}
+                    {sec.rows.map((row) => {
+                      const keys = row.keysKey ? t(`copilot.about.shortcuts.${row.keysKey}`) : row.keys;
+                      return (
+                        <li key={`${sec.group}-${row.d}`} className="flex items-start justify-between gap-3 py-1.5">
+                          <span className="text-xs text-muted leading-relaxed">{t(`copilot.about.shortcuts.${row.d}`)}</span>
+                          <span className="shrink-0 flex flex-wrap justify-end gap-1">
+                            {keys.split(' · ').map((k) => (
+                              <kbd key={k} className="num rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-ink whitespace-nowrap">{k}</kbd>
+                            ))}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </section>
               ))}
               <p className="text-[11px] text-muted leading-relaxed">
-                Shortcuts pause while you type in any input, and never hijack a key inside an open dialog.
+                {t('copilot.about.shortcuts.note')}
               </p>
             </div>
           </Card>
         </div>
 
         <div id="about-team" className="scroll-mt-32">
-          <Card title="Team & credits" subtitle="KSP Datathon 2026 · project “Rainfall”" className="h-full">
+          <Card title={t('copilot.about.team.title')} subtitle={t('copilot.about.team.subtitle')} className="h-full">
             <div className="space-y-3">
               {TEAM.length > 0 ? (
                 <div className="space-y-2">
@@ -696,27 +653,25 @@ export default function About() {
                 <div className="flex items-center gap-3 rounded-lg border border-grid bg-base/40 p-3">
                   <div className="w-9 h-9 shrink-0 rounded-full bg-amber/15 border border-amber/30 text-amber grid place-items-center text-xs font-bold">R</div>
                   <div className="min-w-0">
-                    <p className="text-xs text-ink font-semibold">Team Rainfall</p>
-                    <p className="text-[11px] text-muted">KSP Datathon 2026 — design, data engineering &amp; analytics by the Rainfall crew</p>
+                    <p className="text-xs text-ink font-semibold">{t('copilot.about.team.name')}</p>
+                    <p className="text-[11px] text-muted">{t('copilot.about.team.blurb')}</p>
                   </div>
                 </div>
               )}
               <div className="space-y-2">
                 {STACK_GROUPS.map((g) => (
-                  <div key={g.label}>
-                    <p className="eyebrow mb-1.5">{g.label}</p>
+                  <div key={g.key}>
+                    <p className="eyebrow mb-1.5">{t(`copilot.about.stack.${g.key}`)}</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {g.items.map((t) => (
-                        <span key={t} className="chip !py-0.5 !text-[11px] text-muted">{t}</span>
+                      {g.items.map((item) => (
+                        <span key={item} className="chip !py-0.5 !text-[11px] text-muted">{item}</span>
                       ))}
                     </div>
                   </div>
                 ))}
               </div>
               <p className="text-[11px] text-muted leading-relaxed">
-                Built on the official KSP FIR ER schema (Data Store), a seeded synthetic data engine, and
-                Catalyst-native analytics. Karnataka district boundaries served from Stratus as GeoJSON; Inter
-                typeface bundled — nothing loads from a CDN.
+                {t('copilot.about.team.note')}
               </p>
             </div>
           </Card>

@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useCopilotQuery } from '../lib/api.js';
+import { useI18n } from '../lib/i18n.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
@@ -98,6 +99,7 @@ export default function Copilot() {
   const [searchParams, setSearchParams] = useSearchParams();
   const copilot = useCopilotQuery();
   const toast = useToast();
+  const { lang, t } = useI18n();
   const [messages, setMessages] = useState(loadConversation);
   const [pinned, setPinned] = useState(loadPins);
   const [input, setInput] = useState('');
@@ -127,11 +129,11 @@ export default function Copilot() {
     },
     onError: (code) => {
       if (code === 'not-allowed' || code === 'service-not-allowed') {
-        toast.error('Microphone access is blocked — allow it in the browser to use voice input.');
+        toast.error(t('copilot.voice.blocked'));
       } else if (code === 'no-speech') {
-        toast.info('Didn’t catch that — try again, a little closer to the mic.');
+        toast.info(t('copilot.voice.noSpeech'));
       } else if (code !== 'aborted') {
-        toast.error('Voice input failed — you can keep typing.');
+        toast.error(t('copilot.voice.failed'));
       }
     },
   });
@@ -158,7 +160,7 @@ export default function Copilot() {
         setMessages((m) => [...m, {
           id: nextId(),
           role: 'assistant',
-          text: d.answer || 'No answer returned.',
+          text: d.answer || t('copilot.answer.none'),
           chart: d.chart,
           zcql: d.zcql,
           engine: d.engine,
@@ -174,7 +176,7 @@ export default function Copilot() {
         setMessages((m) => [...m, {
           id: nextId(),
           role: 'assistant',
-          error: err?.message || 'The copilot request failed.',
+          error: err?.message || t('copilot.answer.requestFailed'),
           retryText: q,
           ts: Date.now(),
         }]);
@@ -320,7 +322,7 @@ export default function Copilot() {
     } else {
       downloadTextFile(`dappa-copilot-${stamp}.txt`, conversationToText(messages));
     }
-    toast.success(`Conversation exported as .${fmt}`);
+    toast.success(t('copilot.export.done', { fmt }));
   };
 
   const newChat = () => {
@@ -331,7 +333,7 @@ export default function Copilot() {
     autoQRef.current = '';
     // drop a stale ?q= so the queue effect can't re-ask it after the reset
     if (searchParams.get('q')) setSearchParams({}, { replace: true });
-    toast.info('New chat started — input history (↑) is kept');
+    toast.info(t('copilot.newChat.toast'));
   };
 
   const togglePin = (q) => {
@@ -348,7 +350,7 @@ export default function Copilot() {
     histRef.current.draft = '';
     try { localStorage.removeItem(KEY_HISTORY); } catch { /* private mode */ }
     setHistVersion((v) => v + 1);
-    toast.info('Question history cleared');
+    toast.info(t('copilot.history.cleared'));
   };
 
   const deleteHistoryItem = (q) => {
@@ -394,33 +396,34 @@ export default function Copilot() {
       <style>{PRINT_CSS}</style>
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1 pb-3">
         <div>
-          <h1 className="page-title">Ask DAPPA</h1>
-          <p className="page-subtitle hidden sm:block">Natural-language crime analytics — every answer shows its query and its engine</p>
+          <h1 className="page-title">{t('copilot.page.title')}</h1>
+          <p className="page-subtitle hidden sm:block">{t('copilot.page.subtitle')}</p>
         </div>
         <div className="no-print flex items-center gap-1.5">
           {asked > 0 && (
-            <Tooltip label={`This session: ${asked} question${asked === 1 ? '' : 's'} asked${engineMix ? ` · engines: ${engineMix}` : ''}`}>
+            <Tooltip label={`${asked === 1 ? t('copilot.stats.tooltipOne') : t('copilot.stats.tooltipMany', { n: asked })}${engineMix ? ` · ${t('copilot.stats.engines', { mix: engineMix })}` : ''}`}>
               <span className="num hidden md:inline-flex items-center px-1 text-[10px] text-muted whitespace-nowrap">
-                {asked} Q{avgMs !== null ? ` · avg ${latencyLabel(avgMs)}` : ''}
+                {t('copilot.stats.count', { n: asked })}
+                {avgMs !== null ? ` · ${t('copilot.stats.avg', { t: latencyLabel(avgMs) })}` : ''}
               </span>
             </Tooltip>
           )}
           <EngineBadge engine={lastEngine} />
-          <Tooltip label="Browse, re-ask, pin or prune every question you've asked">
-            <button type="button" className="btn-ghost !px-2 !text-xs min-h-[40px]" onClick={() => setHistoryOpen(true)} aria-label="Open question history">
+          <Tooltip label={t('copilot.history.tooltip')}>
+            <button type="button" className="btn-ghost !px-2 !text-xs min-h-[40px]" onClick={() => setHistoryOpen(true)} aria-label={t('copilot.history.open')}>
               <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true">
                 <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /><path d="M12 7v5l3.5 2" />
               </svg>
-              <span className="hidden sm:inline">History</span>
+              <span className="hidden sm:inline">{t('copilot.history.label')}</span>
             </button>
           </Tooltip>
           {messages.length > 0 && (
             <>
               <ExportMenu onExport={exportConversation} />
-              <Tooltip label="Start a new chat (the saved transcript is cleared; ↑ history is kept)">
-                <button type="button" className="btn-ghost !px-2 !text-xs min-h-[40px]" onClick={newChat} aria-label="Start a new chat">
+              <Tooltip label={t('copilot.newChat.tooltip')}>
+                <button type="button" className="btn-ghost !px-2 !text-xs min-h-[40px]" onClick={newChat} aria-label={t('copilot.newChat.aria')}>
                   <svg width="14" height="14" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                  <span className="hidden sm:inline">New chat</span>
+                  <span className="hidden sm:inline">{t('copilot.newChat.label')}</span>
                 </button>
               </Tooltip>
             </>
@@ -428,20 +431,30 @@ export default function Copilot() {
         </div>
       </div>
 
+      {/* The backend answers in English; say so rather than faking a translated
+          answer. Only shown when the UI is not already in English. */}
+      {lang !== 'en' && (
+        <p className="no-print mb-2 flex items-start gap-2 text-[11px] text-muted leading-relaxed">
+          <svg width="13" height="13" viewBox="0 0 24 24" {...ICON} className="text-primary shrink-0 mt-0.5" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" />
+          </svg>
+          <span>{t('copilot.note.englishAnswers')}</span>
+        </p>
+      )}
+
       {showDisclaimer && (
         <div className="no-print mb-3 flex items-start gap-2.5 rounded-xl border border-amber/40 bg-amber/5 px-3 py-2.5">
           <svg width="15" height="15" viewBox="0 0 24 24" {...ICON} className="text-amber shrink-0 mt-0.5" aria-hidden="true">
             <path d="M12 3 2.5 20h19L12 3Z" /><path d="M12 10v4m0 3h.01" />
           </svg>
           <p className="flex-1 text-xs text-muted leading-relaxed">
-            <strong className="text-amber">Decision support, not decisions.</strong>{' '}
-            Answers are generated from synthetic demo data by a parser/LLM pipeline and can be
-            imperfect — expand &ldquo;Show ZCQL&rdquo; under an answer to verify the underlying query before acting on it.
+            <strong className="text-amber">{t('copilot.disclaimer.strong')}</strong>{' '}
+            {t('copilot.disclaimer.body')}
           </p>
           <button
             type="button"
             onClick={dismissDisclaimer}
-            aria-label="Dismiss disclaimer"
+            aria-label={t('copilot.disclaimer.dismiss')}
             className="shrink-0 -m-2 grid place-items-center h-10 w-10 rounded-lg text-muted hover:text-ink transition-colors"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -457,8 +470,8 @@ export default function Copilot() {
             <div className="min-h-full flex flex-col items-center justify-center">
               <EmptyState
                 compact
-                title="Ask anything about Karnataka crime data"
-                message="Trends, comparisons, forecasts, risk, offenders — answered from the synthetic Data Store, with the generated ZCQL on show."
+                title={t('copilot.empty.title')}
+                message={t('copilot.empty.message')}
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 w-full max-w-2xl">
                 {emptySuggestions.map((q) => (
@@ -479,13 +492,13 @@ export default function Copilot() {
               {recent.length > 0 && (
                 <div className="mt-4 w-full max-w-2xl">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <p className="eyebrow">Recent questions</p>
+                    <p className="eyebrow">{t('copilot.empty.recent')}</p>
                     <button
                       type="button"
                       className="text-[11px] text-muted hover:text-signal transition-colors min-h-[40px] px-2 -my-2"
                       onClick={clearHistory}
                     >
-                      Clear history
+                      {t('copilot.empty.clearHistory')}
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -509,7 +522,7 @@ export default function Copilot() {
               role="log"
               aria-live="polite"
               aria-relevant="additions"
-              aria-label="Conversation with DAPPA"
+              aria-label={t('copilot.log.aria')}
               className="space-y-4"
             >
               {messages.map((m) => (
@@ -538,31 +551,31 @@ export default function Copilot() {
             type="button"
             onClick={jumpToLatest}
             className="no-print absolute bottom-3 right-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-grid bg-panel/95 backdrop-blur-sm px-3 min-h-[40px] text-[11px] text-muted shadow-lift hover:text-ink hover:border-primary/60 transition-colors"
-            aria-label="Jump to the latest message"
+            aria-label={t('copilot.jump.aria')}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" {...ICON} aria-hidden="true"><path d="M12 5v14m0 0 5-5m-5 5-5-5" /></svg>
-            Latest
+            {t('copilot.jump.label')}
           </button>
         )}
         </div>
         {/* screen-reader announcement for the visual typing indicator */}
-        <p className="sr-only" role="status">{copilot.isPending ? 'DAPPA is thinking' : ''}</p>
+        <p className="sr-only" role="status">{copilot.isPending ? t('copilot.status.thinking') : ''}</p>
 
         {/* suggestions + input */}
         <div className="no-print border-t border-grid p-3 space-y-2">
           {compare.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1 text-[11px] text-muted" role="status">
-              <span>{compare.length === 2 ? 'Two answers picked.' : 'Pick one more answer to compare.'}</span>
+              <span>{t(compare.length === 2 ? 'copilot.compare.twoPicked' : 'copilot.compare.pickOneMore')}</span>
               <button
                 type="button"
                 className="min-h-[40px] px-1.5 text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                 disabled={compare.length < 2}
                 onClick={() => setCompareOpen(true)}
               >
-                Open side-by-side
+                {t('copilot.compare.openSideBySide')}
               </button>
               <button type="button" className="min-h-[40px] px-1.5 hover:text-signal transition-colors" onClick={() => setCompare([])}>
-                Clear
+                {t('common.action.clear')}
               </button>
             </div>
           )}
@@ -577,11 +590,11 @@ export default function Copilot() {
           )}
           <form onSubmit={submit} className="flex items-center gap-2">
             {speech.supported && (
-              <Tooltip label={speech.listening ? 'Stop listening (Esc)' : 'Ask by voice (en-IN)'}>
+              <Tooltip label={t(speech.listening ? 'copilot.voice.stopTip' : 'copilot.voice.startTip')}>
                 <button
                   type="button"
                   onClick={() => (speech.listening ? speech.stop() : speech.start())}
-                  aria-label={speech.listening ? 'Stop voice input' : 'Start voice input'}
+                  aria-label={t(speech.listening ? 'copilot.voice.stopAria' : 'copilot.voice.startAria')}
                   aria-pressed={speech.listening}
                   className={`grid place-items-center h-10 w-10 shrink-0 rounded-lg border transition-colors ${
                     speech.listening
@@ -599,11 +612,11 @@ export default function Copilot() {
             <input
               ref={inputRef}
               className="input-dark flex-1 !py-2.5 min-w-0"
-              placeholder={speech.listening ? 'Listening…' : 'e.g. top 5 districts for vehicle theft this year'}
+              placeholder={t(speech.listening ? 'copilot.input.listening' : 'copilot.input.placeholder')}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onInputKeyDown}
-              aria-label="Ask DAPPA"
+              aria-label={t('copilot.input.aria')}
               autoFocus={FINE_POINTER}
             />
             <button
@@ -611,13 +624,13 @@ export default function Copilot() {
               className="btn-primary !py-2.5 min-h-[40px] disabled:opacity-50"
               disabled={copilot.isPending || !input.trim()}
             >
-              {copilot.isPending ? 'Thinking…' : 'Ask'}
+              {t(copilot.isPending ? 'copilot.send.pending' : 'copilot.send.label')}
             </button>
           </form>
           <p className="hidden sm:block text-[10px] text-muted/80 px-0.5">
-            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">/</kbd> focus ·{' '}
-            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">↑↓</kbd> history ·{' '}
-            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">Esc</kbd> stop voice / blur
+            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">/</kbd> {t('copilot.keys.focus')} ·{' '}
+            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">↑↓</kbd> {t('copilot.keys.history')} ·{' '}
+            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">Esc</kbd> {t('copilot.keys.stopVoice')}
           </p>
         </div>
       </section>

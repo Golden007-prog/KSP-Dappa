@@ -8,12 +8,15 @@ import { format, subDays, subMonths, startOfYear } from 'date-fns';
 /** Search-param keys that make up the shared filter state. */
 export const FILTER_KEYS = ['districtId', 'crimeHeadId', 'range', 'from', 'to'];
 
+/** `label` stays the English fallback (unchanged contract for existing
+ * callers); `key` is the `common` namespace key to feed t() where a translated
+ * label is wanted — `t(r.key)`. */
 export const DATE_RANGES = [
-  { value: 'all', label: 'All time' },
-  { value: '30d', label: 'Last 30 days' },
-  { value: '90d', label: 'Last 90 days' },
-  { value: '12m', label: 'Last 12 months' },
-  { value: 'ytd', label: 'Year to date' },
+  { value: 'all', label: 'All time', key: 'common.filter.allTime' },
+  { value: '30d', label: 'Last 30 days', key: 'common.filter.last30' },
+  { value: '90d', label: 'Last 90 days', key: 'common.filter.last90' },
+  { value: '12m', label: 'Last 12 months', key: 'common.filter.last12m' },
+  { value: 'ytd', label: 'Year to date', key: 'common.filter.yearToDate' },
 ];
 
 const ISO = 'yyyy-MM-dd';
@@ -45,24 +48,34 @@ export function filterSearchString(searchParams) {
  * Human-readable one-liner for a filter combo ('Mysuru City · Vehicle theft ·
  * Last 90 days'). `lookups` is the normalized useLookups() data (optional —
  * falls back to raw ids). Used by FilterBar saved views and PrintHeader.
+ *
+ * `i18n` is optional {t, tName} (from useI18n()); without it the summary stays
+ * English, so callers that predate the language switch keep working unchanged.
  */
-export function describeFilters({ districtId, crimeHeadId, range, from, to } = {}, lookups) {
+export function describeFilters({ districtId, crimeHeadId, range, from, to } = {}, lookups, i18n) {
+  const t = i18n?.t;
+  const tName = i18n?.tName;
   const parts = [];
   if (districtId) {
     const d = lookups?.districts?.find((x) => x.districtId === districtId);
-    parts.push(d?.districtName || `District ${districtId}`);
+    const raw = d?.districtName || (t ? t('shell.filter.districtN', { id: districtId }) : `District ${districtId}`);
+    parts.push(tName && d ? tName('districts', districtId, raw) : raw);
   }
   if (crimeHeadId) {
     const h = lookups?.crimeHeads?.find((x) => x.crimeHeadId === crimeHeadId);
-    parts.push(h?.headName || `Head ${crimeHeadId}`);
+    const raw = h?.headName || (t ? t('shell.filter.headN', { id: crimeHeadId }) : `Head ${crimeHeadId}`);
+    parts.push(tName && h ? tName('crimeHeads', crimeHeadId, raw) : raw);
   }
   if (from || to) {
     parts.push(`${from || '…'} → ${to || '…'}`);
   } else if (range && range !== 'all') {
     const r = DATE_RANGES.find((x) => x.value === range);
-    parts.push(r?.label || range);
+    parts.push((t && r ? t(r.key) : r?.label) || range);
   }
-  return parts.length ? parts.join(' · ') : 'All districts · All crime heads · All time';
+  if (parts.length) return parts.join(' · ');
+  return t
+    ? [t('common.filter.allDistricts'), t('common.filter.allCrimeHeads'), t('common.filter.allTime')].join(' · ')
+    : 'All districts · All crime heads · All time';
 }
 
 /**

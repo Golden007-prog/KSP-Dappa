@@ -4,6 +4,7 @@
 // so the second loop replays instantly. The speed button cycles 0.5× → 1× → 2×;
 // the loop button (desktop) picks wrap-around vs stop-at-last-month.
 import { monthLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 export const SCRUB_SPEEDS = [0.5, 1, 2];
 
@@ -32,8 +33,9 @@ export default function TimeScrubber({
   months, index, playing, loading, onIndexChange, onPlayToggle, speed = 1, onSpeedChange,
   loop = true, onLoopToggle, compact = false, totals = null,
 }) {
+  const t = useT();
   const disabled = !months.length;
-  const label = index > 0 && months[index - 1] ? monthLabel(months[index - 1]) : 'All months';
+  const label = index > 0 && months[index - 1] ? monthLabel(months[index - 1]) : t('geointel.scrub.allMonths');
   const cycleSpeed = () => {
     if (!onSpeedChange) return;
     const i = SCRUB_SPEEDS.indexOf(speed);
@@ -51,8 +53,8 @@ export default function TimeScrubber({
         className="btn gi-tap !px-2.5 !py-1.5 shrink-0"
         onClick={onPlayToggle}
         disabled={disabled}
-        aria-label={playing ? 'Pause month animation' : 'Animate heat layer month by month'}
-        title={playing ? 'Pause' : 'Animate months'}
+        aria-label={playing ? t('geointel.scrub.pauseAria') : t('geointel.scrub.playAria')}
+        title={playing ? t('geointel.scrub.pause') : t('geointel.scrub.play')}
       >
         {playing ? PauseIcon : PlayIcon}
       </button>
@@ -62,8 +64,8 @@ export default function TimeScrubber({
           className="btn gi-tap !px-2 !py-1.5 shrink-0 num text-[11px]"
           onClick={cycleSpeed}
           disabled={disabled}
-          aria-label={`Playback speed ${speed}x — click to change`}
-          title="Playback speed"
+          aria-label={t('geointel.scrub.speedAria', { speed })}
+          title={t('geointel.scrub.speed')}
         >
           {speed}×
         </button>
@@ -75,21 +77,21 @@ export default function TimeScrubber({
           onClick={onLoopToggle}
           disabled={disabled}
           aria-pressed={loop}
-          aria-label={loop ? 'Looping on — animation wraps to the first month' : 'Looping off — animation stops at the last month'}
-          title={loop ? 'Loop: on' : 'Loop: off (stops at last month)'}
+          aria-label={loop ? t('geointel.scrub.loopOnAria') : t('geointel.scrub.loopOffAria')}
+          title={loop ? t('geointel.scrub.loopOn') : t('geointel.scrub.loopOff')}
         >
           {LoopIcon}
         </button>
       )}
       <div className="flex-1 min-w-[7rem]">
         {showHisto && (
-          <div className="flex items-end gap-px h-3.5 mb-0.5" role="group" aria-label="Monthly case totals — click a bar to jump to that month">
+          <div className="flex items-end gap-px h-3.5 mb-0.5" role="group" aria-label={t('geointel.scrub.histAria')}>
             {months.map((m, i) => (
               <button
                 key={m}
                 type="button"
-                title={`${monthLabel(m)} — ${totals[i]} cases`}
-                aria-label={`Jump to ${monthLabel(m)} (${totals[i]} cases)`}
+                title={t('geointel.scrub.barTitle', { month: monthLabel(m), n: totals[i] })}
+                aria-label={t('geointel.scrub.barAria', { month: monthLabel(m), n: totals[i] })}
                 onClick={() => onIndexChange(i + 1)}
                 className={`flex-1 min-w-[2px] rounded-t-[1px] transition-colors ${
                   index === i + 1 ? 'bg-amber' : 'bg-grid hover:bg-amber/60'
@@ -108,11 +110,11 @@ export default function TimeScrubber({
           disabled={disabled}
           onChange={(e) => onIndexChange(Number(e.target.value))}
           className="w-full geointel-range cursor-pointer disabled:cursor-not-allowed"
-          aria-label="Heat-layer month"
+          aria-label={t('geointel.scrub.monthAria')}
           aria-valuetext={label}
         />
         <div className="flex justify-between text-[9px] text-muted leading-none">
-          <span>All</span>
+          <span>{t('geointel.scrub.all')}</span>
           {months.length > 0 && (
             <span className="num">{monthLabel(months[0])} – {monthLabel(months[months.length - 1])}</span>
           )}
@@ -121,9 +123,9 @@ export default function TimeScrubber({
       <div className="w-20 text-right shrink-0">
         <p className="num text-xs font-semibold text-ink leading-tight">{label}</p>
         <p className="text-[9px] text-muted leading-tight num">
-          {disabled ? 'no monthly data'
-            : loading ? 'loading…'
-              : index > 0 ? `month ${index}/${months.length}` : 'incident heat'}
+          {disabled ? t('geointel.scrub.noData')
+            : loading ? t('geointel.scrub.loading')
+              : index > 0 ? t('geointel.scrub.monthOf', { i: index, n: months.length }) : t('geointel.scrub.incidentHeat')}
         </p>
       </div>
     </div>

@@ -6,10 +6,12 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useFocusTrap, useScrollLock } from '../lib/modal.js';
+import { useT } from '../lib/i18n.jsx';
 
 export default function Sheet({ open, onClose, title, children, className = '' }) {
   const panelRef = useRef(null);
   const restoreRef = useRef(null);
+  const t = useT();
 
   useScrollLock(open);
   useFocusTrap(open, panelRef);
@@ -36,7 +38,7 @@ export default function Sheet({ open, onClose, title, children, className = '' }
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label={title || 'Sheet'}
+        aria-label={title || t('shell.sheet.aria')}
         className={`absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-grid
           bg-panel shadow-lift pb-safe animate-sheet-up focus:outline-none
           md:inset-x-auto md:right-8 md:bottom-8 md:w-[26rem] md:rounded-2xl md:border ${className}`}
@@ -48,7 +50,7 @@ export default function Sheet({ open, onClose, title, children, className = '' }
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={t('common.action.close')}
               className="flex h-11 w-11 -mr-2 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>

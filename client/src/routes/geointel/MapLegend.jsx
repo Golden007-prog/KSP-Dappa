@@ -5,12 +5,15 @@
 // route). LegendBar composes all three into the collapsible desktop pill.
 import PulseDot from '../../components/PulseDot.jsx';
 import { legendGradient } from './utils.js';
+import { useT } from '../../lib/i18n.jsx';
 
+// label/legend are translation keys; the chip labels stay abbreviation-short
+// in every script so the four chips fit one row at 360px.
 export const CHORO_METRICS = [
-  { key: 'cases', label: 'Cases', legend: 'case density' },
-  { key: 'rate', label: '/lakh', legend: 'cases per lakh' },
-  { key: 'mom', label: 'MoM', legend: 'MoM change', diverging: true },
-  { key: 'risk', label: 'Risk', legend: 'mean station risk' },
+  { key: 'cases', label: 'geointel.metric.cases', legend: 'geointel.metric.casesLegend' },
+  { key: 'rate', label: 'geointel.metric.rate', legend: 'geointel.metric.rateLegend' },
+  { key: 'mom', label: 'geointel.metric.mom', legend: 'geointel.metric.momLegend', diverging: true },
+  { key: 'risk', label: 'geointel.metric.risk', legend: 'geointel.metric.riskLegend' },
 ];
 
 export function metricDef(key) {
@@ -18,7 +21,9 @@ export function metricDef(key) {
 }
 
 export function LegendItems({ light = false, metricKey = 'cases' }) {
+  const t = useT();
   const m = metricDef(metricKey);
+  const legend = t(m.legend);
   return (
     <>
       <span className="flex items-center gap-1.5">
@@ -27,35 +32,36 @@ export function LegendItems({ light = false, metricKey = 'cases' }) {
           style={{ background: legendGradient(!!m.diverging, light) }}
           aria-hidden="true"
         />
-        {m.diverging ? `${m.legend} (down → up)` : m.legend}
+        {m.diverging ? t('geointel.metric.diverging', { legend }) : legend}
       </span>
-      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal" aria-hidden="true" /> low-risk station</span>
-      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-signal" aria-hidden="true" /> high-risk station</span>
-      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber" aria-hidden="true" /> commissionerate</span>
-      <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-teal" aria-hidden="true" /> incident point (zoom 12+)</span>
-      <span className="flex items-center gap-1.5"><PulseDot /> anomaly district</span>
-      <span className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-amber" aria-hidden="true" /> patrol route</span>
-      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-signal/70" aria-hidden="true" /> high-risk halo (≥70)</span>
+      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal" aria-hidden="true" /> {t('geointel.legend.lowRiskStation')}</span>
+      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-signal" aria-hidden="true" /> {t('geointel.legend.highRiskStation')}</span>
+      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber" aria-hidden="true" /> {t('geointel.legend.commissionerate')}</span>
+      <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-teal" aria-hidden="true" /> {t('geointel.legend.incidentPoint')}</span>
+      <span className="flex items-center gap-1.5"><PulseDot /> {t('geointel.legend.anomalyDistrict')}</span>
+      <span className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-amber" aria-hidden="true" /> {t('geointel.legend.patrolRoute')}</span>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-signal/70" aria-hidden="true" /> {t('geointel.legend.riskHalo')}</span>
     </>
   );
 }
 
 export function MetricChips({ value, onChange, className = '' }) {
+  const t = useT();
   return (
-    <div role="group" aria-label="Choropleth metric" className={`flex items-center gap-1 ${className}`}>
-      <span className="text-[10px] uppercase tracking-wider text-muted mr-0.5 shrink-0">Metric</span>
+    <div role="group" aria-label={t('geointel.metric.aria')} className={`flex items-center gap-1 ${className}`}>
+      <span className="text-[10px] uppercase tracking-wider text-muted mr-0.5 shrink-0">{t('geointel.metric.label')}</span>
       {CHORO_METRICS.map((m) => (
         <button
           key={m.key}
           type="button"
           aria-pressed={value === m.key}
-          title={m.legend}
+          title={t(m.legend)}
           onClick={() => onChange(m.key)}
           className={`chip gi-tap shrink-0 text-[11px] transition-colors ${
             value === m.key ? '!border-primary/60 !text-primary !bg-primary/10' : 'text-muted hover:text-ink'
           }`}
         >
-          {m.label}
+          {t(m.label)}
         </button>
       ))}
     </div>
@@ -63,10 +69,11 @@ export function MetricChips({ value, onChange, className = '' }) {
 }
 
 export function OpacityControls({ choroOpacity, heatOpacity, onChoroOpacity, onHeatOpacity, className = '' }) {
+  const t = useT();
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       <label className="flex items-center gap-1.5 text-[10px] text-muted">
-        <span className="shrink-0">Choro</span>
+        <span className="shrink-0">{t('geointel.opacity.choro')}</span>
         <input
           type="range"
           min={10}
@@ -75,12 +82,12 @@ export function OpacityControls({ choroOpacity, heatOpacity, onChoroOpacity, onH
           value={Math.round(choroOpacity * 100)}
           onChange={(e) => onChoroOpacity(Number(e.target.value) / 100)}
           className="w-16 geointel-range cursor-pointer"
-          aria-label="Choropleth opacity"
-          aria-valuetext={`${Math.round(choroOpacity * 100)} percent`}
+          aria-label={t('geointel.opacity.choroAria')}
+          aria-valuetext={t('geointel.opacity.valueText', { n: Math.round(choroOpacity * 100) })}
         />
       </label>
       <label className="flex items-center gap-1.5 text-[10px] text-muted">
-        <span className="shrink-0">Heat</span>
+        <span className="shrink-0">{t('geointel.opacity.heat')}</span>
         <input
           type="range"
           min={20}
@@ -89,8 +96,8 @@ export function OpacityControls({ choroOpacity, heatOpacity, onChoroOpacity, onH
           value={Math.round(heatOpacity * 100)}
           onChange={(e) => onHeatOpacity(Number(e.target.value) / 100)}
           className="w-16 geointel-range cursor-pointer"
-          aria-label="Heat layer opacity"
-          aria-valuetext={`${Math.round(heatOpacity * 100)} percent`}
+          aria-label={t('geointel.opacity.heatAria')}
+          aria-valuetext={t('geointel.opacity.valueText', { n: Math.round(heatOpacity * 100) })}
         />
       </label>
     </div>
@@ -101,13 +108,14 @@ export default function LegendBar({
   light, metricKey, onMetric, open, onToggle,
   choroOpacity, heatOpacity, onChoroOpacity, onHeatOpacity,
 }) {
+  const t = useT();
   return (
     <div className="pointer-events-auto flex items-center gap-3 bg-panel/95 border border-grid rounded-xl px-3 py-1.5 shadow-lg text-[10px] text-muted max-w-full">
       <button
         type="button"
         className="gi-noprint shrink-0 flex items-center gap-1 text-muted hover:text-ink transition-colors"
         aria-expanded={open}
-        aria-label={open ? 'Collapse legend' : 'Expand legend'}
+        aria-label={open ? t('geointel.legend.collapse') : t('geointel.legend.expand')}
         onClick={onToggle}
       >
         <svg
@@ -123,7 +131,7 @@ export default function LegendBar({
         >
           <path d="m6 9 6 6 6-6" />
         </svg>
-        Legend
+        {t('geointel.legend.label')}
       </button>
       {open && (
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">

@@ -2,13 +2,18 @@
 // useBriefData queries the sections render (select.js keeps the data choices
 // identical), plus the officer-edited override persisted in localStorage.
 // The composed text degrades gracefully: any section that hasn't loaded (or
-// errored) simply contributes no sentence.
+// errored) simply contributes no sentence. Every sentence is a translated
+// template so the printed brief reads natively in all three languages.
 import { fmtInt, fmtNum, dateLabel, monthLabel } from '../../lib/format.js';
+import { translate } from '../../lib/i18n.jsx';
 import {
-  sevRank, selectOpenAlerts, selectTopHotspots, selectForecastRows, selectRiskRows,
+  sevRank, selectOpenAlerts, selectTopHotspots, selectForecastRows, selectRiskRows, hotspotLabel,
 } from './select.js';
 
 const KEY = 'dappa-brief-exec';
+
+const en = (key, vars) => translate('en', key, vars);
+const passThrough = (_kind, _id, fallback) => fallback || '';
 
 export function loadExecOverride() {
   try { return localStorage.getItem(KEY) || ''; } catch { return ''; }
@@ -27,25 +32,30 @@ export const wordCount = (t) => (String(t || '').trim().match(/\S+/g) || []).len
 
 const hourFmt = (h) => (Number.isFinite(Number(h)) ? `${String(Number(h)).padStart(2, '0')}:00` : '—');
 
-export function composeExecutiveSummary(brief) {
+export function composeExecutiveSummary(brief, t = en, tName = passThrough) {
   const parts = [];
   const { win } = brief;
   const k = brief.kpis.data || {};
   const pk = brief.prevKpis?.data || {};
 
   if (Number.isFinite(Number(k.totalFirs))) {
-    let s = `${fmtInt(k.totalFirs)} FIRs were registered in the ${win.days}-day window ${dateLabel(win.from)} – ${dateLabel(win.to)}`;
+    let s = t('alerts.exec.firs', {
+      n: fmtInt(k.totalFirs), days: win.days, from: dateLabel(win.from), to: dateLabel(win.to),
+    });
     const c = Number(k.totalFirs);
     const p = Number(pk.totalFirs);
     if (Number.isFinite(p) && p > 0) {
       const pct = ((c - p) / p) * 100;
       s += Math.abs(pct) < 0.5
-        ? `, level with the preceding ${win.days} days`
-        : `, ${pct > 0 ? 'up' : 'down'} ${Math.abs(pct).toFixed(1)}% on the preceding ${win.days} days`;
+        ? t('alerts.exec.level', { days: win.days })
+        : t(pct > 0 ? 'alerts.exec.up' : 'alerts.exec.down', {
+          pct: Math.abs(pct).toFixed(1), days: win.days,
+        });
     }
     const det = Number(k.detectionRate);
-    if (Number.isFinite(det)) s += `; the detection rate stands at ${det.toFixed(1)}%`;
-    parts.push(`${s}.`);
+    if (Number.isFinite(det)) s += t('alerts.exec.detection', { pct: det.toFixed(1) });
+    // Sentence terminator is per-language: '.' in English/Kannada, danda in Hindi.
+    parts.push(`${s}${t('alerts.exec.stop')}`);
   }
 
   const alerts = selectOpenAlerts(brief, Infinity);
@@ -53,20 +63,33 @@ export function composeExecutiveSummary(brief) {
     const hot = alerts.filter((a) => sevRank(a.severity) >= 3).length;
     const top = alerts[0];
     parts.push(
-      `${fmtInt(alerts.length)} anomaly alert${alerts.length === 1 ? ' is' : 's are'} open`
-      + `${hot ? ` (${fmtInt(hot)} high or critical)` : ''}; the sharpest deviation is `
-      + `${top.headName || 'an anomaly'} in ${top.districtName || top.districtId || 'an unresolved district'} `
-      + `at z ${fmtNum(top.zScore, 1)} (${fmtInt(top.observed)} observed vs ${fmtInt(top.expected)} expected).`,
+      t(alerts.length === 1 ? 'alerts.exec.alerts.one' : 'alerts.exec.alerts.other', { n: fmtInt(alerts.length) })
+      + (hot ? t('alerts.exec.alertsHot', { n: fmtInt(hot) }) : '')
+      + t('alerts.exec.sharpest', {
+        head: tName('crimeHeads', top.crimeHeadId, top.headName) || t('alerts.exec.anAnomaly'),
+        district: tName('districts', top.districtId, top.districtName || top.districtId)
+          || t('alerts.exec.unresolvedDistrict'),
+        z: fmtNum(top.zScore, 1),
+        obs: fmtInt(top.observed),
+        exp: fmtInt(top.expected),
+      }),
     );
   }
 
   const hs = selectTopHotspots(brief, 1)[0];
   if (hs) {
-    parts.push(
-      `Spatiotemporal clustering ranks ${hs.label || `cluster ${hs.clusterId}`}`
-      + `${hs.subHeadName ? ` (${hs.subHeadName})` : ''} as the leading hotspot with `
-      + `${fmtInt(hs.caseCount)} cases concentrated in the ${hourFmt(hs.hourBandStart)}–${hourFmt(hs.hourBandEnd)} band.`,
-    );
+    const sub = tName('crimeHeads', hs.crimeHeadId, hs.subHeadName);
+    // Non-empty only when tName resolved a translated head, i.e. hotspotLabel
+    // composed the label and already names the crime head — so the English
+    // parenthetical is kept and the kn/hi duplicate is dropped.
+    const composedHead = tName('crimeHeads', hs.crimeHeadId, '');
+    parts.push(t('alerts.exec.hotspot', {
+      label: hotspotLabel(hs, t, tName),
+      sub: sub && !composedHead ? t('alerts.exec.hotspotSub', { sub }) : '',
+      n: fmtInt(hs.caseCount),
+      from: hourFmt(hs.hourBandStart),
+      to: hourFmt(hs.hourBandEnd),
+    }));
   }
 
   const nodes = brief.network.data?.nodes || [];
@@ -79,21 +102,24 @@ export function composeExecutiveSummary(brief) {
       largest = Math.max(largest, groups.get(id));
     }
     if (largest > 1) {
-      parts.push(
-        `Link analysis resolves ${fmtInt(nodes.length)} offenders into ${fmtInt(groups.size)} co-offending groups; `
-        + `the largest counts ${fmtInt(largest)} members.`,
-      );
+      parts.push(t('alerts.exec.network', {
+        n: fmtInt(nodes.length), g: fmtInt(groups.size), m: fmtInt(largest),
+      }));
     }
   }
 
   const f = selectForecastRows(brief, 1)[0];
   const r = selectRiskRows(brief, 1)[0];
   if (f) {
-    parts.push(
-      `The forecast projects ≈${fmtInt(f.predicted)} FIRs for ${monthLabel(f.ym)} `
-      + `(interval ${fmtInt(f.lo)}–${fmtInt(f.hi)})`
-      + `${r ? `, and ${r.unitName || r.unitId} carries the highest 30-day station risk (${fmtNum(r.riskScore, 2)})` : ''}.`,
-    );
+    parts.push(t('alerts.exec.forecast', {
+      n: fmtInt(f.predicted),
+      month: monthLabel(f.ym),
+      lo: fmtInt(f.lo),
+      hi: fmtInt(f.hi),
+      risk: r
+        ? t('alerts.exec.forecastRisk', { station: r.unitName || r.unitId, score: fmtNum(r.riskScore, 2) })
+        : '',
+    }));
   }
 
   return parts.join(' ');

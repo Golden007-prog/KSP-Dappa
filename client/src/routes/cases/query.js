@@ -24,6 +24,13 @@ const FIELD_LABELS = {
   headName: 'head', subHeadName: 'subhead', statusName: 'status', gravityName: 'gravity',
 };
 
+const FIELD_LABEL_KEYS = {
+  crimeNo: 'cases.query.field.crimeNo', caseNo: 'cases.query.field.caseNo',
+  districtName: 'cases.query.field.district', unitName: 'cases.query.field.station',
+  headName: 'cases.query.field.head', subHeadName: 'cases.query.field.subHead',
+  statusName: 'cases.query.field.status', gravityName: 'cases.query.field.gravity',
+};
+
 /**
  * parseQuery('head:theft|robbery -attempt #123') →
  * { tokens:[{key,neg,alts:[..]}], advanced, highlight:[..lowercased], jumpId }
@@ -82,14 +89,20 @@ export function buildQueryMatcher(parsed) {
   };
 }
 
-/** Human chips for how an advanced query was interpreted. */
-export function describeTokens(parsed) {
+/** Human chips for how an advanced query was interpreted. `t` is optional —
+ * without it the chips stay English (callers outside the language provider). */
+export function describeTokens(parsed, t = null) {
+  const say = (key, fallback) => (t ? t(key) : fallback);
   return (parsed?.tokens || []).map((tok) => {
-    const scope = tok.key === '#' ? 'case id' : tok.key ? FIELD_LABELS[tok.key] || tok.key : null;
-    const value = tok.alts.join(' or ');
+    const scope = tok.key === '#'
+      ? say('cases.query.field.caseId', 'case id')
+      : tok.key
+        ? (FIELD_LABEL_KEYS[tok.key] ? say(FIELD_LABEL_KEYS[tok.key], FIELD_LABELS[tok.key]) : tok.key)
+        : null;
+    const value = tok.alts.join(say('cases.query.or', ' or '));
     return {
       neg: !!tok.neg,
-      label: `${tok.neg ? 'NOT ' : ''}${scope ? `${scope}: ` : ''}${value}`,
+      label: `${tok.neg ? say('cases.query.not', 'NOT ') : ''}${scope ? `${scope}: ` : ''}${value}`,
     };
   });
 }

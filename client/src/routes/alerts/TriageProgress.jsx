@@ -3,8 +3,10 @@
 // slate = snoozed, amber = read-but-still-open; the empty track is untouched.
 import Tooltip from '../../components/Tooltip.jsx';
 import { fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 export default function TriageProgress({ rows, readIds, snoozes, isAcked, className = '' }) {
+  const t = useT();
   const total = rows.length;
   if (!total) return null;
   const now = Date.now();
@@ -23,17 +25,19 @@ export default function TriageProgress({ rows, readIds, snoozes, isAcked, classN
     n > 0 ? <div key={key} className={cls} style={{ width: `${(n / total) * 100}%` }} /> : null;
   return (
     <Tooltip
-      label={`${fmtInt(ack)} acknowledged · ${fmtInt(sno)} snoozed · ${fmtInt(read)} read but open · ${fmtInt(total - done)} untouched`}
+      label={t('alerts.progress.tip', {
+        ack: fmtInt(ack), snoozed: fmtInt(sno), read: fmtInt(read), untouched: fmtInt(total - done),
+      })}
       className={`w-full ${className}`}
     >
       <div
         className="w-full cursor-default rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         tabIndex={0}
-        aria-label={`Triage progress: ${done} of ${total} listed alerts handled (${pct}%)`}
+        aria-label={t('alerts.progress.aria', { done, total, pct })}
       >
         <div className="flex items-center justify-between text-[10px] text-muted">
-          <span className="font-semibold uppercase tracking-wider">Triage progress</span>
-          <span className="num">{fmtInt(done)}/{fmtInt(total)} handled · {pct}%</span>
+          <span className="font-semibold uppercase tracking-wider">{t('alerts.progress.label')}</span>
+          <span className="num">{t('alerts.progress.handled', { done: fmtInt(done), total: fmtInt(total), pct })}</span>
         </div>
         <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-grid/50" aria-hidden="true">
           {seg(ack, 'bg-teal', 'ack')}

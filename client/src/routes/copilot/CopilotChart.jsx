@@ -12,6 +12,7 @@ import * as echarts from 'echarts';
 import { DAPPA_CHART_COLORS, DAPPA_CHART_COLORS_LIGHT } from '../../components/ChartPanel.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 import { chartToCsv, downloadTextFile } from './transcript.js';
 
 const MONTHISH = /^\d{4}-\d{2}$|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i;
@@ -65,6 +66,7 @@ function buildOption(chart, type, light) {
 export default function CopilotChart({ chart }) {
   const chartRef = useRef(null);
   const toast = useToast();
+  const t = useT();
   const { theme } = useTheme();
   const light = theme === 'light';
   const [typeOverride, setTypeOverride] = useState(null);
@@ -96,20 +98,20 @@ export default function CopilotChart({ chart }) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      toast.success('Chart downloaded as PNG');
+      toast.success(t('copilot.chart.pngDone'));
     } catch {
-      toast.error('Chart export failed in this browser.');
+      toast.error(t('copilot.chart.pngFailed'));
     }
   };
 
   const exportCsv = () => {
     const csv = chartToCsv(chart);
     if (!csv) {
-      toast.error('Nothing tabular to export for this chart.');
+      toast.error(t('copilot.chart.csvEmpty'));
       return;
     }
     downloadTextFile(`dappa-chart-${slug}.csv`, csv, 'text/csv;charset=utf-8');
-    toast.success('Chart data downloaded as CSV');
+    toast.success(t('copilot.chart.csvDone'));
   };
 
   const fmtCell = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-IN'));
@@ -119,18 +121,18 @@ export default function CopilotChart({ chart }) {
       <div className="flex flex-wrap items-center gap-x-1 gap-y-0 px-1">
         <p className="flex-1 min-w-[8rem] text-[11px] text-muted truncate">{chart.title || ''}</p>
         {baseType !== 'pie' && (
-          <div className="no-print inline-flex rounded-lg border border-grid overflow-hidden" role="group" aria-label="Chart type">
-            {['bar', 'line'].map((t) => (
+          <div className="no-print inline-flex rounded-lg border border-grid overflow-hidden" role="group" aria-label={t('copilot.chart.typeGroup')}>
+            {['bar', 'line'].map((kind) => (
               <button
-                key={t}
+                key={kind}
                 type="button"
-                aria-pressed={type === t}
-                onClick={() => setTypeOverride(t === baseType ? null : t)}
+                aria-pressed={type === kind}
+                onClick={() => setTypeOverride(kind === baseType ? null : kind)}
                 className={`inline-flex items-center min-h-[40px] px-2 text-[10px] uppercase tracking-wide transition-colors ${
-                  type === t ? 'bg-amber/15 text-amber' : 'text-muted hover:text-ink'
+                  type === kind ? 'bg-amber/15 text-amber' : 'text-muted hover:text-ink'
                 }`}
               >
-                {t}
+                {t(`copilot.chart.${kind}`)}
               </button>
             ))}
           </div>
@@ -140,15 +142,15 @@ export default function CopilotChart({ chart }) {
           className={`no-print ${CTRL} ${showTable ? 'text-amber' : 'text-muted hover:text-primary'}`}
           onClick={() => setShowTable((v) => !v)}
           aria-expanded={showTable}
-          aria-label={showTable ? 'Hide data table' : 'Show data table'}
+          aria-label={t(showTable ? 'copilot.chart.hideTable' : 'copilot.chart.showTable')}
         >
-          Table
+          {t('copilot.chart.table')}
         </button>
         <button
           type="button"
           className={`no-print ${CTRL} text-muted hover:text-primary`}
           onClick={exportCsv}
-          aria-label="Download chart data as CSV"
+          aria-label={t('copilot.chart.csvAria')}
         >
           CSV ↓
         </button>
@@ -156,7 +158,7 @@ export default function CopilotChart({ chart }) {
           type="button"
           className={`no-print ${CTRL} text-muted hover:text-primary`}
           onClick={exportPng}
-          aria-label="Download chart as PNG"
+          aria-label={t('copilot.chart.pngAria')}
         >
           PNG ↓
         </button>
@@ -174,13 +176,13 @@ export default function CopilotChart({ chart }) {
       {showTable && (
         <div className="mt-1 overflow-x-auto rounded-lg border border-grid/60">
           <table className="w-full text-[11px]">
-            <caption className="sr-only">{chart.title || 'Answer chart data'}</caption>
+            <caption className="sr-only">{chart.title || t('copilot.chart.caption')}</caption>
             <thead>
               <tr className="bg-panel/60">
-                <th scope="col" className="text-left font-medium text-muted px-2.5 py-1.5 border-b border-grid">Category</th>
+                <th scope="col" className="text-left font-medium text-muted px-2.5 py-1.5 border-b border-grid">{t('copilot.chart.category')}</th>
                 {series.map((s, i) => (
                   <th key={i} scope="col" className="text-right font-medium text-muted px-2.5 py-1.5 border-b border-grid whitespace-nowrap">
-                    {s.name || `Series ${i + 1}`}
+                    {s.name || t('copilot.chart.series', { n: i + 1 })}
                   </th>
                 ))}
               </tr>
@@ -201,7 +203,7 @@ export default function CopilotChart({ chart }) {
       {monthly && (
         <div className="no-print mt-1 px-1">
           <Link to="/trends" className="inline-flex items-center min-h-[40px] text-[11px] text-primary hover:underline">
-            Explore this series in Trends →
+            {t('copilot.chart.exploreTrends')}
           </Link>
         </div>
       )}

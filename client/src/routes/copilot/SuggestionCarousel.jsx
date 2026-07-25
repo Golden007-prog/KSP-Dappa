@@ -3,6 +3,7 @@
 // from a user bubble or the chip's star) render first in amber; chips and the
 // sm+ nudge arrows are all ≥40px touch targets. Touch-scrolls on mobile.
 import { useRef } from 'react';
+import { useT } from '../../lib/i18n.jsx';
 
 const Arrow = ({ dir }) => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -17,6 +18,7 @@ const Star = ({ filled }) => (
 );
 
 export default function SuggestionCarousel({ questions = [], pinned = [], onPick, onTogglePin, disabled = false }) {
+  const t = useT();
   const trackRef = useRef(null);
   const nudge = (dir) => trackRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
 
@@ -26,7 +28,7 @@ export default function SuggestionCarousel({ questions = [], pinned = [], onPick
     <div className="flex items-center gap-1">
       <button
         type="button"
-        aria-label="Scroll suggestions left"
+        aria-label={t('copilot.carousel.left')}
         className="hidden sm:grid place-items-center h-10 w-10 shrink-0 rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
         onClick={() => nudge(-1)}
       >
@@ -36,7 +38,7 @@ export default function SuggestionCarousel({ questions = [], pinned = [], onPick
         ref={trackRef}
         className="flex-1 flex gap-1.5 overflow-x-auto no-scrollbar"
         role="group"
-        aria-label="Suggested questions"
+        aria-label={t('copilot.carousel.aria')}
       >
         {items.map((q) => {
           const isPinned = pinned.includes(q);
@@ -65,7 +67,7 @@ export default function SuggestionCarousel({ questions = [], pinned = [], onPick
                   }`}
                   onClick={() => onTogglePin(q)}
                   aria-pressed={isPinned}
-                  aria-label={isPinned ? `Unpin question: ${q}` : `Pin question: ${q}`}
+                  aria-label={t(isPinned ? 'copilot.pin.unpinQuestionAria' : 'copilot.pin.pinQuestionAria', { q })}
                 >
                   <Star filled={isPinned} />
                 </button>
@@ -76,7 +78,7 @@ export default function SuggestionCarousel({ questions = [], pinned = [], onPick
       </div>
       <button
         type="button"
-        aria-label="Scroll suggestions right"
+        aria-label={t('copilot.carousel.right')}
         className="hidden sm:grid place-items-center h-10 w-10 shrink-0 rounded-lg text-muted hover:text-ink hover:bg-grid/40 transition-colors"
         onClick={() => nudge(1)}
       >

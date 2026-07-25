@@ -6,47 +6,58 @@
 // transcript exporters.
 
 /** Data dictionary for every table the copilot's ZCQL can touch. `route` is
- * the app screen where that table's data is explorable interactively. */
+ * the app screen where that table's data is explorable interactively.
+ * `desc`/`routeLabel` are the English source strings (used by the transcript
+ * exporters, which stay English); the UI reads t('copilot.table.<name>') and
+ * t(`common.${navKey}`) so the strip localises without a second dictionary. */
 export const TABLE_INFO = {
   AggMonthly: {
     desc: 'Nightly district × crime-head monthly aggregate distilled from CaseMaster (45k synthetic FIRs)',
     route: '/trends',
     routeLabel: 'Trends',
+    navKey: 'nav.trends',
   },
   StationRisk: {
     desc: 'Predictive 30-day station risk scores with per-station driver explanations',
     route: '/predict',
     routeLabel: 'Predict',
+    navKey: 'nav.predict',
   },
   ForecastMonthly: {
     desc: 'Holt-Winters monthly forecasts with 80% confidence intervals and backtest MAPE',
     route: '/predict',
     routeLabel: 'Predict',
+    navKey: 'nav.predict',
   },
   AnomalyAlert: {
     desc: 'Z-score anomaly alerts — categories spiking vs their historical baseline',
     route: '/alerts',
     routeLabel: 'Alerts',
+    navKey: 'nav.alerts',
   },
   HotspotCluster: {
     desc: 'DBSCAN spatial hotspot clusters from geocoded incident points',
     route: '/map',
     routeLabel: 'GeoIntel',
+    navKey: 'nav.geointel',
   },
   OffenderProfile: {
     desc: 'Identity-resolved repeat-offender profiles with linked-case counts and risk',
     route: '/offenders',
     routeLabel: 'Offenders',
+    navKey: 'nav.offenders',
   },
   ChargesheetDetails: {
     desc: 'Chargesheet outcomes (A/C finals) from the official ER schema',
     route: '/cases',
     routeLabel: 'Cases',
+    navKey: 'nav.cases',
   },
   Employee: {
     desc: 'Investigating-officer roster (official ER schema) — used only to scope by district',
     route: null,
     routeLabel: '',
+    navKey: '',
   },
 };
 

@@ -2,15 +2,20 @@
 // Honors the section toggles, custom section order, the executive-summary
 // override, and the classification stamp; data selection comes from select.js
 // (and exec.js / annex.js) so it always matches the preview and PDF.
+// Headings and table headers follow the active UI language.
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
+import { translate } from '../../lib/i18n.jsx';
 import {
   selectOpenAlerts, selectTopHotspots, selectCommunities,
-  selectForecastRows, selectRiskRows,
+  selectForecastRows, selectRiskRows, hotspotLabel,
 } from './select.js';
 import { DEFAULT_ORDER, normalizeOrder } from './briefSections.js';
 import { composeExecutiveSummary } from './exec.js';
 import { annexNotes } from './annex.js';
-import { CLASS_META, normalizeClass } from './classification.js';
+import { classMeta } from './classification.js';
+
+const enT = (key, vars) => translate('en', key, vars);
+const passThrough = (_kind, _id, fallback) => fallback || '';
 
 const esc = (v) => String(v ?? '—').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
@@ -23,48 +28,56 @@ function table(headers, aligns, rows) {
   ];
 }
 
-export function buildBriefMarkdown(brief, sections = {}, { order, preparedBy, execText, classification } = {}) {
-  const on = (k) => sections[k] !== false;
+export function buildBriefMarkdown(
+  brief,
+  sections = {},
+  { order, preparedBy, execText, classification, t = enT, tName = passThrough } = {},
+) {
+  const on = (key) => sections[key] !== false;
   const seq = (order ? normalizeOrder(order) : DEFAULT_ORDER).filter(on);
   const { win } = brief;
   const k = brief.kpis.data || {};
   const det = Number(k.detectionRate) <= 1 ? Number(k.detectionRate) * 100 : Number(k.detectionRate);
-  const classBanner = CLASS_META[normalizeClass(classification)]?.banner;
+  const classBanner = classMeta(classification, t).banner;
+  const h = (key) => `## ${t(`alerts.brief.h.${key}`)}`;
 
   const lines = [
-    '# Weekly Intelligence Brief',
+    `# ${t('alerts.brief.title')}`,
     '',
     ...(classBanner ? [`**${classBanner}**`, ''] : []),
-    'Karnataka State Police · DAPPA decision-support prototype',
+    t('alerts.brief.org'),
     '',
-    `- **Period:** ${dateLabel(win.from)} – ${dateLabel(win.to)} (${win.label})`,
-    `- **Generated:** ${dateLabel(new Date().toISOString().slice(0, 10))}`,
-    ...(preparedBy ? [`- **Prepared by:** ${esc(preparedBy)}`] : []),
+    `- ${t('alerts.md.period', { from: dateLabel(win.from), to: dateLabel(win.to), win: win.label })}`,
+    `- ${t('alerts.md.generated', { date: dateLabel(new Date().toISOString().slice(0, 10)) })}`,
+    ...(preparedBy ? [`- ${t('alerts.md.preparedBy', { who: esc(preparedBy) })}`] : []),
     '',
-    '> Synthetic demonstration data — KSP Datathon 2026 prototype. Not real crime records.',
+    `> ${t('alerts.brief.disclaimer')}`,
     '',
   ];
 
   const renderers = {
     exec: () => {
-      const text = (execText && String(execText).trim()) || composeExecutiveSummary(brief);
-      if (!text) return ['## Executive summary', '', '_Not enough loaded data to compose a summary._', ''];
-      return ['## Executive summary', '', text, ''];
+      const text = (execText && String(execText).trim()) || composeExecutiveSummary(brief, t, tName);
+      if (!text) return [h('exec'), '', t('alerts.md.execNotEnough'), ''];
+      return [h('exec'), '', text, ''];
     },
     annex: () => [
-      '## Annex — methodology notes',
+      h('annex'),
       '',
-      ...annexNotes(brief).map((n, i) => `${i + 1}. **${n.title}.** ${n.body}`),
+      ...annexNotes(brief, t).map((n, i) => `${i + 1}. **${n.title}.** ${n.body}`),
       '',
     ],
     kpis: () => {
-      if (!brief.kpis.data) return ['## Headline indicators', '', '_Section unavailable._', ''];
+      if (!brief.kpis.data) return [h('kpis'), '', t('alerts.md.sectionUnavailable'), ''];
       const mom = Number.isFinite(Number(k.momPct)) ? fmtPct(Number(k.momPct), { sign: true, fraction: false }) : '—';
       return [
-        '## Headline indicators',
+        h('kpis'),
         '',
         ...table(
-          ['Total FIRs', 'MoM change', 'Heinous cases', 'Detection rate', 'Active alerts'],
+          [
+            t('alerts.brief.kpi.totalFirs'), t('alerts.brief.kpi.mom'), t('alerts.brief.kpi.heinous'),
+            t('alerts.brief.kpi.detection'), t('alerts.brief.kpi.activeAlerts'),
+          ],
           ['r', 'r', 'r', 'r', 'r'],
           [[fmtInt(k.totalFirs), mom, fmtInt(k.heinousCount), Number.isFinite(det) ? `${det.toFixed(1)}%` : '—', fmtInt(k.activeAlerts)]],
         ),
@@ -73,33 +86,48 @@ export function buildBriefMarkdown(brief, sections = {}, { order, preparedBy, ex
     },
     alerts: () => {
       const rows = selectOpenAlerts(brief, 8);
-      if (!rows.length) return ['## New anomaly alerts', '', '_No open anomaly alerts in this window._', ''];
+      if (!rows.length) return [h('alerts'), '', `_${t('alerts.brief.empty.alerts')}_`, ''];
       return [
-        '## New anomaly alerts',
+        h('alerts'),
         '',
         ...table(
-          ['District', 'Crime head', 'Narrative', 'Obs / Exp', 'z', 'Severity'],
+          [
+            t('alerts.brief.col.district'), t('alerts.brief.col.crimeHead'), t('alerts.brief.col.narrative'),
+            t('alerts.brief.col.obsExp'), t('alerts.brief.col.z'), t('alerts.brief.col.severity'),
+          ],
           ['l', 'l', 'l', 'r', 'r', 'l'],
-          rows.map((a) => [
-            a.districtName || a.districtId, a.headName, a.narrative,
-            `${fmtInt(a.observed)} / ${fmtInt(a.expected)}`, fmtNum(a.zScore, 1), a.severity,
-          ]),
+          rows.map((a) => {
+            const sevKey = String(a.severity || '').toLowerCase();
+            return [
+              tName('districts', a.districtId, a.districtName || a.districtId),
+              tName('crimeHeads', a.crimeHeadId, a.headName),
+              a.narrative,
+              `${fmtInt(a.observed)} / ${fmtInt(a.expected)}`,
+              fmtNum(a.zScore, 1),
+              sevKey ? t(`alerts.sevLower.${sevKey}`) : '—',
+            ];
+          }),
         ),
         '',
       ];
     },
     hotspots: () => {
       const rows = selectTopHotspots(brief, 6);
-      if (!rows.length) return ['## Top hotspots', '', '_No hotspot clusters for this window._', ''];
+      if (!rows.length) return [h('hotspots'), '', `_${t('alerts.brief.empty.hotspots')}_`, ''];
       return [
-        '## Top hotspots',
+        h('hotspots'),
         '',
         ...table(
-          ['Hotspot', 'Crime subhead', 'District unit', 'Cases', 'Intensity'],
+          [
+            t('alerts.brief.col.hotspot'), t('alerts.brief.col.crimeSubhead'), t('alerts.brief.col.districtUnit'),
+            t('alerts.brief.col.cases'), t('alerts.brief.col.intensity'),
+          ],
           ['l', 'l', 'l', 'r', 'r'],
-          rows.map((h) => [
-            h.label || `Cluster ${h.clusterId}`, h.subHeadName, h.districtName || h.districtId,
-            fmtInt(h.caseCount), fmtNum(h.intensity, 2),
+          rows.map((x) => [
+            hotspotLabel(x, t, tName),
+            tName('crimeHeads', x.crimeHeadId, x.subHeadName),
+            tName('districts', x.districtId, x.districtName || x.districtId),
+            fmtInt(x.caseCount), fmtNum(x.intensity, 2),
           ]),
         ),
         '',
@@ -107,39 +135,41 @@ export function buildBriefMarkdown(brief, sections = {}, { order, preparedBy, ex
     },
     network: () => {
       const groups = selectCommunities(brief, 5);
-      if (!groups.length) return ['## Network changes', '', '_No network communities resolved._', ''];
+      if (!groups.length) return [h('network'), '', `_${t('alerts.brief.empty.network')}_`, ''];
       return [
-        '## Network changes — largest co-offending clusters',
+        h('network'),
         '',
         ...groups.map((g) =>
-          `- **Group #${g.id}** — ${fmtInt(g.members)} members · ${fmtInt(g.cases)} linked cases${g.top?.label ? ` · key node: ${esc(g.top.label)}` : ''}`),
+          `- **${t('alerts.brief.group', { id: g.id })}** — ${t('alerts.brief.members', { n: fmtInt(g.members) })} · ${t('alerts.brief.linkedCases', { n: fmtInt(g.cases) })}${g.top?.label ? ` · ${t('alerts.brief.keyNode', { label: esc(g.top.label) })}` : ''}`),
         '',
       ];
     },
     forecast: () => {
       const rows = selectForecastRows(brief, 3);
       const risk = selectRiskRows(brief, 5);
-      const out = ['## Forecast risks — next quarter', ''];
+      const out = [h('forecast'), ''];
       if (rows.length) {
         out.push(
           ...table(
-            ['Month', 'Predicted FIRs', 'Interval'],
+            [t('alerts.brief.col.month'), t('alerts.brief.col.predicted'), t('alerts.brief.col.interval')],
             ['l', 'r', 'r'],
             rows.map((f) => [monthLabel(f.ym), fmtInt(f.predicted), `${fmtInt(f.lo)} – ${fmtInt(f.hi)}`]),
           ),
           '',
-          `Model: ${brief.forecast.data?.model || '—'}${brief.forecast.data?.mape != null ? ` · backtest MAPE ${fmtNum(brief.forecast.data.mape, 1)}%` : ''}`,
+          t('alerts.brief.model', { model: brief.forecast.data?.model || '—' })
+            + (brief.forecast.data?.mape != null
+              ? t('alerts.brief.mape', { v: fmtNum(brief.forecast.data.mape, 1) }) : ''),
           '',
         );
       } else {
-        out.push('_No forecast available._', '');
+        out.push(`_${t('alerts.brief.empty.forecast')}_`, '');
       }
       if (risk.length) {
         out.push(
-          '**Highest-risk stations (30-day horizon):**',
+          t('alerts.md.riskHeading'),
           '',
           ...risk.map((s) =>
-            `- **${esc(s.unitName || s.unitId)}** — risk ${fmtNum(s.riskScore, 2)}${Array.isArray(s.drivers) && s.drivers.length ? ` · drivers: ${esc(s.drivers.slice(0, 3).join(', '))}` : ''}`),
+            `- **${esc(s.unitName || s.unitId)}** — ${t('alerts.brief.riskScore', { v: fmtNum(s.riskScore, 2) })}${Array.isArray(s.drivers) && s.drivers.length ? ` · ${t('alerts.brief.drivers', { list: esc(s.drivers.slice(0, 3).join(', ')) })}` : ''}`),
           '',
         );
       }
@@ -152,8 +182,8 @@ export function buildBriefMarkdown(brief, sections = {}, { order, preparedBy, ex
   lines.push(
     '---',
     '',
-    '_Generated by DAPPA — Data Analytics & Predictive Policing Assistant (Zoho Catalyst)._',
-    '_All figures derive from synthetic data · caste/religion are never used in analytics._',
+    `_${t('alerts.brief.footerLeft')}._`,
+    `_${t('alerts.brief.footerRight')}._`,
   );
   return lines.join('\n');
 }

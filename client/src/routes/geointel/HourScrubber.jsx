@@ -3,6 +3,7 @@
 // play loop that sweeps the full day. The parent dims the basemap during
 // night hours (19–06) and mirrors the hour to ?h= for shareable links.
 import { hourLabel } from './utils.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const PlayIcon = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -28,18 +29,26 @@ const MoonIcon = (
   </svg>
 );
 
-export function hourBucketLabel(hour) {
+/** Bucket key for an hour: night 22–06, day 06–17, evening 17–22. */
+export function hourBucketKey(hour) {
   const h = ((Math.round(Number(hour)) % 24) + 24) % 24;
-  if (h >= 22 || h < 6) return 'Night';
-  if (h < 17) return 'Day';
-  return 'Evening';
+  if (h >= 22 || h < 6) return 'night';
+  if (h < 17) return 'day';
+  return 'evening';
+}
+
+/** Translated bucket label; pass the `t` from useT() (falls back to the key). */
+export function hourBucketLabel(hour, t) {
+  const key = hourBucketKey(hour);
+  return t ? t(`geointel.bucket.${key}`) : key;
 }
 
 export default function HourScrubber({
   hour, onHourChange, playing, onPlayToggle, onExit, activeCount, totalCount, compact = false,
 }) {
+  const t = useT();
   const night = hour >= 19 || hour < 6;
-  const bucket = hourBucketLabel(hour);
+  const bucket = hourBucketLabel(hour, t);
   return (
     <div className={`flex items-center gap-2 max-w-full ${compact
       ? ''
@@ -49,12 +58,12 @@ export default function HourScrubber({
         type="button"
         className="btn gi-tap !px-2.5 !py-1.5 shrink-0"
         onClick={onPlayToggle}
-        aria-label={playing ? 'Pause the hour sweep' : 'Sweep hotspot activity across the 24-hour day'}
-        title={playing ? 'Pause hour sweep' : 'Play hour sweep'}
+        aria-label={playing ? t('geointel.hour.pauseAria') : t('geointel.hour.playAria')}
+        title={playing ? t('geointel.hour.pause') : t('geointel.hour.play')}
       >
         {playing ? PauseIcon : PlayIcon}
       </button>
-      <span className="shrink-0" title={night ? 'Night hours — basemap dimmed' : 'Daylight hours'} aria-hidden="true">
+      <span className="shrink-0" title={night ? t('geointel.hour.night') : t('geointel.hour.day')} aria-hidden="true">
         {night ? MoonIcon : SunIcon}
       </span>
       <input
@@ -65,7 +74,7 @@ export default function HourScrubber({
         value={hour}
         onChange={(e) => onHourChange(Number(e.target.value))}
         className="flex-1 min-w-[6rem] geointel-range cursor-pointer"
-        aria-label="Hour of day for the hotspot lens"
+        aria-label={t('geointel.hour.sliderAria')}
         aria-valuetext={`${hourLabel(hour)} · ${bucket}`}
       />
       <div className="w-24 text-right shrink-0">
@@ -73,15 +82,15 @@ export default function HourScrubber({
           {hourLabel(hour)}–{hourLabel((hour + 1) % 24)}
         </p>
         <p className="text-[9px] text-muted leading-tight">
-          {bucket} · <span className="num">{activeCount}/{totalCount}</span> active
+          {bucket} · {t('geointel.hour.active', { active: activeCount, total: totalCount })}
         </p>
       </div>
       <button
         type="button"
         className="btn-ghost gi-tap gi-tap-w !px-1.5 !py-1.5 shrink-0"
         onClick={onExit}
-        aria-label="Turn the hour lens off"
-        title="Hour lens off"
+        aria-label={t('geointel.hour.offAria')}
+        title={t('geointel.hour.off')}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
           strokeLinecap="round" aria-hidden="true">

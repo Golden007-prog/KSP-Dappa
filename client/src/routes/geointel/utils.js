@@ -63,11 +63,19 @@ export function riskColor(r) {
   return '#2DD4BF';
 }
 
-export function riskLabel(r) {
-  if (r === null) return 'No score';
-  if (r >= 0.7) return 'High risk';
-  if (r >= 0.4) return 'Medium risk';
-  return 'Low risk';
+/** Risk band as a translation-key suffix: none | high | medium | low. */
+export function riskLabelKey(r) {
+  if (r === null) return 'none';
+  if (r >= 0.7) return 'high';
+  if (r >= 0.4) return 'medium';
+  return 'low';
+}
+
+/** Translated risk band; pass the `t` from useT() (English when omitted). */
+export function riskLabel(r, t) {
+  const key = riskLabelKey(r);
+  if (t) return t(`geointel.risk.${key}`);
+  return { none: 'No score', high: 'High risk', medium: 'Medium risk', low: 'Low risk' }[key];
 }
 
 /** 22 → '22:00'. */
@@ -157,6 +165,16 @@ export function hourInBand(start, end, h) {
   const hh = ((Math.round(n) % 24) + 24) % 24;
   if (ss === ee) return true; // degenerate band = all day
   return ss < ee ? hh >= ss && hh < ee : hh >= ss || hh < ee;
+}
+
+/**
+ * Display name for a hotspot cluster. The server label ('Chain snatching
+ * cluster 4') is English-only, so in kn/hi we fall back to the translated
+ * crime-head name via tName — which returns `base` verbatim under English.
+ */
+export function hotspotName(h, tName, fallback = '') {
+  const base = (h && (h.label || h.subHeadName)) || fallback;
+  return tName ? tName('crimeHeads', h && h.crimeHeadId, base) : base;
 }
 
 /** Loose match rank for the locate box: 0 = substring, 1 = in-order

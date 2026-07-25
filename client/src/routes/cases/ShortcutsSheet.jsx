@@ -1,6 +1,7 @@
 // Keyboard shortcut reference for the Case Explorer + FIR detail, opened with
 // '?' or the keyboard icon in the results row.
 import Sheet from '../../components/Sheet.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 function Key({ children }) {
   return (
@@ -10,55 +11,58 @@ function Key({ children }) {
   );
 }
 
+// Key literals ('/', 'head:theft|robbery') are what the user actually types —
+// never translated. Only the descriptions are.
 const GROUPS = [
   {
-    title: 'Explorer',
+    titleKey: 'cases.shortcuts.groupExplorer',
     rows: [
-      [['/'], 'focus the search box'],
-      [['Esc'], 'clear the search, then blur it'],
-      [['e'], 'export the current filter as CSV'],
-      [['c'], 'open the compare sheet (2+ cases selected)'],
-      [['?'], 'this shortcut reference'],
-      [['Enter'], 'open the focused table row'],
+      [['/'], 'cases.shortcuts.focusSearch'],
+      [['Esc'], 'cases.shortcuts.clearSearch'],
+      [['e'], 'cases.shortcuts.export'],
+      [['c'], 'cases.shortcuts.compare'],
+      [['?'], 'cases.shortcuts.help'],
+      [['Enter'], 'cases.shortcuts.openRow'],
     ],
   },
   {
-    title: 'FIR detail',
+    titleKey: 'cases.shortcuts.groupDetail',
     rows: [
-      [['←', '→'], 'previous / next case in the filtered list'],
+      [['←', '→'], 'cases.shortcuts.prevNext'],
     ],
   },
   {
-    title: 'Search syntax',
+    titleKey: 'cases.shortcuts.groupSyntax',
     rows: [
-      [['a b'], 'terms AND together'],
-      [['head:theft|robbery'], 'scope a term to a column, | for OR'],
-      [['-word'], 'exclude matches'],
-      [['#123'], 'exact CaseMasterID (with an open-case chip)'],
+      [['a b'], 'cases.shortcuts.and'],
+      [['head:theft|robbery'], 'cases.shortcuts.scope'],
+      [['-word'], 'cases.shortcuts.exclude'],
+      [['#123'], 'cases.shortcuts.byId'],
     ],
   },
 ];
 
 export default function ShortcutsSheet({ open, onClose }) {
+  const t = useT();
   return (
-    <Sheet open={open} onClose={onClose} title="Keyboard shortcuts & search syntax">
+    <Sheet open={open} onClose={onClose} title={t('cases.shortcuts.title')}>
       <div className="space-y-4 px-1 pb-1">
         {GROUPS.map((g) => (
-          <div key={g.title}>
-            <p className="eyebrow mb-1.5">{g.title}</p>
+          <div key={g.titleKey}>
+            <p className="eyebrow mb-1.5">{t(g.titleKey)}</p>
             <dl className="space-y-1.5">
-              {g.rows.map(([keys, desc]) => (
-                <div key={desc} className="flex items-center justify-between gap-3 text-sm">
+              {g.rows.map(([keys, descKey]) => (
+                <div key={descKey} className="flex items-center justify-between gap-3 text-sm">
                   <dt className="flex items-center gap-1 shrink-0">
                     {keys.map((k) => <Key key={k}>{k}</Key>)}
                   </dt>
-                  <dd className="text-muted text-xs text-right min-w-0">{desc}</dd>
+                  <dd className="text-muted text-xs text-right min-w-0">{t(descKey)}</dd>
                 </div>
               ))}
             </dl>
           </div>
         ))}
-        <p className="text-[10px] text-muted">Search fields: no · case · district · station · head · subhead · status · gravity.</p>
+        <p className="text-[10px] text-muted">{t('cases.shortcuts.fields')}</p>
       </div>
     </Sheet>
   );

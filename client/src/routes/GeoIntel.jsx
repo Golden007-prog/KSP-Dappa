@@ -58,10 +58,11 @@ import SelectionBar from './geointel/SelectionBar.jsx';
 import PatrolRoutePill from './geointel/PatrolRoutePill.jsx';
 import { useIncidentsLayer } from './geointel/hooks.js';
 import {
-  bandBucket, copyText, haversineKm, hourBand, hourInBand, monthWindow, risk01,
+  bandBucket, copyText, haversineKm, hotspotName, hourBand, hourInBand, monthWindow, risk01,
 } from './geointel/utils.js';
 import { nearestNeighborRoute } from './geointel/geo.js';
 import { loadPrefs, savePrefs } from './geointel/prefs.js';
+import { useI18n, useT } from '../lib/i18n.jsx';
 
 const MAX_SCRUB_MONTHS = 24;
 const LAYER_KEYS = ['choropleth', 'heat', 'incidents', 'hotspots', 'stations', 'alertPulse'];
@@ -70,13 +71,25 @@ const LAYER_CODES = {
   choropleth: 'choro', heat: 'heat', incidents: 'pts', hotspots: 'hot', stations: 'stn', alertPulse: 'alert',
 };
 
-// Choropleth metric definitions — module-scope constants so MapCanvas effects
-// can key on stable identity.
+// Choropleth metric definitions. The number formatting is locale-aware via
+// format.js; the surrounding wording is a translation key, so the route builds
+// `fmtValue` per language (memoized, because MapCanvas effects key on the
+// choroMetric object's identity).
 const METRIC_PROPS = {
-  cases: { key: 'cases', diverging: false, fmtValue: (v) => `${fmtInt(v)} cases` },
-  rate: { key: 'rate', diverging: false, fmtValue: (v) => `${fmtNum(v, 1)} cases / lakh` },
-  mom: { key: 'mom', diverging: true, fmtValue: (v) => `${v > 0 ? '+' : ''}${fmtNum(v, 1)}% MoM` },
-  risk: { key: 'risk', diverging: false, fmtValue: (v) => `mean station risk ${fmtInt(v)}` },
+  cases: { key: 'cases', diverging: false, valueKey: 'geointel.metric.valueCases', fmt: (v) => fmtInt(v) },
+  rate: { key: 'rate', diverging: false, valueKey: 'geointel.metric.valueRate', fmt: (v) => fmtNum(v, 1) },
+  mom: { key: 'mom', diverging: true, valueKey: 'geointel.metric.valueMom', fmt: (v) => `${v > 0 ? '+' : ''}${fmtNum(v, 1)}` },
+  risk: { key: 'risk', diverging: false, valueKey: 'geointel.metric.valueRisk', fmt: (v) => fmtInt(v) },
+};
+
+// Shared date-range presets carry English labels; map them onto the common
+// namespace so the print/brief scope line follows the active language.
+const RANGE_KEYS = {
+  all: 'common.filter.allTime',
+  '30d': 'common.filter.last30',
+  '90d': 'common.filter.last90',
+  '12m': 'common.filter.last12m',
+  ytd: 'common.filter.yearToDate',
 };
 
 /** Mean of a per-row value across the police units of each census polygon. */
@@ -180,11 +193,12 @@ const BriefIcon = (
 );
 
 function ErrorChip({ label, onRetry }) {
+  const t = useT();
   return (
     <div className="pointer-events-auto chip self-start !border-signal/50 bg-panel/95 text-signal shadow-lg">
       {label}
       <button type="button" className="underline ml-1 hover:text-ink transition-colors" onClick={onRetry}>
-        Retry
+        {t('common.action.retry')}
       </button>
     </div>
   );
@@ -198,6 +212,7 @@ export default function GeoIntel() {
   const { theme } = useTheme();
   const light = theme === 'light';
   const toast = useToast();
+  const { t, tName } = useI18n();
 
   const geojson = useKarnatakaGeoJson();
   const districts = useDistrictsGeo(apiParams);
@@ -449,7 +464,10 @@ export default function GeoIntel() {
   });
 
   // ---- derived layer data (memoized: MapCanvas keys effects on identity) ----
-  const choroMetric = METRIC_PROPS[metric] || METRIC_PROPS.cases;
+  const choroMetric = useMemo(() => {
+    const m = METRIC_PROPS[metric] || METRIC_PROPS.cases;
+    return { key: m.key, diverging: m.diverging, fmtValue: (v) => t(m.valueKey, { v: m.fmt(v) }) };
+  }, [metric, t]);
   const choroValues = useMemo(() => {
     const rows = districts.data || [];
     if (metric === 'rate') return meanPerPolygon(rows, (r) => r.ratePerLakh);
@@ -491,6 +509,21 @@ export default function GeoIntel() {
     const o = {};
     for (const h of lookups.data?.crimeHeads || []) o[String(h.crimeHeadId)] = h.headName;
     return o;
+  }, [lookups.data]);
+  // /cases rows carry names but no lookup ids; these reverse maps let the
+  // station drill run a statusName / subHeadName back through tName.
+  const nameIds = useMemo(() => {
+    const lk = lookups.data || {};
+    const rev = (rows, idKey, nameKey) => {
+      const o = {};
+      for (const r of rows || []) if (r[nameKey]) o[r[nameKey]] = r[idKey];
+      return o;
+    };
+    return {
+      statuses: rev(lk.statuses, 'id', 'name'),
+      crimeHeads: rev(lk.crimeHeads, 'crimeHeadId', 'headName'),
+      crimeSubHeads: rev(lk.crimeSubHeads, 'crimeSubHeadId', 'subHeadName'),
+    };
   }, [lookups.data]);
   const hotspotRows = useMemo(() => {
     const rows = (hotspots.data || []).filter(
@@ -542,8 +575,11 @@ export default function GeoIntel() {
   );
   // Patrol-route suggestion — nearest-neighbour over the top-3 visible hotspots.
   const patrolRoute = useMemo(
-    () => (patrolOn ? nearestNeighborRoute(visibleHotspots, 3) : null),
-    [patrolOn, visibleHotspots],
+    () => (patrolOn
+      ? nearestNeighborRoute(visibleHotspots, 3,
+        (h) => hotspotName(h, tName, t('geointel.hotspot.cluster', { id: h.clusterId })))
+      : null),
+    [patrolOn, visibleHotspots, t, tName],
   );
   // High-risk stations for the pulsing halo layer (risk ≥ 70).
   const haloRows = useMemo(
@@ -581,10 +617,12 @@ export default function GeoIntel() {
     }
     return {
       count,
-      topHead: topHead ? headNames[topHead] || `Head ${topHead}` : null,
+      topHead: topHead
+        ? tName('crimeHeads', topHead, headNames[topHead] || t('geointel.popup.head', { id: topHead }))
+        : null,
       perKm2: count / (Math.PI * probeKm * probeKm),
     };
-  }, [probe, probeKm, incidentRows, headNames]);
+  }, [probe, probeKm, incidentRows, headNames, t, tName]);
   // Per-month case totals aligned to the scrubber window (histogram bars).
   const monthTotals = useMemo(() => {
     const d = trends.data;
@@ -618,7 +656,10 @@ export default function GeoIntel() {
       togglePolygonSelect(c.polygon);
       return;
     }
-    openDistrict(c.polygon, { unitIds: [c.unitId], title: `${c.name} (commissionerate)` });
+    openDistrict(c.polygon, {
+      unitIds: [c.unitId],
+      title: t('geointel.commissionerateTitle', { name: tName('districts', c.unitId, c.name) }),
+    });
     issueFly({ type: 'point', lat: c.lat, lng: c.lng, zoom: 11 });
   };
   const onStationClick = (s) => {
@@ -658,8 +699,8 @@ export default function GeoIntel() {
 
   const shareLink = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.success('Share link copied — filters, layers, month and hour included');
-    else toast.error('Could not copy the link');
+    if (ok) toast.success(t('geointel.share.copied'));
+    else toast.error(t('geointel.share.failed'));
   };
 
   // ---- new tool toggles -----------------------------------------------------
@@ -713,27 +754,37 @@ export default function GeoIntel() {
   };
   const copyRoute = async () => {
     if (!patrolRoute || !patrolRoute.stops.length) return;
-    const bandLabel = HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'All hours';
+    const band = t(HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'geointel.band.all');
     const lines = patrolRoute.stops.map((s, i) => (
-      `${i + 1}. ${s.label} (${s.lat.toFixed(4)}, ${s.lng.toFixed(4)})${i > 0 ? ` — ${s.legKm.toFixed(1)} km leg` : ''}`
+      t('geointel.patrol.textStop', { i: i + 1, label: s.label, lat: s.lat.toFixed(4), lng: s.lng.toFixed(4) })
+      + (i > 0 ? t('geointel.patrol.textLeg', { km: s.legKm.toFixed(1) }) : '')
     ));
     const text = [
-      `KSP patrol route — ${bandLabel}${scrubMonth ? ` · ${monthLabel(scrubMonth)}` : ''}`,
+      scrubMonth
+        ? t('geointel.patrol.textHeaderMonth', { band, month: monthLabel(scrubMonth) })
+        : t('geointel.patrol.textHeader', { band }),
       ...lines,
-      `Total ${patrolRoute.totalKm.toFixed(1)} km · est ${patrolRoute.etaMin} min at 30 km/h`,
+      t('geointel.patrol.textTotal', { km: patrolRoute.totalKm.toFixed(1), min: patrolRoute.etaMin }),
     ].join('\n');
     const ok = await copyText(text);
-    if (ok) toast.success('Patrol route copied as text');
-    else toast.error('Could not copy the route');
+    if (ok) toast.success(t('geointel.patrol.copied'));
+    else toast.error(t('geointel.patrol.copyFailed'));
   };
   const copyBrief = async () => {
-    const lines = [`KSP GeoIntel brief — ${new Date().toISOString().slice(0, 10)}`, `Scope: ${printFilterSummary}`];
+    const lines = [
+      t('geointel.brief.title', { date: new Date().toISOString().slice(0, 10) }),
+      t('geointel.brief.scope', { scope: printFilterSummary }),
+    ];
     if (visibleHotspots.length) {
-      lines.push('Top hotspots:');
+      lines.push(t('geointel.brief.topHotspots'));
       visibleHotspots.slice(0, 3).forEach((h, i) => {
         const band = hourBand(h.hourBandStart, h.hourBandEnd);
-        const dName = unitInfo(h.districtId)?.name || h.districtId || '—';
-        lines.push(`  ${i + 1}. ${h.label || h.subHeadName || `Cluster ${h.clusterId}`} (${dName}) — ${Number(h.caseCount) || 0} cases${band ? `, peak ${band}` : ''}`);
+        const dName = tName('districts', h.districtId, unitInfo(h.districtId)?.name || h.districtId) || '—';
+        const label = hotspotName(h, tName, t('geointel.hotspot.cluster', { id: h.clusterId }));
+        lines.push(
+          t('geointel.brief.hotspotLine', { i: i + 1, label, district: dName, n: fmtInt(Number(h.caseCount) || 0) })
+          + (band ? t('geointel.brief.hotspotPeak', { band }) : ''),
+        );
       });
     }
     const movers = (districts.data || [])
@@ -741,16 +792,21 @@ export default function GeoIntel() {
       .sort((a, b) => Math.abs(Number(b.momDeltaPct)) - Math.abs(Number(a.momDeltaPct)))
       .slice(0, 3);
     if (movers.length) {
-      lines.push(`Top movers (MoM): ${movers.map((r) => {
-        const d = Number(r.momDeltaPct);
-        return `${r.districtName || r.districtId} ${d > 0 ? '+' : ''}${d.toFixed(0)}%`;
-      }).join(' · ')}`);
+      lines.push(t('geointel.brief.movers', {
+        list: movers.map((r) => {
+          const d = Number(r.momDeltaPct);
+          const name = tName('districts', r.districtId, r.districtName || r.districtId);
+          return `${name} ${d > 0 ? '+' : ''}${d.toFixed(0)}%`;
+        }).join(' · '),
+      }));
     }
-    if (alertPolygons.length) lines.push(`Red-zone districts: ${alertPolygons.join(', ')}`);
-    lines.push(`Stations mapped: ${(stations.data || []).length} · hotspot clusters: ${hotspotRows.length}`);
+    if (alertPolygons.length) lines.push(t('geointel.brief.redZones', { list: alertPolygons.join(', ') }));
+    lines.push(t('geointel.brief.footer', {
+      stations: fmtInt((stations.data || []).length), clusters: fmtInt(hotspotRows.length),
+    }));
     const ok = await copyText(lines.join('\n'));
-    if (ok) toast.success('Situational brief copied as text');
-    else toast.error('Could not copy the brief');
+    if (ok) toast.success(t('geointel.brief.copied'));
+    else toast.error(t('geointel.brief.copyFailed'));
   };
   // Compare-divider drag (pointer events on the handle, moves on the shell).
   const onDividerPointerDown = (e) => {
@@ -857,10 +913,18 @@ export default function GeoIntel() {
     : 'relative -m-4 md:-m-6 h-[calc(100dvh-10rem)] min-h-[22rem] md:h-[calc(100vh-5.5rem)] overflow-hidden';
 
   const printFilterSummary = [
-    districtId ? (lookups.data?.districts || []).find((d) => d.districtId === districtId)?.districtName || `district ${districtId}` : 'All districts',
-    crimeHeadId ? (lookups.data?.crimeHeads || []).find((h) => h.crimeHeadId === crimeHeadId)?.headName || `head ${crimeHeadId}` : 'all crime heads',
-    DATE_RANGES.find((r) => r.value === range)?.label || range,
-    scrubMonth ? `month ${monthLabel(scrubMonth)}` : null,
+    districtId
+      ? tName('districts', districtId,
+        (lookups.data?.districts || []).find((d) => d.districtId === districtId)?.districtName
+          || t('geointel.scope.district', { id: districtId }))
+      : t('geointel.scope.allDistricts'),
+    crimeHeadId
+      ? tName('crimeHeads', crimeHeadId,
+        (lookups.data?.crimeHeads || []).find((h) => h.crimeHeadId === crimeHeadId)?.headName
+          || t('geointel.scope.head', { id: crimeHeadId }))
+      : t('geointel.scope.allCrimeHeads'),
+    RANGE_KEYS[range] ? t(RANGE_KEYS[range]) : (DATE_RANGES.find((r) => r.value === range)?.label || range),
+    scrubMonth ? t('geointel.scope.month', { m: monthLabel(scrubMonth) }) : null,
   ].filter(Boolean).join(' · ');
 
   return (
@@ -898,7 +962,9 @@ export default function GeoIntel() {
         onTileError={() => setTileError(true)}
         measuring={measuring}
         onMeasureEnd={(km) => setMeasureKm(km)}
-        onCoordCopy={(text) => (text ? toast.success(`Copied ${text}`) : toast.error('Could not copy coordinates'))}
+        onCoordCopy={(text) => (text
+          ? toast.success(t('geointel.coords.copied', { text }))
+          : toast.error(t('geointel.coords.failed')))}
         mapApiRef={mapApiRef}
         onPolygonClick={onPolygonClick}
         onStationClick={onStationClick}
@@ -926,8 +992,8 @@ export default function GeoIntel() {
           <button
             type="button"
             onPointerDown={onDividerPointerDown}
-            aria-label="Drag to move the month-compare divider"
-            title="Drag to compare months"
+            aria-label={t('geointel.compare.dividerAria')}
+            title={t('geointel.compare.dividerTitle')}
             className="pointer-events-auto absolute top-1/2 -translate-y-1/2 -left-3.5 h-9 w-7 rounded-lg border border-primary/60 bg-panel/95 shadow-lg flex items-center justify-center cursor-ew-resize text-primary touch-none"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -944,7 +1010,7 @@ export default function GeoIntel() {
         className="gi-print-only absolute top-2 left-2 z-30 rounded px-3 py-2 text-xs"
         style={{ background: '#ffffff', color: '#111827', border: '1px solid #d1d5db' }}
       >
-        <strong>GeoIntel — situational snapshot</strong>
+        <strong>{t('geointel.printTitle')}</strong>
         <br />
         {printFilterSummary}
       </div>
@@ -963,22 +1029,22 @@ export default function GeoIntel() {
         <div className="flex flex-wrap items-stretch gap-2 max-w-full">
           <div className="pointer-events-auto bg-panel/95 border border-grid rounded-xl px-3 py-2 shadow-lg flex flex-wrap items-center gap-2">
             <div>
-              <h1 className="text-sm font-semibold text-ink leading-tight">GeoIntel</h1>
-              <p className="text-[10px] text-muted leading-tight">Operational map · Karnataka</p>
+              <h1 className="text-sm font-semibold text-ink leading-tight">{t('geointel.title')}</h1>
+              <p className="text-[10px] text-muted leading-tight">{t('geointel.subtitle')}</p>
             </div>
-            <Tooltip label={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen map (F)'} position="bottom">
+            <Tooltip label={fullscreen ? t('geointel.toolbar.fullscreenExit') : t('geointel.toolbar.fullscreen')} position="bottom">
               <button
                 type="button"
                 className="btn gi-tap !px-2 !py-1.5"
                 aria-pressed={fullscreen}
-                aria-label={fullscreen ? 'Exit fullscreen map' : 'Enter fullscreen map'}
+                aria-label={fullscreen ? t('geointel.toolbar.fullscreenExitAria') : t('geointel.toolbar.fullscreenAria')}
                 onClick={() => setFullscreen((v) => !v)}
               >
                 {fullscreen ? CompressIcon : ExpandIcon}
               </button>
             </Tooltip>
-            <Tooltip label="Copy a share link (filters + layers + month)" position="bottom">
-              <button type="button" className="btn gi-tap !px-2 !py-1.5" aria-label="Copy share link" onClick={shareLink}>
+            <Tooltip label={t('geointel.toolbar.share')} position="bottom">
+              <button type="button" className="btn gi-tap !px-2 !py-1.5" aria-label={t('geointel.toolbar.shareAria')} onClick={shareLink}>
                 {LinkIcon}
               </button>
             </Tooltip>
@@ -990,33 +1056,33 @@ export default function GeoIntel() {
               apiParams={apiParams}
               scrubMonth={scrubMonth}
             />
-            <Tooltip label={measuring ? 'Exit measure (Esc)' : 'Measure distance — click two points (M)'} position="bottom">
+            <Tooltip label={measuring ? t('geointel.toolbar.measureExit') : t('geointel.toolbar.measure')} position="bottom">
               <button
                 type="button"
                 className={`btn gi-tap !px-2 !py-1.5 ${measuring ? '!text-primary !border-primary/60' : ''}`}
                 aria-pressed={measuring}
-                aria-label={measuring ? 'Exit distance measuring' : 'Measure a distance on the map'}
+                aria-label={measuring ? t('geointel.toolbar.measureExitAria') : t('geointel.toolbar.measureAria')}
                 onClick={toggleMeasure}
               >
                 {RulerIcon}
               </button>
             </Tooltip>
-            <Tooltip label={probing || probe ? 'Exit radius probe (Esc)' : 'Radius probe — count incidents around a point'} position="bottom">
+            <Tooltip label={probing || probe ? t('geointel.toolbar.probeExit') : t('geointel.toolbar.probe')} position="bottom">
               <button
                 type="button"
                 className={`btn gi-tap !px-2 !py-1.5 ${probing || probe ? '!text-primary !border-primary/60' : ''}`}
                 aria-pressed={probing || !!probe}
-                aria-label={probing || probe ? 'Exit the radius probe' : 'Probe incident density around a point'}
+                aria-label={probing || probe ? t('geointel.toolbar.probeExitAria') : t('geointel.toolbar.probeAria')}
                 onClick={toggleProbe}
               >
                 {ProbeIcon}
               </button>
             </Tooltip>
-            <Tooltip label="Copy a text situational brief (hotspots, movers, red zones)" position="bottom">
+            <Tooltip label={t('geointel.toolbar.brief')} position="bottom">
               <button
                 type="button"
                 className="btn gi-tap !px-2 !py-1.5"
-                aria-label="Copy a text situational brief to the clipboard"
+                aria-label={t('geointel.toolbar.briefAria')}
                 onClick={copyBrief}
               >
                 {BriefIcon}
@@ -1027,7 +1093,7 @@ export default function GeoIntel() {
         </div>
         <div className="flex items-start gap-2 max-w-full">
           <div className="pointer-events-auto bg-panel/95 border border-grid rounded-xl px-2.5 py-1.5 shadow-lg flex items-center gap-2 max-w-full overflow-x-auto no-scrollbar">
-            <span className="text-[10px] uppercase tracking-wider text-muted shrink-0">Layers</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted shrink-0">{t('geointel.layers.label')}</span>
             <LayerToggles />
             <span className="h-4 w-px bg-grid shrink-0" aria-hidden="true" />
             <button
@@ -1035,17 +1101,17 @@ export default function GeoIntel() {
               className="chip gi-tap shrink-0 text-muted hover:text-ink transition-colors"
               aria-pressed={basemap === 'none'}
               onClick={() => setBasemap((b) => (b === 'osm' ? 'none' : 'osm'))}
-              title="Toggle the OSM basemap — 'off' keeps a plain canvas for offline demos"
+              title={t('geointel.basemap.hint')}
             >
-              Basemap {basemap === 'osm' ? 'on' : 'off'}
+              {basemap === 'osm' ? t('geointel.basemap.on') : t('geointel.basemap.off')}
             </button>
             <button
               type="button"
               className="chip gi-tap shrink-0 text-muted hover:text-ink transition-colors"
               onClick={() => issueFly({ type: 'reset' })}
-              title="Fly back to the full Karnataka view"
+              title={t('geointel.reset.hint')}
             >
-              ⌂ Reset view
+              ⌂ {t('geointel.reset.label')}
             </button>
             <span className="h-4 w-px bg-grid shrink-0" aria-hidden="true" />
             <button
@@ -1056,27 +1122,27 @@ export default function GeoIntel() {
                 if (!halos && !useUiStore.getState().mapLayers.stations) setMapLayer('stations', true);
                 setHalos((v) => !v);
               }}
-              title="Pulse a red halo around stations with predicted risk ≥ 70 (turns the station layer on)"
+              title={t('geointel.halos.hint')}
             >
-              Risk halos
+              {t('geointel.halos.label')}
             </button>
             <button
               type="button"
               className={`chip gi-tap shrink-0 transition-colors ${selectMode ? '!border-primary/60 !text-primary !bg-primary/10' : 'text-muted hover:text-ink'}`}
               aria-pressed={selectMode}
               onClick={toggleSelectMode}
-              title="Multi-select districts by clicking polygons — aggregate stats + CSV (spatial filter)"
+              title={t('geointel.select.hint')}
             >
-              ▣ Select
+              ▣ {t('geointel.select.label')}
             </button>
             {alertPolygons.length > 0 && (
               <button
                 type="button"
                 className="chip gi-tap shrink-0 text-signal hover:text-ink transition-colors"
                 onClick={redZoneTour}
-                title="Fly through the anomaly-flagged districts one by one"
+                title={t('geointel.redZones.hint')}
               >
-                ⚠ Red zones {alertPolygons.length}
+                ⚠ {t('geointel.redZones.label')} {alertPolygons.length}
                 {tourIdx > 0 && (
                   <span className="num text-muted">
                     {((tourIdx - 1) % alertPolygons.length) + 1}/{alertPolygons.length}
@@ -1096,42 +1162,42 @@ export default function GeoIntel() {
         {measuring && (
           <div className="pointer-events-auto chip bg-panel/95 shadow-lg !border-primary/50 text-primary">
             {measureKm === null
-              ? 'Measure: click two points on the map · Esc to exit'
-              : `Distance ${measureKm < 10 ? measureKm.toFixed(2) : measureKm.toFixed(1)} km · click to remeasure · Esc to exit`}
+              ? t('geointel.measure.hint')
+              : t('geointel.measure.result', { km: measureKm < 10 ? measureKm.toFixed(2) : measureKm.toFixed(1) })}
           </div>
         )}
         {(probing || probe) && (
           <div className="pointer-events-auto chip bg-panel/95 shadow-lg !border-primary/50 text-primary max-w-full flex-wrap">
             {!probe || !probeStats ? (
-              'Probe: click the map to place a radius probe · Esc to exit'
+              t('geointel.probe.hint')
             ) : (
               <>
                 <span className="num font-semibold">{fmtInt(probeStats.count)}</span>
-                <span>incidents within</span>
+                <span>{t('geointel.probe.within')}</span>
                 <button
                   type="button"
                   className="btn !px-1.5 !py-0 num"
-                  aria-label="Shrink the probe radius"
+                  aria-label={t('geointel.probe.shrink')}
                   onClick={() => setProbeKm((k) => Math.max(0.5, +(k - 0.5).toFixed(1)))}
                 >
                   −
                 </button>
-                <span className="num">{probeKm} km</span>
+                <span className="num">{t('geointel.patrol.km', { km: probeKm })}</span>
                 <button
                   type="button"
                   className="btn !px-1.5 !py-0 num"
-                  aria-label="Grow the probe radius"
+                  aria-label={t('geointel.probe.grow')}
                   onClick={() => setProbeKm((k) => Math.min(25, +(k + 0.5).toFixed(1)))}
                 >
                   +
                 </button>
-                {probeStats.topHead && <span className="text-muted">· mostly {probeStats.topHead}</span>}
-                <span className="text-muted num">· {fmtNum(probeStats.perKm2, 1)}/km²</span>
-                <span className="text-muted hidden sm:inline">· click to re-place</span>
+                {probeStats.topHead && <span className="text-muted">{t('geointel.probe.mostly', { head: probeStats.topHead })}</span>}
+                <span className="text-muted num">{t('geointel.probe.density', { n: fmtNum(probeStats.perKm2, 1) })}</span>
+                <span className="text-muted hidden sm:inline">{t('geointel.probe.replace')}</span>
                 <button
                   type="button"
                   className="hover:text-ink transition-colors"
-                  aria-label="Exit the radius probe"
+                  aria-label={t('geointel.probe.exit')}
                   onClick={toggleProbe}
                 >
                   ✕
@@ -1153,18 +1219,18 @@ export default function GeoIntel() {
         )}
         {tileError && basemap === 'osm' && (
           <div className="pointer-events-auto chip self-start bg-panel/95 shadow-lg !border-amber/50 text-amber">
-            Basemap tiles unavailable — overlays still live
+            {t('geointel.tile.error')}
             <button
               type="button"
               className="underline ml-1 hover:text-ink transition-colors"
               onClick={() => { setBasemap('none'); setTileError(false); }}
             >
-              Use blank basemap
+              {t('geointel.tile.useBlank')}
             </button>
             <button
               type="button"
               className="ml-1 hover:text-ink transition-colors"
-              aria-label="Dismiss basemap notice"
+              aria-label={t('geointel.tile.dismiss')}
               onClick={() => setTileError(false)}
             >
               ✕
@@ -1174,24 +1240,24 @@ export default function GeoIntel() {
         {anyLayerLoading && (
           <div className="pointer-events-auto chip bg-panel/95 shadow-lg">
             <span className="skeleton h-2 w-2 !rounded-full" aria-hidden="true" />
-            Loading map layers…
+            {t('geointel.status.loadingLayers')}
           </div>
         )}
-        {districts.error && <ErrorChip label="Choropleth failed to load" onRetry={() => districts.refetch()} />}
+        {districts.error && <ErrorChip label={t('geointel.error.choropleth')} onRetry={() => districts.refetch()} />}
         {stations.error && mapLayers.stations && (
-          <ErrorChip label="Stations failed to load" onRetry={() => stations.refetch()} />
+          <ErrorChip label={t('geointel.error.stations')} onRetry={() => stations.refetch()} />
         )}
         {incidents.error && wantIncidents && (
-          <ErrorChip label="Incident layer failed to load" onRetry={() => incidents.refetch()} />
+          <ErrorChip label={t('geointel.error.incidents')} onRetry={() => incidents.refetch()} />
         )}
         {geojson.error && (
           <div className="pointer-events-auto max-w-sm">
             <EmptyState
               compact
               className="bg-panel/95 border border-grid rounded-xl shadow-lg"
-              title="District polygons unavailable"
-              message="Could not load the Karnataka GeoJSON — the base map still works."
-              action={<button type="button" className="btn" onClick={() => geojson.refetch()}>Retry</button>}
+              title={t('geointel.error.geojsonTitle')}
+              message={t('geointel.error.geojsonMsg')}
+              action={<button type="button" className="btn" onClick={() => geojson.refetch()}>{t('common.action.retry')}</button>}
             />
           </div>
         )}
@@ -1226,9 +1292,9 @@ export default function GeoIntel() {
               }`}
               aria-pressed={hour !== null}
               onClick={toggleHourLens}
-              title="Hour lens — filter hotspots by hour of day and sweep the full day (H)"
+              title={t('geointel.hour.lensHint')}
             >
-              ◔ Hour lens
+              ◔ {t('geointel.hour.lens')}
             </button>
             <button
               type="button"
@@ -1237,9 +1303,9 @@ export default function GeoIntel() {
               }`}
               aria-pressed={patrolOn}
               onClick={() => setPatrolOn((v) => !v)}
-              title="Suggest a patrol route connecting the top-3 hotspots (P)"
+              title={t('geointel.patrol.hint')}
             >
-              ⇢ Patrol route
+              ⇢ {t('geointel.patrol.label')}
             </button>
             <button
               type="button"
@@ -1249,9 +1315,9 @@ export default function GeoIntel() {
               aria-pressed={compareOn}
               disabled={months.length < 2}
               onClick={toggleCompare}
-              title="Compare two months side by side with a heat swipe (C)"
+              title={t('geointel.compare.hint')}
             >
-              ⇆ Compare
+              ⇆ {t('geointel.compare.label')}
             </button>
           </div>
         )}
@@ -1272,7 +1338,9 @@ export default function GeoIntel() {
           <div className="gi-noprint max-w-full">
             <PatrolRoutePill
               route={patrolRoute}
-              bandLabel={hotspotBand === 'all' ? null : HOUR_BANDS.find((b) => b.key === hotspotBand)?.label}
+              bandLabel={hotspotBand === 'all'
+                ? null
+                : t(HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'geointel.band.all')}
               onCopy={copyRoute}
               onExit={() => setPatrolOn(false)}
             />
@@ -1342,6 +1410,7 @@ export default function GeoIntel() {
             incidentRows={incidentRows}
             stationsAll={stations.data || []}
             headNames={headNames}
+            nameIds={nameIds}
             onBackToDistrict={(station) => {
               const polygon = polygonForUnit(station.districtId);
               if (polygon) {
@@ -1362,7 +1431,7 @@ export default function GeoIntel() {
       <MobileSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        title="Map info"
+        title={t('geointel.sheet.title')}
         peek={(
           <TimeScrubber
             compact
@@ -1389,6 +1458,7 @@ export default function GeoIntel() {
               incidentRows={incidentRows}
               stationsAll={stations.data || []}
               headNames={headNames}
+              nameIds={nameIds}
               onBackToDistrict={(station) => {
                 const polygon = polygonForUnit(station.districtId);
                 if (polygon) openDistrict(polygon);
@@ -1406,7 +1476,7 @@ export default function GeoIntel() {
               onPickStation={(s) => { onStationClick(s); }}
             />
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Top hotspots</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{t('geointel.hotspot.top')}</p>
               {hotspotRows.length > 0 && (
                 <BandFilterChips className="mb-1.5 flex-wrap" value={hotspotBand} onChange={setHotspotBand} />
               )}
@@ -1420,7 +1490,7 @@ export default function GeoIntel() {
               />
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Tools</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{t('geointel.sheet.tools')}</p>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
@@ -1428,7 +1498,7 @@ export default function GeoIntel() {
                   aria-pressed={hour !== null}
                   onClick={toggleHourLens}
                 >
-                  ◔ Hour lens
+                  ◔ {t('geointel.hour.lens')}
                 </button>
                 <button
                   type="button"
@@ -1436,7 +1506,7 @@ export default function GeoIntel() {
                   aria-pressed={patrolOn}
                   onClick={() => setPatrolOn((v) => !v)}
                 >
-                  ⇢ Patrol route
+                  ⇢ {t('geointel.patrol.label')}
                 </button>
                 <button
                   type="button"
@@ -1447,7 +1517,7 @@ export default function GeoIntel() {
                     setHalos((v) => !v);
                   }}
                 >
-                  Risk halos
+                  {t('geointel.halos.label')}
                 </button>
                 {alertPolygons.length > 0 && (
                   <button
@@ -1455,7 +1525,7 @@ export default function GeoIntel() {
                     className="chip gi-tap text-signal"
                     onClick={() => { redZoneTour(); setSheetOpen(false); }}
                   >
-                    ⚠ Red zones {alertPolygons.length}
+                    ⚠ {t('geointel.redZones.label')} {alertPolygons.length}
                   </button>
                 )}
               </div>
@@ -1477,7 +1547,9 @@ export default function GeoIntel() {
                 <div className="mt-2">
                   <PatrolRoutePill
                     route={patrolRoute}
-                    bandLabel={hotspotBand === 'all' ? null : HOUR_BANDS.find((b) => b.key === hotspotBand)?.label}
+                    bandLabel={hotspotBand === 'all'
+                ? null
+                : t(HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'geointel.band.all')}
                     onCopy={copyRoute}
                     onExit={() => setPatrolOn(false)}
                   />
@@ -1485,7 +1557,7 @@ export default function GeoIntel() {
               )}
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Display</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{t('geointel.sheet.display')}</p>
               <div className="space-y-2">
                 <MetricChips value={metric} onChange={setMetric} className="flex-wrap" />
                 <OpacityControls
@@ -1497,7 +1569,7 @@ export default function GeoIntel() {
               </div>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">Legend</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{t('geointel.legend.label')}</p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px] text-muted">
                 <LegendItems light={light} metricKey={metric} />
               </div>

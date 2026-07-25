@@ -8,11 +8,20 @@ import {
   useKpis, useAlerts, useHotspots, useNetworkGraph, useForecast, useStationRisk,
 } from '../../lib/api.js';
 import { dateLabel } from '../../lib/format.js';
+import { translate, useT } from '../../lib/i18n.jsx';
+
+const en = (key, vars) => translate('en', key, vars);
 
 export const WINDOWS = [
-  { value: 'last-7-days', label: 'Last 7 days', days: 7 },
-  { value: 'last-30-days', label: 'Last 30 days', days: 30 },
+  { value: 'last-7-days', label: 'Last 7 days', days: 7, key: 'last7' },
+  { value: 'last-30-days', label: 'Last 30 days', days: 30, key: 'last30' },
 ];
+
+/** Localised label for a preset window value (falls back to the English one). */
+export const windowLabel = (value, t = en) => {
+  const w = WINDOWS.find((x) => x.value === value);
+  return w ? t(`alerts.reports.win.${w.key}`) : value;
+};
 
 export const DEFAULT_WINDOW = WINDOWS[0].value;
 export const CUSTOM_WINDOW = 'custom';
@@ -28,7 +37,7 @@ export function isValidCustomRange(custom) {
     && custom.from <= custom.to;
 }
 
-export function windowInfo(windowKey, now = new Date(), custom) {
+export function windowInfo(windowKey, now = new Date(), custom, t = en) {
   if (windowKey === CUSTOM_WINDOW && isValidCustomRange(custom)) {
     const days = Math.max(
       1,
@@ -36,7 +45,7 @@ export function windowInfo(windowKey, now = new Date(), custom) {
     );
     return {
       value: CUSTOM_WINDOW,
-      label: `Custom (${dateLabel(custom.from)} – ${dateLabel(custom.to)})`,
+      label: t('alerts.reports.win.custom', { from: dateLabel(custom.from), to: dateLabel(custom.to) }),
       days,
       from: custom.from,
       to: custom.to,
@@ -45,17 +54,19 @@ export function windowInfo(windowKey, now = new Date(), custom) {
   const w = WINDOWS.find((x) => x.value === windowKey) || WINDOWS[0];
   return {
     ...w,
+    label: t(`alerts.reports.win.${w.key}`),
     from: format(subDays(now, w.days), ISO),
     to: format(now, ISO),
   };
 }
 
 export function useBriefData(windowKey, custom) {
+  const t = useT();
   const customFrom = custom?.from;
   const customTo = custom?.to;
   const win = useMemo(
-    () => windowInfo(windowKey, new Date(), { from: customFrom, to: customTo }),
-    [windowKey, customFrom, customTo],
+    () => windowInfo(windowKey, new Date(), { from: customFrom, to: customTo }, t),
+    [windowKey, customFrom, customTo, t],
   );
   const range = { from: win.from, to: win.to };
 

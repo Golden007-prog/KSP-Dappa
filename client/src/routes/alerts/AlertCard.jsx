@@ -11,7 +11,8 @@ import Sparkline from './Sparkline.jsx';
 import MiniCompareBar from './MiniCompareBar.jsx';
 import SlaBadge from './SlaBadge.jsx';
 import { caseDrillHref } from './links.js';
-import { fmtInt, fmtNum, dateLabel } from '../../lib/format.js';
+import { fmtInt, fmtNum, dateLabel, getFormatLocale } from '../../lib/format.js';
+import { useT, useNames } from '../../lib/i18n.jsx';
 
 const SEV_TONE = { critical: 'red', high: 'red', medium: 'amber', low: 'neutral' };
 
@@ -25,22 +26,25 @@ function cardBorder(severity, acked, snoozed) {
 }
 
 /** '2026-07-21' → 'ended 3d ago' (relative to now; null when unparseable). */
-function endedAgo(iso) {
+function endedAgo(iso, t) {
   if (!iso) return null;
-  const t = Date.parse(`${String(iso).slice(0, 10)}T00:00:00`);
-  if (!Number.isFinite(t)) return null;
-  const days = Math.floor((Date.now() - t) / 86400000);
+  const ts = Date.parse(`${String(iso).slice(0, 10)}T00:00:00`);
+  if (!Number.isFinite(ts)) return null;
+  const days = Math.floor((Date.now() - ts) / 86400000);
   if (!Number.isFinite(days) || days < 0) return null;
-  if (days === 0) return 'ended today';
-  if (days === 1) return 'ended yesterday';
-  if (days < 14) return `ended ${days}d ago`;
-  if (days < 60) return `ended ${Math.round(days / 7)}w ago`;
-  return `ended ${Math.round(days / 30)}mo ago`;
+  if (days === 0) return t('alerts.card.endedToday');
+  if (days === 1) return t('alerts.card.endedYesterday');
+  if (days < 14) return t('alerts.card.endedDays', { n: days });
+  if (days < 60) return t('alerts.card.endedWeeks', { n: Math.round(days / 7) });
+  return t('alerts.card.endedMonths', { n: Math.round(days / 30) });
 }
 
+const LOCALE = { en: 'en-IN', kn: 'kn-IN', hi: 'hi-IN' };
 const snoozeLabel = (ts) => {
   try {
-    return new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return new Date(ts).toLocaleString(LOCALE[getFormatLocale()] || 'en-IN', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
   } catch {
     return '';
   }
@@ -54,35 +58,40 @@ export default function AlertCard({
   unread = false, onRead, onCopy, onSnooze, snoozedUntil = 0, onUnsnooze,
   sla = null, onOpenDetail,
 }) {
+  const t = useT();
+  const tName = useNames();
   const sev = String(a.severity || 'medium').toLowerCase();
   const snoozed = Number(snoozedUntil) > Date.now();
-  const rel = endedAgo(a.periodEnd);
+  const rel = endedAgo(a.periodEnd, t);
   const drill = caseDrillHref(a);
+  const head = tName('crimeHeads', a.crimeHeadId, a.headName) || t('alerts.anomaly');
+  const district = tName('districts', a.districtId, a.districtName || a.districtId)
+    || t('alerts.unknownDistrict');
   return (
     <Card className={cardBorder(sev, acked, snoozed)}>
       <div className="flex flex-col md:flex-row gap-4">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={acked || snoozed ? 'slate' : (SEV_TONE[sev] || 'neutral')} pulse={!acked && !snoozed}>{sev}</Badge>
+            <Badge tone={acked || snoozed ? 'slate' : (SEV_TONE[sev] || 'neutral')} pulse={!acked && !snoozed}>{t(`alerts.sevLower.${sev}`)}</Badge>
             <h3 className="text-sm font-semibold text-ink truncate">
-              {a.headName || 'Anomaly'} — {a.districtName || a.districtId || 'Unknown district'}
+              {head} — {district}
             </h3>
-            <Badge tone={acked || snoozed ? 'slate' : 'red'} className="num">z {fmtNum(a.zScore, 1)}</Badge>
+            <Badge tone={acked || snoozed ? 'slate' : 'red'} className="num">{t('alerts.card.z')} {fmtNum(a.zScore, 1)}</Badge>
             {snoozed && (
-              <Badge tone="slate">snoozed · until {snoozeLabel(snoozedUntil)}</Badge>
+              <Badge tone="slate">{t('alerts.card.snoozedUntil', { when: snoozeLabel(snoozedUntil) })}</Badge>
             )}
             {unread && !acked && !snoozed && (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
                 <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-                new
+                {t('alerts.card.new')}
               </span>
             )}
             {onOpenDetail && (
-              <Tooltip label="Open the full alert detail (gauge, comparison, similar alerts)" className="ml-auto">
+              <Tooltip label={t('alerts.card.detailsTip')} className="ml-auto">
                 <button
                   type="button"
                   onClick={() => onOpenDetail(a)}
-                  aria-label={`Open details for ${a.headName || 'anomaly'}`}
+                  aria-label={t('alerts.card.detailsAria', { name: head })}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-grid/40 hover:text-ink"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -98,13 +107,13 @@ export default function AlertCard({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted num">
             <span>{dateLabel(a.periodStart)} → {dateLabel(a.periodEnd)}</span>
             {rel && (
-              <Tooltip label={`Period ended ${dateLabel(a.periodEnd)}`}>
+              <Tooltip label={t('alerts.card.periodEndedTip', { date: dateLabel(a.periodEnd) })}>
                 <span className="cursor-default" tabIndex={0}>{rel}</span>
               </Tooltip>
             )}
             <span>
-              observed <span className="text-ink font-medium">{fmtInt(a.observed)}</span>
-              {' '}vs expected <span className="text-ink font-medium">{fmtInt(a.expected)}</span>
+              {t('alerts.card.observed')} <span className="text-ink font-medium">{fmtInt(a.observed)}</span>
+              {' '}{t('alerts.card.vsExpected')} <span className="text-ink font-medium">{fmtInt(a.expected)}</span>
             </span>
             {!acked && !snoozed && sla && <SlaBadge sla={sla} severity={a.severity} />}
           </div>
@@ -112,12 +121,14 @@ export default function AlertCard({
           {stations?.names?.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-muted">
-                {stations.scope === 'district' ? 'Stations in district:' : 'Affected station:'}
+                {stations.scope === 'district' ? t('alerts.card.stationsInDistrict') : t('alerts.card.affectedStation')}
               </span>
               {stations.names.map((n) => (
                 <span key={n} className="chip !py-0.5 !text-[11px]">{n}</span>
               ))}
-              {stations.more > 0 && <span className="chip !py-0.5 !text-[11px] text-muted">+{stations.more} more</span>}
+              {stations.more > 0 && (
+                <span className="chip !py-0.5 !text-[11px] text-muted">{t('alerts.card.moreStations', { n: stations.more })}</span>
+              )}
             </div>
           )}
         </div>
@@ -125,7 +136,7 @@ export default function AlertCard({
         <div className="w-full md:w-60 shrink-0 flex flex-col gap-2">
           <Sparkline alert={a} height={72} />
           <p className="text-[10px] text-muted leading-tight">
-            amber = observed · teal band = expected ±2σ · red dot = latest period
+            {t('alerts.spark.legend')}
           </p>
           <MiniCompareBar observed={a.observed} expected={a.expected} zScore={a.zScore} />
           <div className="flex items-center gap-2">
@@ -135,11 +146,11 @@ export default function AlertCard({
                 to={`/map?districtId=${encodeURIComponent(a.districtId)}`}
                 onClick={() => onRead?.(a.alertId)}
               >
-                View on map
+                {t('alerts.card.viewOnMap')}
               </Link>
             )}
             {acked ? (
-              <Badge tone="teal" className="flex-1 justify-center py-1">acknowledged</Badge>
+              <Badge tone="teal" className="flex-1 justify-center py-1">{t('alerts.card.acknowledged')}</Badge>
             ) : (
               <button
                 type="button"
@@ -147,7 +158,7 @@ export default function AlertCard({
                 disabled={ackPending}
                 onClick={() => { onRead?.(a.alertId); onAck(a.alertId); }}
               >
-                {ackPending ? 'Acknowledging…' : 'Acknowledge'}
+                {ackPending ? t('alerts.card.acknowledging') : t('alerts.card.acknowledge')}
               </button>
             )}
           </div>
@@ -158,23 +169,23 @@ export default function AlertCard({
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" />
                   </svg>
-                  Copy
+                  {t('common.action.copy')}
                 </button>
               )}
               {drill && (
                 <Link
                   className={`btn ${actionBtn}`}
                   to={drill}
-                  title="Open the case list filtered to this district, crime head and period"
+                  title={t('alerts.card.casesTip')}
                   onClick={() => onRead?.(a.alertId)}
                 >
-                  Cases →
+                  {t('alerts.card.cases')}
                 </Link>
               )}
               {!acked && (snoozed ? (
                 onUnsnooze && (
                   <button type="button" className={`btn ${actionBtn}`} onClick={() => onUnsnooze(a.alertId)}>
-                    Unsnooze
+                    {t('alerts.card.unsnooze')}
                   </button>
                 )
               ) : (
@@ -183,13 +194,13 @@ export default function AlertCard({
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2.5 5.5M19 3l2.5 2.5" />
                     </svg>
-                    Snooze 24h
+                    {t('alerts.card.snooze24')}
                   </button>
                 )
               ))}
             </div>
           )}
-          {ackError && <p className="text-[11px] text-signal" role="alert">Couldn't acknowledge — try again.</p>}
+          {ackError && <p className="text-[11px] text-signal" role="alert">{t('alerts.card.ackError')}</p>}
         </div>
       </div>
     </Card>

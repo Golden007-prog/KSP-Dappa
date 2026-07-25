@@ -5,10 +5,13 @@
 // empty box shows the last five picks (localStorage). Keyboard: ↑/↓ move,
 // Enter picks, Esc closes. Dependency-free (no portal — sits inside a map
 // overlay pill). `inputId` lets the route's '/' shortcut focus this input.
+// Under kn/hi the unit list shows translated names but still matches the
+// English spelling too, so a Latin-keyboard search keeps working.
 import { useMemo, useRef, useState } from 'react';
 import { CITY_UNIT_IDS, UNITS, unitInfo } from '../../lib/districtGeoMap.js';
 import { fuzzyRank } from './utils.js';
 import { loadPrefs, savePrefs } from './prefs.js';
+import { useI18n } from '../../lib/i18n.jsx';
 
 const MAX_RECENTS = 5;
 
@@ -26,6 +29,7 @@ function readRecents() {
 }
 
 export default function LocateSearch({ stations = [], onPickUnit, onPickStation, className = '', inputId }) {
+  const { t, tName } = useI18n();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -36,8 +40,10 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
     const units = UNITS.map((u) => ({
       kind: 'unit',
       id: `u-${u.unitId}`,
-      label: u.name,
-      sub: CITY_UNIT_IDS.includes(u.unitId) ? 'City commissionerate' : 'Police district',
+      label: tName('districts', u.unitId, u.name),
+      // Latin spelling stays searchable even when the label is in kn/hi.
+      alt: u.name,
+      sub: CITY_UNIT_IDS.includes(u.unitId) ? t('geointel.locate.cityUnit') : t('geointel.locate.policeDistrict'),
       payload: u,
     }));
     const seen = new Set();
@@ -46,16 +52,18 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
       const key = String(s.unitId);
       if (seen.has(key)) continue;
       seen.add(key);
+      const parent = tName('districts', s.districtId, unitInfo(s.districtId)?.name || s.districtId || '');
       st.push({
         kind: 'station',
         id: `s-${key}`,
-        label: s.unitName || `Unit ${key}`,
-        sub: `Station · ${unitInfo(s.districtId)?.name || s.districtId || ''}`,
+        label: s.unitName || t('geointel.panel.unitFallback', { id: key }),
+        alt: '',
+        sub: parent ? t('geointel.locate.stationIn', { district: parent }) : t('geointel.locate.station'),
         payload: s,
       });
     }
     return [...units, ...st];
-  }, [stations]);
+  }, [stations, t, tName]);
 
   const results = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -68,7 +76,12 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
         .map((r) => ({ ...r, recent: true }));
     }
     return index
-      .map((r) => ({ r, rank: fuzzyRank(needle, r.label) }))
+      .map((r) => {
+        const a = fuzzyRank(needle, r.label);
+        const b = r.alt ? fuzzyRank(needle, r.alt) : -1;
+        const rank = a < 0 ? b : b < 0 ? a : Math.min(a, b);
+        return { r, rank };
+      })
       .filter((x) => x.rank >= 0)
       .sort((a, b) => a.rank - b.rank)
       .slice(0, 8)
@@ -114,8 +127,8 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
           aria-expanded={listOpen}
           aria-controls="geointel-locate-list"
           aria-autocomplete="list"
-          aria-label="Locate district or station"
-          placeholder="Locate district / station…"
+          aria-label={t('geointel.locate.aria')}
+          placeholder={t('geointel.locate.placeholder')}
           className="bg-transparent text-xs text-ink placeholder:text-muted focus:outline-none w-40 sm:w-48 flex-1"
           value={q}
           onChange={(e) => { setQ(e.target.value); setOpen(true); setActive(0); }}
@@ -127,7 +140,7 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
           <button
             type="button"
             className="text-muted hover:text-ink transition-colors gi-tap gi-tap-w flex items-center justify-center -my-1"
-            aria-label="Clear search"
+            aria-label={t('geointel.locate.clear')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => { setQ(''); setOpen(false); inputRef.current?.focus(); }}
           >
@@ -138,12 +151,12 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
       {listOpen && (
         <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-panel border border-grid rounded-xl shadow-lift overflow-hidden">
           {showingRecents && (
-            <p className="px-2.5 pt-1.5 pb-0.5 text-[9px] uppercase tracking-wider text-muted">Recent</p>
+            <p className="px-2.5 pt-1.5 pb-0.5 text-[9px] uppercase tracking-wider text-muted">{t('geointel.locate.recent')}</p>
           )}
           <ul
             id="geointel-locate-list"
             role="listbox"
-            aria-label={showingRecents ? 'Recent locations' : 'Locations'}
+            aria-label={showingRecents ? t('geointel.locate.recentAria') : t('geointel.locate.listAria')}
             className="max-h-64 overflow-y-auto"
           >
             {results.map((r, i) => (
@@ -165,7 +178,7 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
       )}
       {open && q.trim() && !results.length && (
         <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-panel border border-grid rounded-xl shadow-lift px-2.5 py-2 text-[11px] text-muted">
-          No district or station matches “{q.trim()}”.
+          {t('geointel.locate.noMatch', { q: q.trim() })}
         </div>
       )}
     </div>

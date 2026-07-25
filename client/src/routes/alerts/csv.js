@@ -1,5 +1,9 @@
 // /alerts — client-side CSV export. Blob download only; no server round-trip,
 // so it works identically on Catalyst and the static GitHub Pages demo.
+// Column headers follow the active UI language; the data keys never do.
+import { translate } from '../../lib/i18n.jsx';
+
+const en = (key, vars) => translate('en', key, vars);
 
 /** RFC-4180-ish cell escaping: quote when the value contains , " or newline. */
 function cell(v) {
@@ -28,28 +32,31 @@ export function downloadBlob(filename, content, type = 'text/csv;charset=utf-8')
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-const ALERT_COLUMNS = [
-  { key: 'alertId', label: 'Alert ID' },
-  { key: 'severity', label: 'Severity' },
-  { key: 'status', label: 'Status' },
-  { key: 'districtName', label: 'District' },
-  { key: 'headName', label: 'Crime head' },
-  { key: 'periodStart', label: 'Period start' },
-  { key: 'periodEnd', label: 'Period end' },
-  { key: 'observed', label: 'Observed' },
-  { key: 'expected', label: 'Expected' },
-  { key: 'zScore', label: 'z-score' },
-  { key: 'narrative', label: 'Narrative' },
+const alertColumns = (t) => [
+  { key: 'alertId', label: t('alerts.csvCol.alertId') },
+  { key: 'severity', label: t('alerts.csvCol.severity') },
+  { key: 'status', label: t('alerts.csvCol.status') },
+  { key: 'districtName', label: t('alerts.csvCol.district') },
+  { key: 'headName', label: t('alerts.csvCol.crimeHead') },
+  { key: 'periodStart', label: t('alerts.csvCol.periodStart') },
+  { key: 'periodEnd', label: t('alerts.csvCol.periodEnd') },
+  { key: 'observed', label: t('alerts.csvCol.observed') },
+  { key: 'expected', label: t('alerts.csvCol.expected') },
+  { key: 'zScore', label: t('alerts.csvCol.zScore') },
+  { key: 'narrative', label: t('alerts.csvCol.narrative') },
 ];
 
-/** Download the given alerts as dappa-alerts-YYYY-MM-DD.csv; returns row count. */
-export function exportAlertsCsv(alerts) {
+/** Download the given alerts as dappa-alerts-YYYY-MM-DD.csv; returns row count.
+ * `names` (optional) translates the API district / crime-head strings. */
+export function exportAlertsCsv(alerts, t = en, names) {
+  const tName = names || ((_kind, _id, fallback) => fallback || '');
   const rows = (alerts || []).map((a) => ({
     ...a,
-    districtName: a.districtName || a.districtId || '',
-    headName: a.headName || '',
+    districtName: tName('districts', a.districtId, a.districtName || a.districtId || '')
+      || a.districtName || a.districtId || '',
+    headName: tName('crimeHeads', a.crimeHeadId, a.headName || '') || a.headName || '',
   }));
   const stamp = new Date().toISOString().slice(0, 10);
-  downloadBlob(`dappa-alerts-${stamp}.csv`, toCsv(ALERT_COLUMNS, rows));
+  downloadBlob(`dappa-alerts-${stamp}.csv`, toCsv(alertColumns(t), rows));
   return rows.length;
 }

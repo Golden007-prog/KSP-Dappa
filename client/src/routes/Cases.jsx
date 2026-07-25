@@ -24,6 +24,8 @@ import Tooltip from '../components/Tooltip.jsx';
 import PulseDot from '../components/PulseDot.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { dateLabel, fmtInt } from '../lib/format.js';
+import { useT, useNames } from '../lib/i18n.jsx';
+import { useCaseNames } from './cases/names.js';
 import { CrimeNoInline } from './cases/CrimeNoBreakdown.jsx';
 import {
   useExplorerParams, snapshotParams, buildRefine, compareRows,
@@ -35,7 +37,7 @@ import { parseQuery, buildQueryMatcher, describeTokens } from './cases/query.js'
 import { readCompare, writeCompare, snapshotRow, COMPARE_CAP } from './cases/compare.js';
 import { copyText } from './cases/clipboard.js';
 import { readStars, toggleStar } from './cases/stars.js';
-import FilterSheet from './cases/FilterSheet.jsx';
+import FilterSheet, { RANGE_KEYS } from './cases/FilterSheet.jsx';
 import PresetsSheet from './cases/PresetsSheet.jsx';
 import ColumnsSheet from './cases/ColumnsSheet.jsx';
 import RecentCasesRow from './cases/RecentCasesRow.jsx';
@@ -128,15 +130,19 @@ const ROW_BTN = 'btn-ghost !p-0 flex h-10 w-10 sm:h-8 sm:w-8 items-center justif
 
 // Canonical column set — chooser hides/shows the unlocked ones ('_select',
 // '_actions' and crimeNo stay). caseNo and ageDays start hidden; everything
-// else starts visible.
-const buildColumnDefs = ({ onCopy, onOpen, onToggleStar, onToggleCompare, onPeek, stars = {}, compareIds, needles = [] }) => [
+// else starts visible. `t`/`trName` default to pass-throughs so the module-level
+// DEFAULT_VISIBLE probe (which only reads key/locked/defaultOff) needs no i18n.
+const buildColumnDefs = ({
+  onCopy, onOpen, onToggleStar, onToggleCompare, onPeek, stars = {}, compareIds, needles = [],
+  t = (k) => k, trName = (kind, v) => v,
+}) => [
   {
-    key: 'crimeNo', label: 'Crime no', chooserLabel: 'Crime no (identity)', locked: true, sortable: true,
+    key: 'crimeNo', label: t('cases.col.crimeNo'), chooserLabel: t('cases.col.crimeNo.chooser'), locked: true, sortable: true,
     className: 'font-medium whitespace-nowrap',
     render: (r) => <CrimeNoInline crimeNo={r.crimeNo} />,
   },
   {
-    key: '_select', label: '', chooserLabel: 'Compare select', locked: true, width: 44, align: 'center',
+    key: '_select', label: '', chooserLabel: t('cases.col.select.chooser'), locked: true, width: 44, align: 'center',
     render: (r) => {
       const on = !!compareIds?.has(String(r.caseMasterId));
       return (
@@ -144,66 +150,66 @@ const buildColumnDefs = ({ onCopy, onOpen, onToggleStar, onToggleCompare, onPeek
           type="checkbox"
           className="h-4 w-4 accent-[var(--c-amber)] cursor-pointer align-middle"
           checked={on}
-          aria-label={`${on ? 'Remove' : 'Add'} case ${r.crimeNo} ${on ? 'from' : 'to'} the compare tray`}
+          aria-label={t(on ? 'cases.row.compareRemove' : 'cases.row.compareAdd', { no: r.crimeNo })}
           onClick={(e) => e.stopPropagation()}
           onChange={() => onToggleCompare?.(r)}
         />
       );
     },
   },
-  { key: 'registeredDate', label: 'Registered', sortable: true, render: (r) => dateLabel(r.registeredDate) },
-  { key: 'caseNo', label: 'Case no', defaultOff: true, className: 'whitespace-nowrap', render: (r) => <Hl text={r.caseNo} needles={needles} /> },
+  { key: 'registeredDate', label: t('cases.col.registered'), sortable: true, render: (r) => dateLabel(r.registeredDate) },
+  { key: 'caseNo', label: t('cases.col.caseNo'), defaultOff: true, className: 'whitespace-nowrap', render: (r) => <Hl text={r.caseNo} needles={needles} /> },
   {
-    key: 'ageDays', label: 'Age', chooserLabel: `Age (days · amber past ${AGE_WARN_DAYS}d)`, defaultOff: true, sortable: true, align: 'right', width: 78,
+    key: 'ageDays', label: t('cases.col.age'), chooserLabel: t('cases.col.age.chooser', { d: AGE_WARN_DAYS }), defaultOff: true, sortable: true, align: 'right', width: 78,
     render: (r) => (Number.isFinite(r.ageDays)
       ? <span className={`num ${r.ageDays > AGE_WARN_DAYS ? 'text-amber font-medium' : ''}`}>{fmtInt(r.ageDays)}d</span>
       : '—'),
   },
-  { key: 'districtName', label: 'District', sortable: true, render: (r) => <Hl text={r.districtName} needles={needles} /> },
-  { key: 'unitName', label: 'Station', sortable: true, render: (r) => <Hl text={r.unitName} needles={needles} /> },
-  { key: 'headName', label: 'Crime head', sortable: true, render: (r) => <Hl text={r.headName} needles={needles} /> },
-  { key: 'subHeadName', label: 'Subhead', sortable: true, render: (r) => <Hl text={r.subHeadName} needles={needles} /> },
-  { key: 'statusName', label: 'Status', sortable: true, render: (r) => <Hl text={r.statusName} needles={needles} /> },
+  { key: 'districtName', label: t('cases.col.district'), sortable: true, render: (r) => <Hl text={trName('districts', r.districtName)} needles={needles} /> },
+  { key: 'unitName', label: t('cases.col.station'), sortable: true, render: (r) => <Hl text={r.unitName} needles={needles} /> },
+  { key: 'headName', label: t('cases.col.head'), sortable: true, render: (r) => <Hl text={trName('crimeHeads', r.headName)} needles={needles} /> },
+  { key: 'subHeadName', label: t('cases.col.subHead'), sortable: true, render: (r) => <Hl text={trName('crimeSubHeads', r.subHeadName)} needles={needles} /> },
+  { key: 'statusName', label: t('cases.col.status'), sortable: true, render: (r) => <Hl text={trName('statuses', r.statusName)} needles={needles} /> },
   {
-    key: 'gravityName', label: 'Gravity', sortable: true,
+    key: 'gravityName', label: t('cases.col.gravity'), sortable: true,
     render: (r) => (r.gravityName
-      ? <Badge tone={/hein/i.test(String(r.gravityName)) ? 'red' : 'slate'}>{r.gravityName}</Badge>
+      ? <Badge tone={/hein/i.test(String(r.gravityName)) ? 'red' : 'slate'}>{trName('gravities', r.gravityName)}</Badge>
       : '—'),
   },
   {
-    key: 'anomalyFlag', label: 'Anomaly', chooserLabel: 'Anomaly flag', width: 90, align: 'center', sortable: true,
-    render: (r) => (r.anomalyFlag ? <Badge tone="red" pulse>anomaly</Badge> : null),
+    key: 'anomalyFlag', label: t('cases.col.anomaly'), chooserLabel: t('cases.col.anomaly.chooser'), width: 90, align: 'center', sortable: true,
+    render: (r) => (r.anomalyFlag ? <Badge tone="red" pulse>{t('cases.badge.anomaly')}</Badge> : null),
   },
   {
-    key: '_actions', label: '', chooserLabel: 'Quick actions', locked: true, width: 170, align: 'right',
+    key: '_actions', label: '', chooserLabel: t('cases.col.actions.chooser'), locked: true, width: 170, align: 'right',
     render: (r) => {
       const starred = !!stars[String(r.caseMasterId)];
       return (
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
         <span className="inline-flex items-center gap-0.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-          <Tooltip label="Quick-look" position="left">
-            <button type="button" className={ROW_BTN} aria-label={`Quick-look case ${r.crimeNo}`} onClick={() => onPeek?.(r)}>
+          <Tooltip label={t('cases.row.peek')} position="left">
+            <button type="button" className={ROW_BTN} aria-label={t('cases.row.peekAria', { no: r.crimeNo })} onClick={() => onPeek?.(r)}>
               {ICONS.eye}
             </button>
           </Tooltip>
-          <Tooltip label={starred ? 'Unstar' : 'Star case'} position="left">
+          <Tooltip label={t(starred ? 'cases.row.unstar' : 'cases.row.star')} position="left">
             <button
               type="button"
               className={`${ROW_BTN} ${starred ? '!text-amber' : ''}`}
-              aria-label={`${starred ? 'Unstar' : 'Star'} case ${r.crimeNo}`}
+              aria-label={t(starred ? 'cases.row.unstarAria' : 'cases.row.starAria', { no: r.crimeNo })}
               aria-pressed={starred}
               onClick={() => onToggleStar(r)}
             >
               <StarIcon filled={starred} size={14} />
             </button>
           </Tooltip>
-          <Tooltip label="Copy CrimeNo" position="left">
-            <button type="button" className={ROW_BTN} aria-label={`Copy CrimeNo ${r.crimeNo}`} onClick={() => onCopy(r)}>
+          <Tooltip label={t('cases.row.copyNo')} position="left">
+            <button type="button" className={ROW_BTN} aria-label={t('cases.row.copyNoAria', { no: r.crimeNo })} onClick={() => onCopy(r)}>
               {ICONS.copy}
             </button>
           </Tooltip>
-          <Tooltip label="Open case" position="left">
-            <button type="button" className={ROW_BTN} aria-label={`Open case ${r.crimeNo}`} onClick={() => onOpen(r)}>
+          <Tooltip label={t('cases.row.open')} position="left">
+            <button type="button" className={ROW_BTN} aria-label={t('cases.row.openAria', { no: r.crimeNo })} onClick={() => onOpen(r)}>
               {ICONS.open}
             </button>
           </Tooltip>
@@ -227,12 +233,13 @@ function readVisibleColumns() {
 }
 
 function Chip({ label, onRemove }) {
+  const t = useT();
   return (
     <span className="chip !pr-0.5 animate-fade-in max-w-full">
       <span className="truncate">{label}</span>
       <button
         type="button"
-        aria-label={`Remove filter: ${label}`}
+        aria-label={t('cases.chip.remove', { label })}
         className="ml-0.5 -my-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:text-signal hover:bg-signal/10 transition-colors"
         onClick={onRemove}
       >
@@ -243,6 +250,9 @@ function Chip({ label, onRemove }) {
 }
 
 export default function Cases() {
+  const t = useT();
+  const tName = useNames();
+  const trName = useCaseNames();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -348,9 +358,9 @@ export default function Cases() {
   }, []);
   useEffect(() => {
     document.title = Number.isFinite(Number(totalMatches))
-      ? `Case Explorer (${fmtInt(totalMatches)} matches) · DAPPA`
-      : 'Case Explorer · DAPPA';
-  }, [totalMatches]);
+      ? t('cases.page.docTitleCount', { n: fmtInt(totalMatches) })
+      : t('cases.page.docTitle');
+  }, [totalMatches, t]);
 
   // --- actions --------------------------------------------------------------
   const siblings = useMemo(() => sorted.map((r) => String(r.caseMasterId)), [sorted]);
@@ -364,8 +374,8 @@ export default function Cases() {
 
   const copyCrimeNo = async (r) => {
     const ok = await copyText(r.crimeNo);
-    if (ok) toast.success(`CrimeNo ${r.crimeNo} copied`);
-    else toast.error('Could not copy — clipboard is blocked in this browser.');
+    if (ok) toast.success(t('cases.toast.copied', { no: r.crimeNo }));
+    else toast.error(t('cases.toast.copyBlocked'));
   };
 
   const handleToggleStar = (r) => {
@@ -383,7 +393,7 @@ export default function Cases() {
     if (compareIds.has(key)) {
       next = compareItems.filter((x) => String(x.caseMasterId) !== key);
     } else if (compareItems.length >= COMPARE_CAP) {
-      toast.info(`Compare holds up to ${COMPARE_CAP} cases — remove one first.`);
+      toast.info(t('cases.toast.compareFull', { n: COMPARE_CAP }));
       return;
     } else {
       next = [...compareItems, snapshotRow(r)];
@@ -405,17 +415,17 @@ export default function Cases() {
   // --- copy / share utilities ----------------------------------------------
   const copyViewLink = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.success('View link copied — filters, sort and search included');
-    else toast.error('Could not copy — clipboard is blocked in this browser.');
+    if (ok) toast.success(t('cases.toast.viewLinkCopied'));
+    else toast.error(t('cases.toast.copyBlocked'));
   };
   const copyMarkdown = async () => {
     if (!pageRows.length) {
-      toast.info('Nothing on this page to copy.');
+      toast.info(t('cases.toast.nothingToCopy'));
       return;
     }
     const ok = await copyText(toMarkdown(pageRows, buildExportColumns(visibleCols)));
-    if (ok) toast.success(`Copied ${fmtInt(pageRows.length)} rows as a Markdown table`);
-    else toast.error('Could not copy — clipboard is blocked in this browser.');
+    if (ok) toast.success(t('cases.toast.markdownCopied', { n: fmtInt(pageRows.length) }));
+    else toast.error(t('cases.toast.copyBlocked'));
   };
   // Server-side CSV keeps full fidelity for the active server filters
   // (client-side refinements can't ride it — the endpoint has no such params).
@@ -428,7 +438,7 @@ export default function Cases() {
     if (!Number.isFinite(y) || !Number.isFinite(m)) return;
     const last = new Date(y, m, 0).getDate();
     setMany({ from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, '0')}` });
-    toast.info(`Filtered to ${ym}`);
+    toast.info(t('cases.toast.monthFiltered', { ym }));
   };
 
   const handleExport = async () => {
@@ -440,16 +450,16 @@ export default function Cases() {
       const all = fetched.map((r) => ({ ...r, ageDays: caseAgeDays(r.registeredDate) }));
       const finalRows = clientRefined ? all.filter(refine) : all;
       if (!finalRows.length) {
-        toast.info('Nothing to export for the current filters.');
+        toast.info(t('cases.toast.nothingToExport'));
         return;
       }
       // The file mirrors the on-screen column chooser (identity columns always kept).
       downloadCsv(exportFilename(), toCsv(finalRows, buildExportColumns(visibleCols)));
       toast.success(truncated
-        ? `Exported ${fmtInt(finalRows.length)} rows (newest ${fmtInt(EXPORT_CAP)} of ${fmtInt(total)} scanned)`
-        : `Exported ${fmtInt(finalRows.length)} rows to CSV`);
+        ? t('cases.toast.exportedCapped', { n: fmtInt(finalRows.length), cap: fmtInt(EXPORT_CAP), total: fmtInt(total) })
+        : t('cases.toast.exported', { n: fmtInt(finalRows.length) }));
     } catch (err) {
-      toast.error(`Export failed: ${err.message}`);
+      toast.error(t('cases.toast.exportFailed', { msg: err.message }));
     } finally {
       setExporting(false);
     }
@@ -462,7 +472,7 @@ export default function Cases() {
   const compareOpenRef = useRef(null);
   compareOpenRef.current = () => {
     if (compareItems.length >= 2) setSheet('compare');
-    else toast.info('Select at least two cases (checkboxes in the table) to compare.');
+    else toast.info(t('cases.toast.compareNeedTwo'));
   };
   useEffect(() => {
     const onKey = (e) => {
@@ -521,34 +531,40 @@ export default function Cases() {
     (list || []).find((x) => String(x[idKey]) === String(id))?.[nameKey] || id;
   const explicitDates = !!(searchParams.get('from') || searchParams.get('to'));
 
+  // Filter chips name the SELECTED lookup entry, so the id is in hand — tName
+  // translates it directly (no name→id round trip). Stations have no table.
   const chips = [];
-  if (districtId) chips.push({ key: 'districtId', label: `District: ${nameOf(lk?.districts, 'districtId', districtId, 'districtName')}`, remove: () => setMany({ districtId: '' }) });
-  if (unitId) chips.push({ key: 'unitId', label: `Station: ${nameOf(lk?.units, 'unitId', unitId, 'unitName')}`, remove: () => setMany({ unitId: '' }) });
-  if (crimeHeadId) chips.push({ key: 'crimeHeadId', label: `Head: ${nameOf(lk?.crimeHeads, 'crimeHeadId', crimeHeadId, 'headName')}`, remove: () => setMany({ crimeHeadId: '' }) });
-  if (crimeSubHeadId) chips.push({ key: 'crimeSubHeadId', label: `Subhead: ${nameOf(lk?.crimeSubHeads, 'crimeSubHeadId', crimeSubHeadId, 'subHeadName')}`, remove: () => setMany({ crimeSubHeadId: '' }) });
-  if (statusId) chips.push({ key: 'status', label: `Status: ${nameOf(lk?.statuses, 'id', statusId, 'name')}`, remove: () => setMany({ status: '' }) });
-  if (gravityId) chips.push({ key: 'gravityId', label: `Gravity: ${nameOf(lk?.gravities, 'id', gravityId, 'name')}`, remove: () => setMany({ gravityId: '' }) });
-  if (explicitDates) chips.push({ key: 'dates', label: `Dates: ${dateLabel(from)} → ${dateLabel(to)}`, remove: () => setMany({ range: 'all' }) });
-  else if (range && range !== 'all') chips.push({ key: 'range', label: `Period: ${DATE_RANGES.find((r) => r.value === range)?.label || range}`, remove: () => setMany({ range: 'all' }) });
-  if (q) chips.push({ key: 'q', label: `Search: “${q}”`, remove: () => setMany({ q: '' }) });
-  if (anomalyOnly) chips.push({ key: 'anomaly', label: 'Anomalies only', remove: () => setMany({ anomaly: '' }) });
-  if (starredOnly) chips.push({ key: 'starred', label: 'Starred only', remove: () => setMany({ starred: '' }) });
-  if (minAgeDays) chips.push({ key: 'minAge', label: `Age: over ${minAgeDays}d`, remove: () => setMany({ minAge: '' }) });
+  if (districtId) chips.push({ key: 'districtId', label: t('cases.chip.district', { v: tName('districts', districtId, nameOf(lk?.districts, 'districtId', districtId, 'districtName')) }), remove: () => setMany({ districtId: '' }) });
+  if (unitId) chips.push({ key: 'unitId', label: t('cases.chip.station', { v: nameOf(lk?.units, 'unitId', unitId, 'unitName') }), remove: () => setMany({ unitId: '' }) });
+  if (crimeHeadId) chips.push({ key: 'crimeHeadId', label: t('cases.chip.head', { v: tName('crimeHeads', crimeHeadId, nameOf(lk?.crimeHeads, 'crimeHeadId', crimeHeadId, 'headName')) }), remove: () => setMany({ crimeHeadId: '' }) });
+  if (crimeSubHeadId) chips.push({ key: 'crimeSubHeadId', label: t('cases.chip.subHead', { v: tName('crimeSubHeads', crimeSubHeadId, nameOf(lk?.crimeSubHeads, 'crimeSubHeadId', crimeSubHeadId, 'subHeadName')) }), remove: () => setMany({ crimeSubHeadId: '' }) });
+  if (statusId) chips.push({ key: 'status', label: t('cases.chip.status', { v: tName('statuses', statusId, nameOf(lk?.statuses, 'id', statusId, 'name')) }), remove: () => setMany({ status: '' }) });
+  if (gravityId) chips.push({ key: 'gravityId', label: t('cases.chip.gravity', { v: tName('gravities', gravityId, nameOf(lk?.gravities, 'id', gravityId, 'name')) }), remove: () => setMany({ gravityId: '' }) });
+  if (explicitDates) chips.push({ key: 'dates', label: t('cases.chip.dates', { from: dateLabel(from), to: dateLabel(to) }), remove: () => setMany({ range: 'all' }) });
+  else if (range && range !== 'all') {
+    const preset = DATE_RANGES.find((r) => r.value === range);
+    const label = RANGE_KEYS[range] ? t(RANGE_KEYS[range]) : (preset?.label || range);
+    chips.push({ key: 'range', label: t('cases.chip.period', { v: label }), remove: () => setMany({ range: 'all' }) });
+  }
+  if (q) chips.push({ key: 'q', label: t('cases.chip.search', { q }), remove: () => setMany({ q: '' }) });
+  if (anomalyOnly) chips.push({ key: 'anomaly', label: t('cases.chip.anomalyOnly'), remove: () => setMany({ anomaly: '' }) });
+  if (starredOnly) chips.push({ key: 'starred', label: t('cases.chip.starredOnly'), remove: () => setMany({ starred: '' }) });
+  if (minAgeDays) chips.push({ key: 'minAge', label: t('cases.chip.minAge', { d: minAgeDays }), remove: () => setMany({ minAge: '' }) });
   const activeCount = chips.length;
 
   const needles = parsedQ.highlight;
   const columnDefs = useMemo(
     () => buildColumnDefs({
       onCopy: copyCrimeNo, onOpen: openDetail, onToggleStar: handleToggleStar,
-      onToggleCompare: toggleCompare, onPeek: setPeekRow, stars, compareIds, needles,
+      onToggleCompare: toggleCompare, onPeek: setPeekRow, stars, compareIds, needles, t, trName,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [siblings, location.search, stars, compareIds, compareItems, needles],
+    [siblings, location.search, stars, compareIds, compareItems, needles, t, trName],
   );
   const activeColumns = columnDefs.filter((c) => c.locked || visibleCols.includes(c.key));
 
   // Interpreted-query chips — visible whenever the advanced syntax kicks in.
-  const queryChips = parsedQ.advanced ? describeTokens(parsedQ) : [];
+  const queryChips = parsedQ.advanced ? describeTokens(parsedQ, t) : [];
 
   // Starred cases the 200-row scan can't see — offer direct-open chips so the
   // Starred view is never silently incomplete.
@@ -562,19 +578,18 @@ export default function Cases() {
   }, [starredOnly, cases.isLoading, serverRows, stars]);
 
   // Filter-profile grouping narrows with the filters: district → station → head.
-  const [groupKey, groupLabel] = districtId
-    ? (unitId ? ['headName', 'crime head'] : ['unitName', 'station'])
-    : ['districtName', 'district'];
+  const [groupKey, groupLabelKey, groupKind] = districtId
+    ? (unitId ? ['headName', 'cases.profile.groupHead', 'crimeHeads'] : ['unitName', 'cases.profile.groupStation', ''])
+    : ['districtName', 'cases.profile.groupDistrict', 'districts'];
+  const groupLabel = t(groupLabelKey);
 
-  const emptyText = clientRefined
-    ? 'No cases match this search/status within the scanned rows — clear the refinement or narrow the server filters.'
-    : 'No cases match the current filters — widen the date range or clear a filter.';
+  const emptyText = t(clientRefined ? 'cases.empty.refined' : 'cases.empty.filtered');
   const emptyMessage = activeCount > 0 ? (
     <span className="block">
       <span className="block">{emptyText}</span>
       <span className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
         {chips.map((c) => <Chip key={c.key} label={c.label} onRemove={c.remove} />)}
-        <button type="button" className="btn-ghost !py-1 !px-2 text-xs" onClick={clearAll}>Clear all</button>
+        <button type="button" className="btn-ghost !py-1 !px-2 text-xs" onClick={clearAll}>{t('cases.chip.clearAll')}</button>
       </span>
     </span>
   ) : emptyText;
@@ -582,36 +597,36 @@ export default function Cases() {
   return (
     <div className="space-y-4 max-w-[1500px] mx-auto">
       <div>
-        <h1 className="page-title">Case Explorer</h1>
+        <h1 className="page-title">{t('cases.page.title')}</h1>
         <p className="page-subtitle">
-          Server-paginated FIR registry
-          {Number.isFinite(Number(totalMatches)) ? <> · <span className="num">{fmtInt(totalMatches)}</span> cases match</> : null}
+          {t('cases.page.subtitle')}
+          {Number.isFinite(Number(totalMatches)) ? <> · {t('cases.page.matchCount', { n: fmtInt(totalMatches) })}</> : null}
         </p>
       </div>
 
       {/* toolbar: search + sheet triggers */}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Case explorer tools">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('cases.toolbar.aria')}>
         <div className="relative flex-1 min-w-[12rem]">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">{ICONS.search}</span>
           <input
             ref={searchRef}
             type="search"
             className="input-dark w-full !pl-9 !py-2.5 sm:!py-2"
-            placeholder="Search CrimeNo, station, head…  ( / )"
+            placeholder={t('cases.toolbar.searchPlaceholder')}
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key !== 'Escape') return;
               if (qInput) { setQInput(''); setMany({ q: '' }); } else e.currentTarget.blur();
             }}
-            aria-label="Search cases (press / to focus, Escape to clear)"
+            aria-label={t('cases.toolbar.searchAria')}
             enterKeyHint="search"
           />
           {qInput && (
             <button
               type="button"
               className="absolute right-1 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full text-muted hover:text-ink transition-colors"
-              aria-label="Clear search"
+              aria-label={t('cases.toolbar.clearSearch')}
               onClick={() => { setQInput(''); setMany({ q: '' }); }}
             >
               {ICONS.x}
@@ -620,39 +635,39 @@ export default function Cases() {
         </div>
         <button type="button" className="btn !py-2.5 sm:!py-2" onClick={() => setSheet('filters')} aria-haspopup="dialog">
           {ICONS.filter}
-          Filters
+          {t('cases.toolbar.filters')}
           {activeCount > 0 && (
             <span className="num rounded-full bg-amber/15 text-amber text-[10px] font-semibold px-1.5 py-0.5">{activeCount}</span>
           )}
         </button>
         <button type="button" className="btn !py-2.5 sm:!py-2" onClick={() => setSheet('presets')} aria-haspopup="dialog">
           {ICONS.bookmark}
-          Presets
+          {t('cases.toolbar.presets')}
         </button>
         <button type="button" className="btn !py-2.5 sm:!py-2" onClick={() => setSheet('columns')} aria-haspopup="dialog">
           {ICONS.columns}
-          Columns
+          {t('cases.toolbar.columns')}
         </button>
         <button
           type="button"
           className={`btn !py-2.5 sm:!py-2 ${starredOnly ? '!border-amber/60 !text-amber' : ''}`}
           onClick={() => setMany({ starred: starredOnly ? '' : '1' })}
           aria-pressed={starredOnly}
-          aria-label={starredOnly ? 'Show all cases' : 'Show starred cases only'}
+          aria-label={t(starredOnly ? 'cases.toolbar.showAll' : 'cases.toolbar.showStarredOnly')}
         >
           <StarIcon filled={starredOnly} size={14} />
-          Starred
+          {t('cases.toolbar.starred')}
         </button>
-        <Tooltip label="Export the current filter as CSV (press e)">
+        <Tooltip label={t('cases.toolbar.exportTip')}>
           <button
             type="button"
             className="btn !py-2.5 sm:!py-2"
             onClick={handleExport}
             disabled={exporting || !!cases.error}
-            aria-label="Export the current filter as CSV"
+            aria-label={t('cases.toolbar.exportAria')}
           >
             {ICONS.download}
-            {exporting ? 'Exporting…' : 'CSV'}
+            {exporting ? t('cases.toolbar.exporting') : t('cases.toolbar.csv')}
           </button>
         </Tooltip>
       </div>
@@ -668,9 +683,9 @@ export default function Cases() {
 
       {/* how the advanced query was interpreted */}
       {queryChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted" aria-label="Query interpretation">
-          <Tooltip label="Search syntax: terms AND together · field:value scopes a column · a|b is OR · -term excludes · #id is an exact CaseMasterID. Press ? for the full reference.">
-            <span className="eyebrow cursor-help underline decoration-dotted underline-offset-2">Interpreted</span>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted" aria-label={t('cases.query.aria')}>
+          <Tooltip label={t('cases.query.tip')}>
+            <span className="eyebrow cursor-help underline decoration-dotted underline-offset-2">{t('cases.query.interpreted')}</span>
           </Tooltip>
           {queryChips.map((c, i) => (
             <span key={`${c.label}-${i}`} className={`chip !py-1 num ${c.neg ? '!border-signal/50 !text-signal' : ''}`}>
@@ -684,19 +699,19 @@ export default function Cases() {
 
       {/* active-filter chips */}
       {activeCount > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
+        <div className="flex flex-wrap items-center gap-1.5" aria-label={t('cases.chip.aria')}>
           {chips.map((c) => <Chip key={c.key} label={c.label} onRemove={c.remove} />)}
           <button type="button" className="btn-ghost !py-1 !px-2 text-xs" onClick={clearAll}>
-            Clear all
+            {t('cases.chip.clearAll')}
           </button>
         </div>
       )}
 
       {/* starred cases the 200-row scan can't reach — direct-open chips */}
       {starredOutside.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted" aria-label="Starred cases outside this scan">
-          <span className="eyebrow">Outside scan</span>
-          <span>{fmtInt(starredOutside.length)} starred case{starredOutside.length > 1 ? 's' : ''} not in the scanned rows:</span>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted" aria-label={t('cases.outside.aria')}>
+          <span className="eyebrow">{t('cases.outside.label')}</span>
+          <span>{t(starredOutside.length > 1 ? 'cases.outside.many' : 'cases.outside.one', { n: fmtInt(starredOutside.length) })}</span>
           {starredOutside.map((s) => {
             const digits = String(s.crimeNo || '').replace(/\D/g, '');
             const label = digits.length === 18 ? `…${digits.slice(-9)}` : (s.crimeNo || `#${s.id}`);
@@ -706,7 +721,7 @@ export default function Cases() {
                 type="button"
                 className="chip num !py-1 hover:border-amber/60 hover:text-amber transition-colors"
                 onClick={() => navigate({ pathname: `/cases/${s.id}`, search: location.search })}
-                title={`Open starred case ${s.crimeNo || s.id}`}
+                title={t('cases.outside.open', { no: s.crimeNo || s.id })}
               >
                 {label}
               </button>
@@ -719,46 +734,53 @@ export default function Cases() {
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span className="num inline-flex flex-wrap items-center gap-2">
           {Number.isFinite(Number(totalMatches))
-            ? <>{fmtInt(totalMatches)} cases{activeCount > 0 ? ` · ${activeCount} filter${activeCount > 1 ? 's' : ''} active` : ''}</>
-            : 'Loading…'}
+            ? (
+              <>
+                {t('cases.summary.cases', { n: fmtInt(totalMatches) })}
+                {activeCount > 0
+                  ? t(activeCount > 1 ? 'cases.summary.filtersMany' : 'cases.summary.filtersOne', { n: activeCount })
+                  : ''}
+              </>
+            )
+            : t('common.state.loading')}
           {scanCapped && (
-            <Tooltip label={`The API has no status/search filter — these refine the newest 200 of ${fmtInt(serverTotal)} rows. Narrow with district or dates for full coverage.`}>
+            <Tooltip label={t('cases.summary.scanCappedTip', { total: fmtInt(serverTotal) })}>
               <span className="inline-flex items-center gap-1 text-amber cursor-help">
                 <PulseDot color="amber" />
-                scans newest 200
+                {t('cases.summary.scanCapped')}
               </span>
             </Tooltip>
           )}
           {sort && !clientRefined && (
-            <Tooltip label="The API has no sort parameter — sorting reorders the rows on this page only. Add a search/status refinement to sort across the scanned set.">
+            <Tooltip label={t('cases.summary.sortsPageTip')}>
               <span className="inline-flex items-center gap-1 cursor-help underline decoration-dotted underline-offset-2">
-                sorts this page
+                {t('cases.summary.sortsPage')}
               </span>
             </Tooltip>
           )}
-          {cases.isFetching && !cases.isLoading && <span className="text-muted/70">updating…</span>}
+          {cases.isFetching && !cases.isLoading && <span className="text-muted/70">{t('cases.summary.updating')}</span>}
         </span>
         <span className="inline-flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-0.5" role="group" aria-label="Share and copy tools">
-            <Tooltip label="Copy a shareable link to this exact view">
-              <button type="button" className="btn-ghost !p-0 flex h-8 w-8 items-center justify-center" aria-label="Copy view link" onClick={copyViewLink}>
+          <span className="inline-flex items-center gap-0.5" role="group" aria-label={t('cases.summary.shareAria')}>
+            <Tooltip label={t('cases.summary.copyLinkTip')}>
+              <button type="button" className="btn-ghost !p-0 flex h-8 w-8 items-center justify-center" aria-label={t('cases.summary.copyLinkAria')} onClick={copyViewLink}>
                 {ICONS.link}
               </button>
             </Tooltip>
-            <Tooltip label="Copy this page as a Markdown table (respects the column chooser)">
-              <button type="button" className="btn-ghost !p-0 flex h-8 w-8 items-center justify-center" aria-label="Copy visible rows as Markdown" onClick={copyMarkdown}>
+            <Tooltip label={t('cases.summary.copyMdTip')}>
+              <button type="button" className="btn-ghost !p-0 flex h-8 w-8 items-center justify-center" aria-label={t('cases.summary.copyMdAria')} onClick={copyMarkdown}>
                 {ICONS.markdown}
               </button>
             </Tooltip>
-            <Tooltip label="Keyboard shortcuts & search syntax (?)">
-              <button type="button" className="btn-ghost !p-0 flex h-8 w-8 items-center justify-center" aria-label="Keyboard shortcuts and search syntax" onClick={() => setSheet('shortcuts')}>
+            <Tooltip label={t('cases.summary.shortcutsTip')}>
+              <button type="button" className="btn-ghost !p-0 flex h-8 w-8 items-center justify-center" aria-label={t('cases.summary.shortcutsAria')} onClick={() => setSheet('shortcuts')}>
                 {ICONS.keyboard}
               </button>
             </Tooltip>
             {!STATIC_DEMO && (
-              <Tooltip label="Full-fidelity server-side CSV of the active server filters (up to 5,000 rows; client refinements not applied)">
+              <Tooltip label={t('cases.summary.serverCsvTip')}>
                 <a className="btn-ghost !py-1 !px-2 text-[11px]" href={serverCsvHref} download>
-                  server CSV
+                  {t('cases.summary.serverCsv')}
                 </a>
               </Tooltip>
             )}
@@ -766,7 +788,7 @@ export default function Cases() {
           {pages > 1 && (
             <form className="inline-flex items-center gap-1.5" onSubmit={goToPage}>
               <label className="inline-flex items-center gap-1.5">
-                Jump to
+                {t('cases.summary.jumpTo')}
                 <input
                   type="number"
                   min={1}
@@ -775,19 +797,19 @@ export default function Cases() {
                   value={jump}
                   onChange={(e) => setJump(e.target.value)}
                   placeholder={String(page)}
-                  aria-label={`Jump to page (1 to ${pages})`}
+                  aria-label={t('cases.summary.jumpAria', { pages })}
                 />
               </label>
-              <button type="submit" className="btn !py-1 !px-2 text-xs" disabled={!jump}>Go</button>
+              <button type="submit" className="btn !py-1 !px-2 text-xs" disabled={!jump}>{t('cases.summary.go')}</button>
             </form>
           )}
           <label className="inline-flex items-center gap-2">
-            Rows per page
+            {t('cases.summary.rowsPerPage')}
             <select
               className="input-dark !py-1 !px-2 !text-xs"
               value={pageSize}
               onChange={(e) => changePageSize(Number(e.target.value))}
-              aria-label="Rows per page"
+              aria-label={t('cases.summary.rowsPerPage')}
             >
               {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -801,7 +823,10 @@ export default function Cases() {
           rows={sorted}
           groupKey={groupKey}
           groupLabel={groupLabel}
-          scopeLabel={clientRefined ? `${fmtInt(sorted.length)} scanned rows` : `this page (${fmtInt(pageRows.length)} rows)`}
+          groupKind={groupKind}
+          scopeLabel={clientRefined
+            ? t('cases.summary.scopeScanned', { n: fmtInt(sorted.length) })
+            : t('cases.summary.scopePage', { n: fmtInt(pageRows.length) })}
         />
       )}
 
@@ -809,7 +834,9 @@ export default function Cases() {
       {!cases.isLoading && !cases.error && (
         <ScanInsights
           rows={sorted}
-          scopeLabel={clientRefined ? `${fmtInt(sorted.length)} scanned rows` : `this page (${fmtInt(pageRows.length)} rows)`}
+          scopeLabel={clientRefined
+            ? t('cases.summary.scopeScanned', { n: fmtInt(sorted.length) })
+            : t('cases.summary.scopePage', { n: fmtInt(pageRows.length) })}
           statuses={lk?.statuses || []}
           statusId={statusId}
           onStatus={(id) => setMany({ status: id })}
@@ -820,9 +847,9 @@ export default function Cases() {
       <Card padded={false}>
         {cases.error ? (
           <EmptyState
-            title="Couldn't load cases"
+            title={t('cases.error.load')}
             message={cases.error.message}
-            action={<button type="button" className="btn" onClick={() => cases.refetch()}>Retry</button>}
+            action={<button type="button" className="btn" onClick={() => cases.refetch()}>{t('common.action.retry')}</button>}
           />
         ) : (
           <DataTable

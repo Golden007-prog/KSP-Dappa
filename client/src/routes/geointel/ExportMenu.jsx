@@ -7,6 +7,7 @@ import { useToast } from '../../components/ToastProvider.jsx';
 import { fmtInt } from '../../lib/format.js';
 import { downloadCsv, exportName } from './csv.js';
 import { buildFeatureCollection, downloadGeoJson } from './geo.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const STATION_COLS = [
   { key: 'unitId', label: 'unitId' },
@@ -42,6 +43,7 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const toast = useToast();
+  const t = useT();
 
   useEffect(() => {
     if (!open) return undefined;
@@ -52,21 +54,24 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
     return () => document.removeEventListener('pointerdown', onDown);
   }, [open]);
 
+  const incidentLabel = scrubMonth
+    ? t('geointel.export.incidentsMonth', { month: scrubMonth })
+    : t('geointel.export.incidentsWindow');
   const items = [
-    { key: 'stations', label: 'Stations', rows: stations, cols: STATION_COLS, month: null },
-    { key: 'hotspots', label: 'Hotspots', rows: hotspots, cols: HOTSPOT_COLS, month: null },
-    { key: 'incidents', label: scrubMonth ? `Incidents (${scrubMonth})` : 'Incidents (window)', rows: incidents, cols: INCIDENT_COLS, month: scrubMonth },
+    { key: 'stations', label: t('geointel.export.stations'), rows: stations, cols: STATION_COLS, month: null },
+    { key: 'hotspots', label: t('geointel.export.hotspots'), rows: hotspots, cols: HOTSPOT_COLS, month: null },
+    { key: 'incidents', label: incidentLabel, rows: incidents, cols: INCIDENT_COLS, month: scrubMonth },
   ];
   const geoItems = [
-    { key: 'gj-hotspots', kind: 'hotspots', label: 'Hotspots', rows: hotspots, month: null },
-    { key: 'gj-stations', kind: 'stations', label: 'Stations', rows: stations, month: null },
-    { key: 'gj-incidents', kind: 'incidents', label: scrubMonth ? `Incidents (${scrubMonth})` : 'Incidents (window)', rows: incidents, month: scrubMonth },
+    { key: 'gj-hotspots', kind: 'hotspots', label: t('geointel.export.hotspots'), rows: hotspots, month: null },
+    { key: 'gj-stations', kind: 'stations', label: t('geointel.export.stations'), rows: stations, month: null },
+    { key: 'gj-incidents', kind: 'incidents', label: incidentLabel, rows: incidents, month: scrubMonth },
   ];
 
   const run = (it) => {
     const name = exportName(it.key, apiParams, it.month);
     downloadCsv(name, it.cols, it.rows || []);
-    toast.success(`Exported ${fmtInt((it.rows || []).length)} rows → ${name}.csv`);
+    toast.success(t('geointel.export.doneCsv', { n: fmtInt((it.rows || []).length), name }));
     setOpen(false);
   };
 
@@ -74,7 +79,7 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
     const fc = buildFeatureCollection(it.kind, it.rows || []);
     const name = exportName(it.kind, apiParams, it.month);
     downloadGeoJson(name, fc);
-    toast.success(`Exported ${fmtInt(fc.features.length)} features → ${name}.geojson`);
+    toast.success(t('geointel.export.doneGeo', { n: fmtInt(fc.features.length), name }));
     setOpen(false);
   };
 
@@ -88,17 +93,17 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
-        title="Export visible layers as CSV"
+        title={t('geointel.export.title')}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
           strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
         </svg>
-        CSV
+        {t('geointel.export.csv')}
       </button>
       {open && (
         <div className="pointer-events-auto absolute left-0 right-0 md:left-auto md:right-0 md:w-52 top-full mt-1 z-30 bg-panel border border-grid rounded-xl shadow-lift p-1.5 animate-scale-in">
-          <p className="px-2 pt-0.5 pb-0.5 text-[9px] uppercase tracking-wider text-muted">CSV</p>
+          <p className="px-2 pt-0.5 pb-0.5 text-[9px] uppercase tracking-wider text-muted">{t('geointel.export.csv')}</p>
           {items.map((it) => {
             const n = (it.rows || []).length;
             return (
@@ -110,12 +115,12 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
                 onClick={() => run(it)}
               >
                 <span className="truncate">{it.label}</span>
-                <span className="num text-[10px] text-muted shrink-0">{fmtInt(n)} rows</span>
+                <span className="num text-[10px] text-muted shrink-0">{t('geointel.export.rows', { n: fmtInt(n) })}</span>
               </button>
             );
           })}
           <p className="px-2 pt-1.5 pb-0.5 text-[9px] uppercase tracking-wider text-muted border-t border-grid/60 mt-1">
-            GeoJSON <span className="normal-case">(QGIS / Kepler)</span>
+            {t('geointel.export.geojson')} <span className="normal-case">{t('geointel.export.geojsonHint')}</span>
           </p>
           {geoItems.map((it) => {
             const n = (it.rows || []).length;
@@ -128,7 +133,7 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
                 onClick={() => runGeo(it)}
               >
                 <span className="truncate">{it.label}</span>
-                <span className="num text-[10px] text-muted shrink-0">{fmtInt(n)} pts</span>
+                <span className="num text-[10px] text-muted shrink-0">{t('geointel.export.pts', { n: fmtInt(n) })}</span>
               </button>
             );
           })}

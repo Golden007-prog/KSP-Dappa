@@ -9,12 +9,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '../../lib/api.js';
 import { useToast } from '../../components/ToastProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
 
 const isDemoStatic = (res) => !!(res?.meta?.demoStatic || res?.data?.demoStatic);
 
 export default function useAckAlertOptimistic() {
   const qc = useQueryClient();
   const toast = useToast();
+  const t = useT();
   return useMutation({
     mutationFn: (alertId) => apiPost(`/alerts/${encodeURIComponent(alertId)}/ack`, {}),
     onMutate: async (alertId) => {
@@ -30,16 +32,16 @@ export default function useAckAlertOptimistic() {
     onError: (err, _alertId, ctx) => {
       for (const [key, data] of ctx?.snapshots || []) qc.setQueryData(key, data);
       if (err?.status === 403 || err?.code === 'AUTH_REQUIRED') {
-        toast.info('Public demo is read-only — acknowledging alerts needs an officer sign-in (Catalyst Authentication). The alert stays open.');
+        toast.info(t('alerts.toast.ackReadOnly'));
       } else {
-        toast.error(`Couldn't acknowledge the alert: ${err?.message || 'request failed.'}`);
+        toast.error(t('alerts.toast.ackFailed', { msg: err?.message || t('alerts.toast.ackFailedDefault') }));
       }
     },
     onSuccess: (res) => {
       if (isDemoStatic(res)) {
-        toast.info('Static demo: the acknowledgement is simulated for this session and won’t persist after a reload.');
+        toast.info(t('alerts.toast.ackDemoStatic'));
       } else {
-        toast.success('Alert acknowledged');
+        toast.success(t('alerts.toast.acked'));
       }
     },
     onSettled: (res) => {

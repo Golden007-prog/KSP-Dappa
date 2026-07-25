@@ -57,14 +57,16 @@ const PATROL_SPEED_KMH = 30; // typical urban patrol speed for the ETA estimate
  * Nearest-neighbour route over the top `maxStops` hotspots (rows arrive
  * intensity-sorted; the route starts at the most intense cluster). Returns
  * { stops: [{lat,lng,label,legKm}], totalKm, etaMin } or null when no
- * routable hotspots exist.
+ * routable hotspots exist. `labelOf` (optional) supplies the localised stop
+ * name; without it the raw server label is used.
  */
-export function nearestNeighborRoute(hotspots, maxStops = 3) {
+export function nearestNeighborRoute(hotspots, maxStops = 3, labelOf = null) {
   const sel = (hotspots || [])
     .map((h) => ({
       lat: Number(h.centroidLat),
       lng: Number(h.centroidLng),
-      label: h.label || h.subHeadName || (h.clusterId != null ? `Cluster ${h.clusterId}` : 'Hotspot'),
+      label: (labelOf && labelOf(h))
+        || h.label || h.subHeadName || (h.clusterId != null ? `Cluster ${h.clusterId}` : 'Hotspot'),
     }))
     .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
     .slice(0, maxStops);

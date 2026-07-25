@@ -4,6 +4,7 @@
 import Card from '../../components/Card.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import { dateLabel } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 function pick(obj, keys) {
   for (const k of keys) {
@@ -13,7 +14,8 @@ function pick(obj, keys) {
   return undefined;
 }
 
-export default function KeyValuePanel({ title, subtitle, data, rows = [], emptyTitle = 'No record', emptyMessage, actions }) {
+export default function KeyValuePanel({ title, subtitle, data, rows = [], emptyTitle, emptyMessage, actions }) {
+  const t = useT();
   const obj = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
   const found = obj
     ? rows.map((r) => ({ ...r, value: pick(obj, r.keys) })).filter((r) => r.value !== undefined)
@@ -22,12 +24,12 @@ export default function KeyValuePanel({ title, subtitle, data, rows = [], emptyT
   return (
     <Card title={title} subtitle={subtitle} actions={actions}>
       {found.length === 0 ? (
-        <EmptyState compact title={emptyTitle} message={emptyMessage || 'Nothing on file for this case.'} />
+        <EmptyState compact title={emptyTitle || t('cases.panel.noRecord')} message={emptyMessage || t('cases.panel.nothingOnFile')} />
       ) : (
         <dl className="space-y-2">
           {found.map((r) => (
             <div key={r.label} className="flex items-start justify-between gap-3 text-sm">
-              <dt className="text-muted shrink-0">{r.label}</dt>
+              <dt className="text-muted shrink-0">{r.labelKey ? t(r.labelKey) : r.label}</dt>
               <dd className="text-ink text-right num break-words min-w-0">
                 {r.fmt === 'date' ? dateLabel(r.value) : String(r.value)}
               </dd>

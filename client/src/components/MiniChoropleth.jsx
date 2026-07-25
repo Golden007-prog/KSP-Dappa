@@ -6,7 +6,7 @@
 //   markers?  — [{lat, lng, label?, value?, unitId?}] → amber circle markers
 //   onPolygonClick?(polygonName, feature), onMarkerClick?(marker)
 //   height?   — px number, default 280
-//   valueLabel? — tooltip suffix (default 'cases')
+//   valueLabel? — tooltip suffix (defaults to the translated 'cases')
 //   className?
 // GeoJSON loads via useKarnatakaGeoJson() (cached forever); a skeleton shows
 // while it loads and an EmptyState if it fails.
@@ -17,6 +17,7 @@ import LoadingSkeleton from './LoadingSkeleton.jsx';
 import EmptyState from './EmptyState.jsx';
 import { useTheme } from './ThemeProvider.jsx';
 import { fmtInt } from '../lib/format.js';
+import { useT } from '../lib/i18n.jsx';
 
 // density ramp + chrome per app theme (dark stays the original command-center look)
 export const PALETTES = {
@@ -43,8 +44,10 @@ const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 
 export default function MiniChoropleth({
   values = {}, alerts = [], markers = [], onPolygonClick, onMarkerClick,
-  height = 280, valueLabel = 'cases', className = '',
+  height = 280, valueLabel, className = '',
 }) {
+  const t = useT();
+  const unit = valueLabel ?? t('common.unit.cases');
   const elRef = useRef(null);
   const mapRef = useRef(null);
   const layersRef = useRef([]);
@@ -114,7 +117,7 @@ export default function MiniChoropleth({
         const name = feature?.properties?.district;
         const v = Number(values[name]) || 0;
         layer.bindTooltip(
-          `<div class="text-xs"><strong>${escapeHtml(name)}</strong><br/>${fmtInt(v)} ${escapeHtml(valueLabel)}</div>`,
+          `<div class="text-xs"><strong>${escapeHtml(name)}</strong><br/>${fmtInt(v)} ${escapeHtml(unit)}</div>`,
           { sticky: true, className: 'dappa-tooltip' },
         );
         layer.on('click', () => handlersRef.current.onPolygonClick?.(name, feature));
@@ -135,7 +138,7 @@ export default function MiniChoropleth({
       }).addTo(map);
       if (m.label) {
         marker.bindTooltip(
-          `<div class="text-xs"><strong>${escapeHtml(m.label)}</strong>${m.value !== undefined ? `<br/>${fmtInt(m.value)} ${escapeHtml(valueLabel)}` : ''}</div>`,
+          `<div class="text-xs"><strong>${escapeHtml(m.label)}</strong>${m.value !== undefined ? `<br/>${fmtInt(m.value)} ${escapeHtml(unit)}` : ''}</div>`,
           { sticky: true, className: 'dappa-tooltip' },
         );
       }
@@ -147,7 +150,7 @@ export default function MiniChoropleth({
       map.fitBounds(geoLayer.getBounds(), { padding: [8, 8] });
     } catch { /* empty geojson — keep placeholder view */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geo.data, valuesKey, alertsKey, markersKey, valueLabel, theme]);
+  }, [geo.data, valuesKey, alertsKey, markersKey, unit, theme]);
 
   if (geo.isLoading) return <LoadingSkeleton height={height} className={className} />;
   if (geo.error) {
@@ -155,9 +158,9 @@ export default function MiniChoropleth({
       <EmptyState
         compact
         className={className}
-        title="Map unavailable"
-        message="Could not load the Karnataka district GeoJSON."
-        action={<button type="button" className="btn" onClick={() => geo.refetch()}>Retry</button>}
+        title={t('shell.map.unavailable')}
+        message={t('shell.map.geoFail')}
+        action={<button type="button" className="btn" onClick={() => geo.refetch()}>{t('common.action.retry')}</button>}
       />
     );
   }

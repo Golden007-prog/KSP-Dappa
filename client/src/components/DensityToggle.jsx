@@ -6,6 +6,7 @@
 // Props: className?, size? (forwarded to SegmentedControl).
 import SegmentedControl from './SegmentedControl.jsx';
 import { useUiStore } from '../lib/store.js';
+import { useT } from '../lib/i18n.jsx';
 
 /** Imperative setter (command palette etc.) — applies + persists + returns the new value. */
 export function setDensity(value) {
@@ -23,16 +24,17 @@ const rows = (n) => (
 export default function DensityToggle({ className = '', size = 'sm' }) {
   const density = useUiStore((s) => s.density);
   const setStoreDensity = useUiStore((s) => s.setDensity);
+  const t = useT();
   return (
     <SegmentedControl
-      ariaLabel="Table density"
+      ariaLabel={t('shell.density.label')}
       className={className}
       size={size}
       value={density}
       onChange={(v) => setStoreDensity(v)}
       options={[
-        { value: 'comfortable', label: 'Cozy', icon: rows(3) },
-        { value: 'compact', label: 'Compact', icon: rows(4) },
+        { value: 'comfortable', label: t('common.shell.densityCozy'), icon: rows(3) },
+        { value: 'compact', label: t('common.shell.densityCompact'), icon: rows(4) },
       ]}
     />
   );

@@ -3,13 +3,14 @@
 // chart library: it prints crisply, follows the theme via currentColor, and
 // costs nothing in the bundle. Text alternative on the wrapper.
 import { fmtNum } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const MAX_Z = 6;
 const BANDS = [
-  { from: 0, to: 2, cls: 'text-muted/40', label: 'within expected band' },
-  { from: 2, to: 3, cls: 'text-amber/70', label: 'moderate deviation' },
-  { from: 3, to: 4, cls: 'text-amber', label: 'high deviation' },
-  { from: 4, to: MAX_Z, cls: 'text-signal', label: 'severe deviation' },
+  { from: 0, to: 2, cls: 'text-muted/40', key: 'within' },
+  { from: 2, to: 3, cls: 'text-amber/70', key: 'moderate' },
+  { from: 3, to: 4, cls: 'text-amber', key: 'high' },
+  { from: 4, to: MAX_Z, cls: 'text-signal', key: 'severe' },
 ];
 
 /** Value on the 0–6 dial → [x, y] at radius r (pivot at 60,58; 180°→0°). */
@@ -25,12 +26,14 @@ function arc(v0, v1, r) {
 }
 
 export default function ZGauge({ z, className = '' }) {
+  const t = useT();
   const abs = Math.abs(Number(z) || 0);
   const clamped = Math.min(abs, MAX_Z);
   const band = BANDS.find((b) => clamped < b.to) || BANDS[BANDS.length - 1];
+  const bandLabel = t(`alerts.gauge.band.${band.key}`);
   const [nx, ny] = polar(clamped, 30);
   return (
-    <div className={`flex flex-col items-center ${className}`} role="img" aria-label={`z-score gauge: ${fmtNum(z, 1)} — ${band.label}`}>
+    <div className={`flex flex-col items-center ${className}`} role="img" aria-label={t('alerts.gauge.aria', { z: fmtNum(z, 1), band: bandLabel })}>
       <svg width="118" height="72" viewBox="0 0 120 74" aria-hidden="true" className="max-w-full">
         {BANDS.map((b) => (
           <path
@@ -57,7 +60,7 @@ export default function ZGauge({ z, className = '' }) {
           {fmtNum(abs, 1)}
         </text>
       </svg>
-      <p className="text-[10px] text-muted leading-tight text-center">|z| on 0–{MAX_Z} · {band.label}</p>
+      <p className="text-[10px] text-muted leading-tight text-center">{t('alerts.gauge.caption', { max: MAX_Z, band: bandLabel })}</p>
     </div>
   );
 }

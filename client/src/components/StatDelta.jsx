@@ -5,8 +5,10 @@
 //   className?
 // Renders an em-dash chip when value is not finite; ~0 renders neutral.
 import { fmtPct } from '../lib/format.js';
+import { useT } from '../lib/i18n.jsx';
 
 export default function StatDelta({ value, positiveIsGood = true, label, className = '' }) {
+  const t = useT();
   const n = Number(value);
   if (!Number.isFinite(n)) {
     return <span className={`num text-xs text-muted ${className}`}>—{label ? ` ${label}` : ''}</span>;
@@ -18,7 +20,7 @@ export default function StatDelta({ value, positiveIsGood = true, label, classNa
   return (
     <span className={`num inline-flex items-center gap-0.5 text-xs font-medium ${tone} ${className}`}>
       <span aria-hidden="true">{flat ? '▪' : up ? '▲' : '▼'}</span>
-      <span className="sr-only">{flat ? 'unchanged' : up ? 'up' : 'down'}</span>
+      <span className="sr-only">{t(flat ? 'shell.delta.flat' : up ? 'shell.delta.up' : 'shell.delta.down')}</span>
       {fmtPct(Math.abs(n), { fraction: false })}
       {label && <span className="text-muted font-normal">{label}</span>}
     </span>

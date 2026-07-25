@@ -7,27 +7,34 @@ import { useMemo, useState } from 'react';
 import Card from '../../components/Card.jsx';
 import ChartPanel from '../../components/ChartPanel.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
+import { useT } from '../../lib/i18n.jsx';
+import { useCaseNames } from './names.js';
 import { readJson, writeJson } from './explorerState.js';
 
 const STORAGE_KEY = 'dappa-cases-summarybar';
 const MAX_BARS = 8;
 
-export default function SummaryBar({ rows, groupKey, groupLabel, scopeLabel }) {
+// `groupKind` names the tName table for the grouped column ('' for stations,
+// which have no translation table).
+export default function SummaryBar({ rows, groupKey, groupLabel, groupKind = '', scopeLabel }) {
+  const t = useT();
+  const trName = useCaseNames();
   const { theme } = useTheme();
   const [open, setOpen] = useState(() => readJson(STORAGE_KEY, true) !== false);
 
   const agg = useMemo(() => {
     const counts = new Map();
     for (const r of rows || []) {
-      const name = String(r?.[groupKey] ?? '').trim() || 'Unknown';
+      const raw = String(r?.[groupKey] ?? '').trim();
+      const name = raw ? (groupKind ? trName(groupKind, raw) : raw) : t('cases.profile.unknown');
       counts.set(name, (counts.get(name) || 0) + 1);
     }
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
     const top = sorted.slice(0, MAX_BARS).map(([name, count]) => ({ name, count }));
     const rest = sorted.slice(MAX_BARS).reduce((acc, [, c]) => acc + c, 0);
-    if (rest > 0) top.push({ name: 'Other', count: rest });
+    if (rest > 0) top.push({ name: t('cases.profile.other'), count: rest });
     return top;
-  }, [rows, groupKey]);
+  }, [rows, groupKey, groupKind, trName, t]);
 
   // A one-group profile says nothing — skip the panel entirely.
   if (agg.length < 2) return null;
@@ -40,7 +47,7 @@ export default function SummaryBar({ rows, groupKey, groupLabel, scopeLabel }) {
   };
   const toggleBtn = (
     <button type="button" className="btn !py-1 !px-2 text-xs" onClick={toggle} aria-expanded={open}>
-      {open ? 'Hide' : 'Show'}
+      {open ? t('cases.profile.hide') : t('cases.profile.show')}
     </button>
   );
 
@@ -49,7 +56,7 @@ export default function SummaryBar({ rows, groupKey, groupLabel, scopeLabel }) {
       <Card>
         <div className="flex items-center justify-between gap-3 -my-1.5">
           <p className="text-xs text-muted truncate">
-            Filter profile — cases by {groupLabel} · {scopeLabel}
+            {t('cases.profile.collapsed', { group: groupLabel, scope: scopeLabel })}
           </p>
           {toggleBtn}
         </div>
@@ -91,8 +98,8 @@ export default function SummaryBar({ rows, groupKey, groupLabel, scopeLabel }) {
 
   return (
     <ChartPanel
-      title="Filter profile"
-      subtitle={`Cases by ${groupLabel} · ${scopeLabel}`}
+      title={t('cases.profile.title')}
+      subtitle={t('cases.profile.subtitle', { group: groupLabel, scope: scopeLabel })}
       actions={toggleBtn}
       option={option}
       height={height}

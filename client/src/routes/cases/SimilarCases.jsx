@@ -14,11 +14,36 @@ import Badge from '../../components/Badge.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import { dateLabel, fmtInt } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
+import { useCaseNames } from './names.js';
 import { CrimeNoInline, splitCrimeNo } from './CrimeNoBreakdown.jsx';
 
 const MAX_ROWS = 6;
 
-function RowButton({ r, onOpen }) {
+// whyMatched reasons are produced in English by the pattern engine
+// (functions/dappa_api/lib/routes/cases.js) and by the client fallback in
+// similar.js — both stay canonical; only the chip text is translated.
+const WHY_KEYS = {
+  'same crime pattern': 'cases.similar.why.pattern',
+  'same crime head': 'cases.similar.why.head',
+  'same station': 'cases.similar.why.station',
+  'same district': 'cases.similar.why.district',
+  'similar hour of day': 'cases.similar.why.hour',
+};
+const WITHIN_KM = /^within\s+([\d.]+)\s*km$/i;
+
+function useWhyLabel() {
+  const t = useT();
+  return (raw) => {
+    const s = String(raw || '').trim();
+    if (WHY_KEYS[s.toLowerCase()]) return t(WHY_KEYS[s.toLowerCase()]);
+    const km = WITHIN_KM.exec(s);
+    if (km) return t('cases.similar.why.withinKm', { km: km[1] });
+    return s;
+  };
+}
+
+function RowButton({ r, onOpen, whyLabel, trName, t }) {
   const hasScore = Number.isFinite(Number(r.similarity));
   const score = hasScore ? Math.max(0, Math.min(100, Number(r.similarity))) : 0;
   const why = Array.isArray(r.whyMatched) ? r.whyMatched.filter(Boolean) : [];
@@ -31,18 +56,18 @@ function RowButton({ r, onOpen }) {
       <div className="min-w-0 flex-1">
         <p className="text-sm truncate"><CrimeNoInline crimeNo={r.crimeNo} /></p>
         <p className="text-[11px] text-muted num mt-0.5 truncate">
-          {dateLabel(r.registeredDate)} · {r.unitName || r.districtName || '—'}
+          {dateLabel(r.registeredDate)} · {r.unitName || trName('districts', r.districtName) || '—'}
         </p>
         {why.length > 0 && (
           <span className="mt-1 flex flex-wrap gap-1">
             {why.slice(0, 4).map((w, i) => (
-              <span key={`${w}-${i}`} className="chip !py-0.5 !px-1.5 !text-[10px]">{w}</span>
+              <span key={`${w}-${i}`} className="chip !py-0.5 !px-1.5 !text-[10px]">{whyLabel(w)}</span>
             ))}
           </span>
         )}
       </div>
       {hasScore && (
-        <span className="shrink-0 flex flex-col items-end gap-1" aria-label={`Similarity ${score} percent`}>
+        <span className="shrink-0 flex flex-col items-end gap-1" aria-label={t('cases.similar.scoreAria', { n: score })}>
           <span className="num text-xs text-ink font-medium">{fmtInt(score)}%</span>
           <span className="block h-1.5 w-14 rounded-full bg-grid overflow-hidden" aria-hidden="true">
             <span
@@ -52,8 +77,8 @@ function RowButton({ r, onOpen }) {
           </span>
         </span>
       )}
-      {r.anomalyFlag ? <Badge tone="red" pulse>anomaly</Badge> : null}
-      {r.statusName && !why.length && <Badge tone="slate">{r.statusName}</Badge>}
+      {r.anomalyFlag ? <Badge tone="red" pulse>{t('cases.badge.anomaly')}</Badge> : null}
+      {r.statusName && !why.length && <Badge tone="slate">{trName('statuses', r.statusName)}</Badge>}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-muted">
         <path d="m9 6 6 6-6 6" />
       </svg>
@@ -62,10 +87,15 @@ function RowButton({ r, onOpen }) {
 }
 
 function RowList({ rows, onOpen }) {
+  const t = useT();
+  const trName = useCaseNames();
+  const whyLabel = useWhyLabel();
   return (
     <ul className="divide-y divide-grid/40">
       {rows.map((r) => (
-        <li key={r.caseMasterId}><RowButton r={r} onOpen={onOpen} /></li>
+        <li key={r.caseMasterId}>
+          <RowButton r={r} onOpen={onOpen} whyLabel={whyLabel} trName={trName} t={t} />
+        </li>
       ))}
     </ul>
   );
@@ -73,6 +103,7 @@ function RowList({ rows, onOpen }) {
 
 /** Pattern-engine variant — renders the useSimilarCases hook result. */
 function SimilarFromEngine({ caseData, similar }) {
+  const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const d = caseData || {};
@@ -91,27 +122,27 @@ function SimilarFromEngine({ caseData, similar }) {
     body = (
       <EmptyState
         compact
-        title="Couldn't score similar cases"
+        title={t('cases.similar.scoreError')}
         message={similar.error.message}
-        action={<button type="button" className="btn" onClick={() => similar.refetch()}>Retry</button>}
+        action={<button type="button" className="btn" onClick={() => similar.refetch()}>{t('common.action.retry')}</button>}
       />
     );
   } else if (!rows.length) {
-    body = <EmptyState compact title="No similar cases" message="The pattern engine found no case sharing this one's crime pattern." />;
+    body = <EmptyState compact title={t('cases.similar.none')} message={t('cases.similar.noneEngine')} />;
   } else {
     body = <RowList rows={rows} onOpen={open} />;
   }
 
   return (
     <Card
-      title="Similar cases"
+      title={t('cases.similar.title')}
       subtitle={engine === 'server'
-        ? 'Scored on hour band · station/district · geo proximity'
-        : `Same ${d.subHeadName ? 'subhead' : 'crime head'} · same district · newest first`}
+        ? t('cases.similar.subEngine')
+        : t(d.subHeadName ? 'cases.similar.subFallbackSub' : 'cases.similar.subFallbackHead')}
       className="no-print"
       actions={engine === 'server'
-        ? <Badge tone="teal">pattern engine</Badge>
-        : <Badge tone="slate">client fallback</Badge>}
+        ? <Badge tone="teal">{t('cases.similar.engineBadge')}</Badge>
+        : <Badge tone="slate">{t('cases.similar.fallbackBadge')}</Badge>}
     >
       {body}
     </Card>
@@ -119,6 +150,7 @@ function SimilarFromEngine({ caseData, similar }) {
 }
 
 function SimilarList({ params, matchLabel, currentId }) {
+  const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const cases = useCases({ ...params, page: 1, perPage: 12 });
@@ -132,10 +164,10 @@ function SimilarList({ params, matchLabel, currentId }) {
 
   if (cases.isLoading) return <LoadingSkeleton lines={4} />;
   if (cases.error) {
-    return <EmptyState compact title="Couldn't load similar cases" message={cases.error.message} />;
+    return <EmptyState compact title={t('cases.similar.loadError')} message={cases.error.message} />;
   }
   if (!rows.length) {
-    return <EmptyState compact title="No similar cases" message={`No other case shares ${matchLabel}.`} />;
+    return <EmptyState compact title={t('cases.similar.none')} message={t('cases.similar.noneMatch', { what: matchLabel })} />;
   }
 
   const siblings = rows.map((r) => String(r.caseMasterId));
@@ -148,6 +180,8 @@ function SimilarList({ params, matchLabel, currentId }) {
 }
 
 export default function SimilarCases({ caseData, similar }) {
+  const t = useT();
+  const trName = useCaseNames();
   const d = caseData || {};
   const lookups = useLookups();
   const lk = lookups.data;
@@ -163,18 +197,22 @@ export default function SimilarCases({ caseData, similar }) {
   const params = sub
     ? { crimeSubHeadId: sub.crimeSubHeadId }
     : head ? { crimeHeadId: head.crimeHeadId } : null;
+  const districtLabel = trName('districts', d.districtName) || t('cases.similar.thisDistrict');
   const matchLabel = sub
-    ? `subhead “${d.subHeadName}” in ${d.districtName || 'this district'}`
-    : head ? `head “${d.headName}” in ${d.districtName || 'this district'}` : '';
+    ? t('cases.similar.matchSub', { name: trName('crimeSubHeads', d.subHeadName), district: districtLabel })
+    : head ? t('cases.similar.matchHead', { name: trName('crimeHeads', d.headName), district: districtLabel }) : '';
 
   return (
     <Card
-      title="Similar cases"
-      subtitle={matchLabel ? `Same ${sub ? 'subhead' : 'crime head'} · same district · newest first` : 'Pattern context for this FIR'}
+      title={t('cases.similar.title')}
+      subtitle={matchLabel
+        ? t(sub ? 'cases.similar.subFallbackSub' : 'cases.similar.subFallbackHead')
+        : t('cases.similar.subContext')}
       className="no-print"
       actions={
         <span className="flex items-center gap-1.5">
-          {sub ? <Badge tone="teal">subhead match</Badge> : head ? <Badge tone="slate">head match</Badge> : null}
+          {sub ? <Badge tone="teal">{t('cases.similar.subHeadMatch')}</Badge>
+            : head ? <Badge tone="slate">{t('cases.similar.headMatch')}</Badge> : null}
         </span>
       }
     >
@@ -183,8 +221,8 @@ export default function SimilarCases({ caseData, similar }) {
       ) : !params || !districtId ? (
         <EmptyState
           compact
-          title="Not enough attributes"
-          message="This case's crime head/subhead could not be matched against the lookup tables."
+          title={t('cases.similar.notEnough')}
+          message={t('cases.similar.notEnoughMsg')}
         />
       ) : (
         <SimilarList params={{ ...params, districtId }} matchLabel={matchLabel} currentId={d.caseMasterId} />

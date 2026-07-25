@@ -10,14 +10,15 @@
 // Dependency-free; portal to <body>.
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useT } from '../lib/i18n.jsx';
 
 const ToastContext = createContext(null);
 let toastSeq = 0;
 
 const TONE = {
-  success: { bar: 'bg-teal', text: 'text-teal', label: 'Success' },
-  error: { bar: 'bg-signal', text: 'text-signal', label: 'Error' },
-  info: { bar: 'bg-primary', text: 'text-primary', label: 'Info' },
+  success: { bar: 'bg-teal', text: 'text-teal', key: 'shell.toast.toneSuccess' },
+  error: { bar: 'bg-signal', text: 'text-signal', key: 'shell.toast.toneError' },
+  info: { bar: 'bg-primary', text: 'text-primary', key: 'shell.toast.toneInfo' },
 };
 
 function ToneIcon({ tone }) {
@@ -32,6 +33,7 @@ function ToneIcon({ tone }) {
 }
 
 export function ToastProvider({ children }) {
+  const t = useT();
   const [toasts, setToasts] = useState([]);
   // per-toast {timer, expiresAt, remaining} so hover-pause can resume with the
   // time that was actually left rather than restarting the full duration
@@ -108,7 +110,7 @@ export function ToastProvider({ children }) {
       {createPortal(
         <div
           aria-live="polite"
-          aria-label="Notifications"
+          aria-label={t('shell.toast.region')}
           className="no-print fixed z-80 bottom-20 md:bottom-6 right-3 left-3 md:left-auto md:right-6 md:w-96 flex flex-col gap-2 pointer-events-none mb-safe"
         >
           {toasts.length >= 3 && (
@@ -118,7 +120,7 @@ export function ToastProvider({ children }) {
                 onClick={dismissAll}
                 className="pointer-events-auto rounded-full border border-grid bg-panel px-3 py-1 text-[11px] text-muted hover:text-ink shadow-card transition-colors"
               >
-                Dismiss all ({toasts.length})
+                {t('shell.toast.dismissAll', { n: toasts.length })}
               </button>
             </div>
           )}
@@ -153,7 +155,7 @@ export function ToastProvider({ children }) {
                 <button
                   type="button"
                   onClick={() => dismiss(t.id)}
-                  aria-label={`Dismiss ${tone.label.toLowerCase()} notification`}
+                  aria-label={t('shell.toast.dismissAria', { tone: t(tone.key) })}
                   className="px-3 text-muted hover:text-ink transition-colors min-w-[44px]"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>

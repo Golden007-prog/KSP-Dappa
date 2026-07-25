@@ -10,8 +10,14 @@ import Badge from '../../components/Badge.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import { fmtNum } from '../../lib/format.js';
+import { useT } from '../../lib/i18n.jsx';
 
 const str = (v) => (v === undefined || v === null ? '' : String(v));
+const SENTIMENT_KEYS = {
+  positive: 'cases.narrative.positive',
+  negative: 'cases.narrative.negative',
+  neutral: 'cases.narrative.neutral',
+};
 
 function normEntities(raw) {
   const list = Array.isArray(raw) ? raw : [];
@@ -91,6 +97,7 @@ function buildSegments(text, entities) {
 const SENTIMENT_TONE = { positive: 'teal', negative: 'red' };
 
 export default function NarrativePanel({ caseId, briefFacts }) {
+  const t = useT();
   const narrative = useNarrative();
   const { mutate } = narrative;
 
@@ -107,8 +114,8 @@ export default function NarrativePanel({ caseId, briefFacts }) {
 
   const sourceBadge = narrative.data ? (
     meta.source === 'fallback-local'
-      ? <Badge tone="slate">local fallback</Badge>
-      : <Badge tone="teal">Zia Text Analytics</Badge>
+      ? <Badge tone="slate">{t('cases.narrative.local')}</Badge>
+      : <Badge tone="teal">{t('cases.narrative.zia')}</Badge>
   ) : null;
 
   let body;
@@ -120,23 +127,23 @@ export default function NarrativePanel({ caseId, briefFacts }) {
     body = (
       <EmptyState
         compact
-        title="Couldn't analyse the narrative"
+        title={t('cases.narrative.error')}
         message={narrative.error.message}
-        action={<button type="button" className="btn" onClick={() => mutate({ caseId })}>Retry</button>}
+        action={<button type="button" className="btn" onClick={() => mutate({ caseId })}>{t('common.action.retry')}</button>}
       />
     );
   } else if (!narrative.data) {
-    body = <EmptyState compact title="No analysis yet" message="Narrative insights run automatically once the case loads." />;
+    body = <EmptyState compact title={t('cases.narrative.idleTitle')} message={t('cases.narrative.idleMessage')} />;
   } else {
     body = (
       <div className="space-y-4">
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted mb-1.5">Brief facts · entities highlighted</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted mb-1.5">{t('cases.narrative.briefFacts')}</p>
           {segments.length ? (
             <p className="text-sm leading-6 text-ink whitespace-pre-wrap">
               {segments.map((s, i) =>
                 s.hit ? (
-                  <mark key={i} className="bg-amber/20 text-amber rounded px-0.5" title={s.type || 'entity'}>
+                  <mark key={i} className="bg-amber/20 text-amber rounded px-0.5" title={s.type || t('cases.narrative.entity')}>
                     {s.text}
                   </mark>
                 ) : (
@@ -145,13 +152,13 @@ export default function NarrativePanel({ caseId, briefFacts }) {
               )}
             </p>
           ) : (
-            <p className="text-sm text-muted">No brief facts recorded for this case.</p>
+            <p className="text-sm text-muted">{t('cases.narrative.noBriefFacts')}</p>
           )}
         </div>
 
         {entities.length > 0 && (
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted mb-1.5">Entities</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted mb-1.5">{t('cases.narrative.entities')}</p>
             <div className="flex flex-wrap gap-1.5">
               {entities.slice(0, 14).map((e, i) => (
                 <span key={`${e.text}-${i}`} className="chip">
@@ -165,7 +172,7 @@ export default function NarrativePanel({ caseId, briefFacts }) {
 
         {keywords.length > 0 && (
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-muted mb-1.5">Keywords</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted mb-1.5">{t('cases.narrative.keywords')}</p>
             <div className="flex flex-wrap gap-1.5">
               {keywords.slice(0, 16).map((k, i) => (
                 <span key={`${k}-${i}`} className="chip !border-amber/40 !text-amber">{k}</span>
@@ -176,9 +183,10 @@ export default function NarrativePanel({ caseId, briefFacts }) {
 
         {sentiment && (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-wide text-muted">Sentiment</span>
+            <span className="text-[11px] uppercase tracking-wide text-muted">{t('cases.narrative.sentiment')}</span>
             <Badge tone={SENTIMENT_TONE[sentiment.label] || 'slate'}>
-              {sentiment.label}{sentiment.score !== null ? ` · ${fmtNum(sentiment.score, 2)}` : ''}
+              {SENTIMENT_KEYS[sentiment.label] ? t(SENTIMENT_KEYS[sentiment.label]) : sentiment.label}
+              {sentiment.score !== null ? ` · ${fmtNum(sentiment.score, 2)}` : ''}
             </Badge>
           </div>
         )}
@@ -188,8 +196,8 @@ export default function NarrativePanel({ caseId, briefFacts }) {
 
   return (
     <Card
-      title="Narrative insights"
-      subtitle="NER · keywords · sentiment on the FIR brief facts"
+      title={t('cases.narrative.title')}
+      subtitle={t('cases.narrative.subtitle')}
       actions={
         <div className="flex items-center gap-2">
           {sourceBadge}
@@ -199,7 +207,7 @@ export default function NarrativePanel({ caseId, briefFacts }) {
             disabled={narrative.isPending || !caseId}
             onClick={() => mutate({ caseId })}
           >
-            Re-run
+            {t('cases.narrative.rerun')}
           </button>
         </div>
       }
