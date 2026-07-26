@@ -65,14 +65,26 @@ const HOUR_BANDS = [
   [/\bafternoon\b/, { start: 12, end: 17, label: 'afternoon (12:00–17:00)' }]
 ];
 
+/**
+ * Clock hours covered by the band [start, end) — HALF-OPEN, because that is
+ * what an hour band means: a cluster labelled 19:00–21:00 is active at 19 and
+ * 20 and is over by 21. Treating the end hour as covered made every evening
+ * cluster collide with night on hour 21, so "hotspots at night" answered with a
+ * 19:00–21:00 cluster. Wraps past midnight (21→5 gives 21,22,23,0,1,2,3,4).
+ * A zero-width band (start === end) covers nothing.
+ */
 function hoursIn(start, end) {
   const out = new Set();
-  let h = ((start % 24) + 24) % 24;
-  const stop = ((end % 24) + 24) % 24;
-  out.add(h);
+  // Round before stepping. The loop advances by whole hours and exits on
+  // equality, so a fractional bound (toNum lets "12.5" through — it only
+  // screens NaN and Infinity) would step 12.5, 13.5, … and never reach an
+  // integral stop. That is a hung function, which is worse than a wrong answer.
+  const from = ((Math.round(start) % 24) + 24) % 24;
+  const stop = ((Math.round(end) % 24) + 24) % 24;
+  let h = from;
   while (h !== stop) {
-    h = (h + 1) % 24;
     out.add(h);
+    h = (h + 1) % 24;
   }
   return out;
 }
@@ -728,4 +740,7 @@ const CANNED_UTTERANCES = [
   'hotspots at night in Bengaluru City'
 ];
 
-module.exports = { parse, answer, CANNED_UTTERANCES };
+// hourBandsOverlap is exported for the contract suite: the half-open boundary
+// is exactly what regressed once, so it is pinned directly rather than only
+// through the copilot answer string.
+module.exports = { parse, answer, CANNED_UTTERANCES, hourBandsOverlap };

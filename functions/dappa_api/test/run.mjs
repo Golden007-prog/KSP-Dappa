@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const { createApp } = require('../lib/app.js');
 const { createStubClient, buildZCQL, createDatastore, ZCQL_PAGE } = require('../lib/datastore.js');
 const { buildFixtureTables, getFallbackState, resetFixtureFallback } = require('../lib/fixture.js');
-const { CANNED_UTTERANCES, parse } = require('../lib/copilot.js');
+const { CANNED_UTTERANCES, parse, hourBandsOverlap } = require('../lib/copilot.js');
 const { resetArtifacts } = require('../lib/artifacts.js');
 const { buildServiceMap, summarize } = require('../lib/servicemap.js');
 const ziaModule = require('../lib/zia.js');
@@ -235,6 +235,22 @@ check('buildZCQL LIMIT page 3 start row', buildZCQL({ table: 'T', limit: { offse
   check('copilot heinous-share intent', parse('heinous share this year').kind === 'heinousShare');
   check('copilot unknown intent for gibberish', parse('what is the meaning of life').kind === 'unknown');
   check('copilot known phrasing still trend', parse('chain snatching in Mysuru City last 3 months').kind === 'trend');
+
+  // Hour bands are HALF-OPEN [start, end). A cluster labelled 19:00-21:00 is
+  // active at 19 and 20 and is over by 21, so it must not answer a question
+  // about night (21:00-05:00). Treating the end hour as covered made every
+  // evening cluster collide with night on hour 21, and "hotspots at night"
+  // came back with a 19:00-21:00 cluster.
+  check('hour band 19-21 does NOT overlap night 21-5', hourBandsOverlap(19, 21, 21, 5) === false);
+  check('hour band 21-23 DOES overlap night 21-5', hourBandsOverlap(21, 23, 21, 5) === true);
+  check('hour band 17-19 overlaps evening 17-21', hourBandsOverlap(17, 19, 17, 21) === true);
+  check('hour band 21-1 does NOT overlap evening 17-21', hourBandsOverlap(21, 1, 17, 21) === false);
+  check('hour band 11-12 overlaps morning 5-12', hourBandsOverlap(11, 12, 5, 12) === true);
+  check('hour band 12-14 does NOT overlap morning 5-12', hourBandsOverlap(12, 14, 5, 12) === false);
+  check('hour band 16-18 overlaps afternoon 12-17', hourBandsOverlap(16, 18, 12, 17) === true);
+  check('hour band 17-19 does NOT overlap afternoon 12-17', hourBandsOverlap(17, 19, 12, 17) === false);
+  check('zero-width hour band covers nothing', hourBandsOverlap(21, 21, 0, 24) === false);
+  check('midnight-wrapping band still works', hourBandsOverlap(23, 2, 21, 5) === true);
 }
 
 // --- GET endpoints: 200 + {ok:true} + contract keys -------------------------
@@ -467,6 +483,35 @@ for (const utterance of CANNED_UTTERANCES) {
   check(`copilot "${utterance}" -> 200 ok`, status === 200 && json.ok === true, `status ${status}`);
   check(`copilot "${utterance}" non-empty answer`, typeof d.answer === 'string' && d.answer.trim().length > 10, JSON.stringify(d).slice(0, 200));
   check(`copilot "${utterance}" engine`, d.engine === 'deterministic' || d.engine === 'quickml-rag');
+}
+
+{
+  // End-to-end guard on the same boundary. Fixture clusters are HS-01 23:00-03:00,
+  // HS-02 21:00-01:00 and HS-03 20:00-23:00. An evening question (17:00-21:00)
+  // covers hours 17-20, so HS-03 qualifies on hour 20 but HS-02 must not — it
+  // only starts at 21. Under the old closed-interval logic HS-02 collided with
+  // evening on hour 21, which is the shape of the reported night bug.
+  const evening = await post('/copilot/query', { q: 'hotspots in the evening in Bengaluru City' });
+  const eveningAnswer = String((evening.json.data || {}).answer || '');
+  check('copilot evening hotspot excludes the 21:00-start cluster',
+    !eveningAnswer.includes('21:00–01:00') && !eveningAnswer.includes('21:00-01:00'), eveningAnswer);
+  // HS-04 ends at 21:00 and outranks the real night clusters on intensity, so a
+  // closed band puts it first here. Assert on the literal band strings, not via
+  // hourBandsOverlap — validating the answer with the function under test would
+  // let both regress together. Both directions are required: the negative alone
+  // would also pass if the filter over-corrected and returned nothing.
+  const night = await post('/copilot/query', { q: 'hotspots at night in Bengaluru City' });
+  const nightAnswer = String((night.json.data || {}).answer || '');
+  check('copilot night hotspot excludes the cluster that ENDS at 21:00',
+    !/19:00[–-]21:00/.test(nightAnswer), nightAnswer);
+  check('copilot night hotspot still includes a genuine night cluster',
+    /23:00[–-]03:00|21:00[–-]01:00/.test(nightAnswer), nightAnswer);
+
+  // A fractional hour bound used to spin hoursIn forever (whole-hour steps can
+  // never equal a fractional stop), hanging the function rather than answering.
+  // NOTE: if the Math.round guard is ever removed this assertion HANGS rather
+  // than failing — a suite that never finishes is the symptom to look for here.
+  check('hour band tolerates a non-integer bound', hourBandsOverlap(12.5, 17, 12, 17) === true);
 }
 {
   const { json } = await post('/copilot/query', { q: 'top 5 districts for vehicle theft this year' });
