@@ -44,7 +44,7 @@ def arrow(ax, p0, p1, color=TEAL, rad=0.0, lw=1.5):
 
 
 def canvas(title, subtitle):
-    fig, ax = plt.subplots(figsize=(16, 9), dpi=130)
+    fig, ax = plt.subplots(figsize=(16, 7.2), dpi=140)
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(BG)
     ax.set_xlim(0, 1)
@@ -71,7 +71,7 @@ def architecture():
         "dappa_api — Node 20 + Express",
         "120+ REST routes, {ok,data,meta}",
         "API Gateway in front · rate limited",
-        "784-assertion contract suite",
+        "789-assertion contract suite",
     ], TEAL)
 
     box(ax, 0.675, 0.60, 0.29, 0.22, "3 · Async compute", [
@@ -120,7 +120,7 @@ def architecture():
     arrow(ax, (0.495, 0.30), (0.495, 0.245), AMBER)
 
     fig.savefig(os.path.join(OUT, "diagram-architecture.png"),
-                facecolor=BG, bbox_inches="tight", pad_inches=0.28)
+                facecolor=BG, bbox_inches="tight", pad_inches=0.10)
     plt.close(fig)
 
 
@@ -132,29 +132,29 @@ def flow():
     steps = [
         ("Synthetic FIR corpus", ["generate.py builds 45,000 FIRs", "on the official KSP ER diagram",
                                   "18-digit CrimeNo, 31 districts", "Aug 2025 – Jul 2026"]),
-        ("Data Store (ZCQL)", ["35 related tables loaded once", "Search index over BriefFacts",
+        ("Data Store (ZCQL)", ["35 related tables, loaded once", "Search index over BriefFacts",
                                "Cache holds hot aggregates", "Row events fire dappa_event"]),
-        ("Nightly analytics", ["dappa_nightly Cron + Circuits", "Holt-Winters forecast per district",
+        ("Nightly analytics", ["dappa_nightly Cron + Circuits", "Holt-Winters per district",
                                "Gi* hotspots · z-score anomalies", "Identity resolution → offenders"]),
-        ("dappa_api", ["120+ REST routes", "Every reply carries meta.source", "QuickML + Zia when enabled",
-                       "Deterministic fallback otherwise"]),
+        ("dappa_api", ["120+ REST routes", "Each reply names meta.source", "QuickML + Zia when enabled",
+                       "Deterministic fallback else"]),
         ("Officer surfaces", ["Dashboard · GeoIntel · Trends", "Network · Offenders · Predict",
                               "Ask DAPPA copilot . Cases", "English / Kannada / Hindi"]),
-        ("Action taken", ["Rank stations for next 30 days", "Acknowledge or dismiss an alert",
+        ("Action taken", ["Rank stations for next 30 days", "Acknowledge / dismiss alerts",
                           "Export weekly brief PDF", "Mail digest to the unit"]),
     ]
 
-    w, h, y = 0.145, 0.30, 0.44
+    w, h, y = 0.150, 0.30, 0.44
     for i, (title, lines) in enumerate(steps):
         x = 0.035 + i * 0.157
         accent = AMBER if i % 2 == 0 else TEAL
         ax.text(x + 0.004, y + h + 0.035, f"{i+1}", color=accent, fontsize=13, fontweight="bold")
-        box(ax, x, y, w, h, title, lines, accent, title_size=10, body_size=7.8)
+        box(ax, x, y, w, h, title, lines, accent, title_size=8.6, body_size=6.4)
         if i < len(steps) - 1:
             arrow(ax, (x + w + 0.002, y + h / 2), (x + w + 0.010, y + h / 2), MUTED, lw=1.8)
 
     box(ax, 0.035, 0.09, 0.44, 0.27, "Verification loop", [
-        "784-assertion contract suite over the API surface",
+        "789-assertion contract suite over the API surface",
         "34/34 live smoke checks against the deployed URL",
         "/healthz reports real per-table row counts",
         "Every answer can reveal the ZCQL that produced it",
@@ -168,7 +168,7 @@ def flow():
     ], AMBER, title_size=11, body_size=8.6)
 
     fig.savefig(os.path.join(OUT, "diagram-flow.png"),
-                facecolor=BG, bbox_inches="tight", pad_inches=0.28)
+                facecolor=BG, bbox_inches="tight", pad_inches=0.10)
     plt.close(fig)
 
 
