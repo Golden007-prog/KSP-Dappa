@@ -15,6 +15,8 @@ const casesRoutes = require('./routes/cases');
 const actionsRoutes = require('./routes/actions');
 const extrasRoutes = require('./routes/extras');
 const servicesRoutes = require('./routes/services');
+const netlinksRoutes = require('./routes/netlinks');
+const behaviourRoutes = require('./routes/behaviour');
 
 /**
  * @param {object} [options]
@@ -66,6 +68,10 @@ function createApp(options) {
   // extras before insight: /alerts/summary and /offenders/mo-patterns must
   // match ahead of the /alerts/:id and /offenders/:personKey param routes.
   extrasRoutes.register(router);
+  // Same rule for the link-analysis and behavioural routes: /network/... and
+  // /offenders/mo-evolution have to win over the later param routes.
+  netlinksRoutes.register(router);
+  behaviourRoutes.register(router);
   insightRoutes.register(router);
   casesRoutes.register(router);
   actionsRoutes.register(router);

@@ -5,6 +5,14 @@
 
 const DEFAULT_TTL_SEC = 600;
 
+// Catalyst Cache is a key/value store, not a blob store. The link-analysis
+// aggregates can serialise to hundreds of kilobytes, and a rejected put marks
+// the whole backend unhealthy for the container — one oversized value would
+// silently disable caching for every other endpoint. Anything past this
+// self-imposed cap stays in the per-container memory map instead: still
+// cached, just not shared across containers.
+const MAX_REMOTE_BYTES = 200 * 1024;
+
 /**
  * @param {object} [opts]
  * @param {function} [opts.getSegment] async () => Catalyst cache Segment (or null).
@@ -16,6 +24,7 @@ function createCache(opts) {
   const mem = new Map();
   let segmentPromise = null;
   let catalystHealthy = Boolean(o.getSegment);
+  let oversized = 0;
 
   async function segment() {
     if (!o.getSegment || !catalystHealthy) return null;
@@ -64,9 +73,14 @@ function createCache(opts) {
       mem.set(key, { e: now() + ttl * 1000, v: value });
       const seg = await segment();
       if (seg) {
+        const raw = wrapVal(value, ttl);
+        if (Buffer.byteLength(raw, 'utf8') > MAX_REMOTE_BYTES) {
+          oversized += 1;
+          return;
+        }
         try {
           // Catalyst expiry is in hours; round up so our embedded expiry governs.
-          await seg.put(key, wrapVal(value, ttl), Math.max(1, Math.ceil(ttl / 3600)));
+          await seg.put(key, raw, Math.max(1, Math.ceil(ttl / 3600)));
         } catch (e) {
           catalystHealthy = false;
         }
@@ -93,8 +107,13 @@ function createCache(opts) {
 
     get backend() {
       return catalystHealthy ? 'catalyst' : 'memory';
+    },
+
+    /** How many values were too big to share; surfaced for diagnostics only. */
+    get oversizedWrites() {
+      return oversized;
     }
   };
 }
 
-module.exports = { createCache, DEFAULT_TTL_SEC };
+module.exports = { createCache, DEFAULT_TTL_SEC, MAX_REMOTE_BYTES };

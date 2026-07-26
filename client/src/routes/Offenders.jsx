@@ -18,6 +18,7 @@ import FilterBar from '../components/FilterBar.jsx';
 import DataTable from '../components/DataTable.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Badge from '../components/Badge.jsx';
+import Tabs from '../components/Tabs.jsx';
 import SegmentedControl from '../components/SegmentedControl.jsx';
 import DensityToggle from '../components/DensityToggle.jsx';
 import Tooltip from '../components/Tooltip.jsx';
@@ -31,6 +32,9 @@ import MoMatrix from './offenders/MoMatrix.jsx';
 import CoOffendingPairs from './offenders/CoOffendingPairs.jsx';
 import AliasQueue from './offenders/AliasQueue.jsx';
 import { RiskBandStrip, MoTagChips, RecentRow } from './offenders/FilterStrips.jsx';
+import OrgCrimeCrews from './offenders/OrgCrimeCrews.jsx';
+import MoVocabulary from './offenders/MoVocabulary.jsx';
+import { useMoAnalysis } from './offenders/useMoAnalysis.js';
 import { readCompare, writeCompare, COMPARE_MAX } from './offenders/compareStore.js';
 import { readRecent, clearRecent } from './offenders/recentStore.js';
 import { useWatchlist, WATCH_MAX } from './offenders/watchlistStore.js';
@@ -103,6 +107,11 @@ export default function Offenders() {
   // so "carries an alias" is a genuinely selective review filter.
   const aliasOnly = searchParams.get('alias') === '1';
   const { keys: watchKeys, toggle: toggleWatchKey } = useWatchlist();
+
+  // Registry stays the default view; the two network/behavioural analyses pull
+  // the whole 2,048-row population, so their fetch is deferred until opened.
+  const tab = searchParams.get('tab') || 'registry';
+  const analysis = useMoAnalysis({ enabled: tab === 'crews' || tab === 'vocab' });
 
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState({ key: 'riskScore', dir: 'desc' });
@@ -459,6 +468,22 @@ export default function Offenders() {
         <p className="page-subtitle">{t('network.off.subtitle')}</p>
       </div>
 
+      <Tabs
+        ariaLabel={t('offenders.tabs.aria')}
+        value={tab}
+        onChange={(v) => setParams({ tab: v === 'registry' ? '' : v })}
+        tabs={[
+          { value: 'registry', label: t('offenders.tabs.registry') },
+          { value: 'crews', label: t('offenders.tabs.crews'), badge: analysis.crews.length || undefined },
+          { value: 'vocab', label: t('offenders.tabs.vocab') },
+        ]}
+      />
+
+      {tab === 'crews' && <OrgCrimeCrews analysis={analysis} />}
+      {tab === 'vocab' && <MoVocabulary analysis={analysis} />}
+
+      {tab === 'registry' && (
+      <>
       <FilterBar show={['district']}>
         <input
           className="input-dark !py-2 w-52 sm:w-64"
@@ -633,6 +658,8 @@ export default function Offenders() {
       <CoOffendingPairs rowsByKey={rowsByKey} />
 
       <AliasQueue rows={filtered} />
+      </>
+      )}
 
       {compare.length > 0 && (
         <div

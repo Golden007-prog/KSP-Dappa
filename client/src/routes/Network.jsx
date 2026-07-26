@@ -12,7 +12,7 @@
 // Spec: master prompt §7 route 4.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useLookups, useNetworkGraph, useOffenders } from '../lib/api.js';
+import { useLookups, useNetworkGraph, useOffenders, useStationRisk, useHotspots } from '../lib/api.js';
 import { useUrlFilters } from '../lib/filters.js';
 import { unitInfo } from '../lib/districtGeoMap.js';
 import Card from '../components/Card.jsx';
@@ -22,6 +22,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton.jsx';
 import Badge from '../components/Badge.jsx';
 import Sheet from '../components/Sheet.jsx';
 import SegmentedControl from '../components/SegmentedControl.jsx';
+import Tabs from '../components/Tabs.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt, fmtNum, fmtPct } from '../lib/format.js';
@@ -48,6 +49,21 @@ import { downloadDataUrl, downloadCsv, downloadBlob } from './network/download.j
 import { copyText } from './network/clipboard.js';
 import { useMediaQuery, readPref, writePref } from './network/hooks.js';
 import { useWatchlist } from './offenders/watchlistStore.js';
+import EvidenceLoader from './network/EvidenceLoader.jsx';
+import {
+  RepeatVictimPanel, VictimDemographicsPanel, SuspectVictimPanel, MultiVictimPanel, VictimAgeProfile,
+} from './network/VictimPanels.jsx';
+import {
+  RecurringLocationPanel, LocationAffiliationPanel, ColocationPanel, CommunityDistrictPanel,
+  LocationFootprintPanel, HotspotEntityPanel,
+} from './network/LocationPanels.jsx';
+import { MultiHopPanel, TemporalPanel, PredictionLab } from './network/LinkLab.jsx';
+import { VictimDrawer, LocationDrawer } from './network/EntityDrawers.jsx';
+import { rankCaseIds, useCaseEvidence, DEFAULT_SAMPLE, SAMPLE_SIZES } from './network/entityData.js';
+import {
+  buildEntityIndex, victimElements, locationElements, isVictimId, isLocationId, LOCATION_PREFIX,
+} from './network/entityGraph.js';
+import { edgeTimeline } from './network/pathAnalysis.js';
 
 // The live graph carries 23,833 links over 2,002 linked persons, so the canvas
 // is capped and the cap is the analyst's choice rather than a hidden constant.
@@ -63,6 +79,27 @@ const NEIGHBOR_PREF = 'dappa-net-neighbor';
 const BRIDGE_PREF = 'dappa-net-bridges';
 const WEAK_PREF = 'dappa-net-weaklinks';
 const CAP_PREF = 'dappa-net-cap';
+const SAMPLE_PREF = 'dappa-net-sample';
+
+// The canvas can draw three entity views over the same investigation: the
+// co-accusal graph the route always had, plus the suspect↔victim and
+// suspect↔location projections the challenge statement asks for. Victim and
+// location entities live on the FIR, so those two modes need the evidence
+// sample loaded (see network/entityData.js).
+const GRAPH_MODES = ['cooffend', 'victim', 'location'];
+// Bipartite fan-out is brutal: a 160-FIR sample can carry 250+ victim nodes,
+// so each projection has its own honest, stated cap.
+const VICTIM_NODE_CAP = 220;
+const LOCATION_NODE_CAP = 80;
+const ENTITY_TABS = ['victims', 'locations', 'links'];
+
+// Drawer/sheet heading per selection class.
+const SELECT_TITLE = {
+  node: 'network.select.person',
+  edge: 'network.edge.title',
+  victim: 'network.select.victim',
+  location: 'network.select.location',
+};
 
 // Tier ids only — labels/hints resolve through t('network.tier.<id>[Hint]').
 const EDGE_TIERS = ['single', 'repeat', 'strong'];
@@ -168,6 +205,12 @@ export default function Network() {
   // The live graph peels to a 34-core, so the ceiling is 30 rather than a
   // token single digit — the slider has to be able to reach the nucleus.
   const minCore = Math.min(MAX_CORE_FILTER, Math.max(0, Number(searchParams.get('core')) || 0));
+  // Entity-view state is URL-synced too, so "the Whitefield PS crew in 2025"
+  // is a link an investigator can paste into a case file.
+  const rawMode = searchParams.get('mode') || '';
+  const graphMode = GRAPH_MODES.includes(rawMode) ? rawMode : 'cooffend';
+  const unitFocus = searchParams.get('unit') || '';
+  const period = searchParams.get('period') || '';
 
   const [layout, setLayout] = useState(() => {
     const v = readPref(LAYOUT_PREF, 'fcose');
@@ -190,6 +233,13 @@ export default function Network() {
     const v = Number(readPref(CAP_PREF, String(DEFAULT_CAP)));
     return NODE_CAPS.includes(v) ? v : DEFAULT_CAP;
   });
+  const [sampleSize, setSampleSize] = useState(() => {
+    const v = Number(readPref(SAMPLE_PREF, String(DEFAULT_SAMPLE)));
+    return SAMPLE_SIZES.includes(v) ? v : DEFAULT_SAMPLE;
+  });
+  const [evidenceOn, setEvidenceOn] = useState(false);
+  const [entityTab, setEntityTab] = useState(ENTITY_TABS[0]);
+  const [routePick, setRoutePick] = useState(null);
   const { keys: watchKeys } = useWatchlist();
   const cyApi = useRef(null);
   const pendingFly = useRef(null);
@@ -217,6 +267,37 @@ export default function Network() {
 
   const graph = useNetworkGraph(districtName ? { districtId: districtName } : {});
   const registry = useOffenders({ perPage: 200 }); // district enrichment for the community picker
+  // Location entities are enriched from two cheap reads: the 282 StationRisk
+  // rows give each unit a live risk score, the 17 HotspotCluster rows are
+  // recurring places in their own right.
+  const stationRisk = useStationRisk();
+  const hotspots = useHotspots();
+
+  const riskByUnit = useMemo(() => {
+    const m = new Map();
+    for (const r of stationRisk.data || []) {
+      if (r.unitName) m.set(String(r.unitName), Number(r.riskScore));
+    }
+    return m;
+  }, [stationRisk.data]);
+
+  const districtNameById = useMemo(() => {
+    const m = new Map();
+    for (const d of lookups.data?.districts || []) {
+      m.set(String(d.districtId), d.districtName);
+      m.set(String(d.districtId).replace(/^0+(?=\d)/, ''), d.districtName);
+    }
+    return m;
+  }, [lookups.data]);
+
+  // Crime-head names arrive as strings on the FIR; the translated name lives
+  // under the numeric id, so resolve one from the other for the demographics
+  // table rather than showing English inside a Kannada screen.
+  const headLabel = useMemo(() => {
+    const byName = new Map();
+    for (const h of lookups.data?.crimeHeads || []) byName.set(h.headName, h.crimeHeadId);
+    return (name) => (name ? tName('crimeHeads', byName.get(name) ?? name, name) || name : '');
+  }, [lookups.data, tName]);
 
   const districtsByPerson = useMemo(() => {
     const m = new Map();
@@ -239,6 +320,17 @@ export default function Network() {
   const allNodesById = useMemo(() => {
     const m = new Map();
     for (const n of graph.data?.nodes || []) m.set(String(n.id), n);
+    return m;
+  }, [graph.data]);
+
+  /** personKey → community label, over the FULL graph (co-location needs it). */
+  const communityOf = useMemo(() => {
+    const m = new Map();
+    for (const n of graph.data?.nodes || []) {
+      const cid = n?.communityId;
+      if (cid === null || cid === undefined || cid === '') continue;
+      m.set(String(n.id), String(cid));
+    }
     return m;
   }, [graph.data]);
 
@@ -329,9 +421,58 @@ export default function Network() {
     return { nodes, edges, capped, egoMissing, core: coreOfView, maxCore: maxCoreOfView };
   }, [graph.data, tierEdges, degrees, communityId, ego, depth, minDegree, minCore, nodeCap]);
 
+  // ── FIR evidence sample → victim + location entities ──────────────────────
+  // The co-accusal edges name the FIRs that bind each pair; the FIRs name the
+  // victims and the registering unit. One bounded fetch therefore unlocks both
+  // missing entity classes at once, and `caseRank.total` keeps the honest
+  // denominator in front of the analyst everywhere the sample is used.
+  const caseRank = useMemo(() => rankCaseIds(filtered.edges, sampleSize), [filtered.edges, sampleSize]);
+  const evidence = useCaseEvidence(caseRank.ids, { enabled: evidenceOn });
+  const entityIndex = useMemo(
+    () => buildEntityIndex(evidence.cases, caseRank.suspectsByCase),
+    [evidence.cases, caseRank.suspectsByCase],
+  );
+  const dateByCase = useMemo(() => {
+    const m = new Map();
+    for (const c of entityIndex.caseById.values()) if (c.registeredDate) m.set(c.caseId, c.registeredDate);
+    return m;
+  }, [entityIndex]);
+  const timeline = useMemo(
+    () => edgeTimeline(filtered.edges, dateByCase, { grain: period.includes('-Q') ? 'quarter' : 'year' }),
+    [filtered.edges, dateByCase, period],
+  );
+
+  // Two further view stages, both driven by the entity model above: a
+  // location-centred subgraph (everyone whose sampled FIRs touch one unit) and
+  // a period slice (edges evidenced by a FIR registered in that window).
+  // Coreness/cap stats stay those of the parent view — they describe the
+  // structure these slices were cut out of, which is the useful reading.
+  const view = useMemo(() => {
+    let { nodes, edges } = filtered;
+    let unitMissing = false;
+    if (unitFocus) {
+      const loc = entityIndex.locations.get(LOCATION_PREFIX + unitFocus);
+      if (loc && loc.suspects.size) {
+        nodes = nodes.filter((n) => loc.suspects.has(String(n.id)));
+        const keep = new Set(nodes.map((n) => String(n.id)));
+        edges = edges.filter((e) => keep.has(String(e.source)) && keep.has(String(e.target)));
+      } else {
+        unitMissing = true;
+      }
+    }
+    if (period && timeline.byPeriod.has(period)) {
+      const live = timeline.byPeriod.get(period);
+      edges = edges.filter((e) => live.has(e.id));
+      const keep = new Set();
+      for (const e of edges) { keep.add(String(e.source)); keep.add(String(e.target)); }
+      nodes = nodes.filter((n) => keep.has(String(n.id)));
+    }
+    return { ...filtered, nodes, edges, unitMissing };
+  }, [filtered, unitFocus, period, entityIndex, timeline]);
+
   const components = useMemo(
-    () => countComponents(filtered.nodes, filtered.edges),
-    [filtered.nodes, filtered.edges],
+    () => countComponents(view.nodes, view.edges),
+    [view.nodes, view.edges],
   );
 
   // Link-analysis depth: cross-community brokers (computed on the FULL graph —
@@ -343,28 +484,28 @@ export default function Network() {
     [graph.data],
   );
   const cutSet = useMemo(
-    () => articulationPoints(filtered.nodes, filtered.edges),
-    [filtered.nodes, filtered.edges],
+    () => articulationPoints(view.nodes, view.edges),
+    [view.nodes, view.edges],
   );
   // Structural bridges (cut EDGES) — a single shared FIR holding two crews
   // together. Removing it splits the component, which makes it the highest
   // value corroboration target in the view.
   const weakSet = useMemo(
-    () => (showWeak ? bridgeEdges(filtered.nodes, filtered.edges) : new Set()),
-    [showWeak, filtered.nodes, filtered.edges],
+    () => (showWeak ? bridgeEdges(view.nodes, view.edges) : new Set()),
+    [showWeak, view.nodes, view.edges],
   );
 
   const crossCommunityIds = useMemo(() => {
-    const commOf = new Map(filtered.nodes.map((n) => [String(n.id), String(n.communityId ?? '')]));
+    const commOf = new Map(view.nodes.map((n) => [String(n.id), String(n.communityId ?? '')]));
     const ids = new Set();
-    for (const e of filtered.edges) {
+    for (const e of view.edges) {
       const cs = commOf.get(String(e.source)); const ct = commOf.get(String(e.target));
       if (cs !== undefined && ct !== undefined && cs !== '' && ct !== '' && cs !== ct) {
         ids.add(e.id); ids.add(String(e.source)); ids.add(String(e.target));
       }
     }
     return ids;
-  }, [filtered.nodes, filtered.edges]);
+  }, [view.nodes, view.edges]);
 
   // Highlight precedence: an inspected prediction, then a picked group pair,
   // then the standing Bridges / Weak-link toggles.
@@ -372,20 +513,20 @@ export default function Network() {
     if (suggestion) {
       // If a filter change dropped an endpoint, highlight nothing rather than
       // dimming the whole canvas around elements that are no longer drawn.
-      const visible = new Set(filtered.nodes.map((n) => String(n.id)));
+      const visible = new Set(view.nodes.map((n) => String(n.id)));
       if (!visible.has(String(suggestion.a)) || !visible.has(String(suggestion.b))) return [];
       const ids = new Set([String(suggestion.a), String(suggestion.b),
         ...(suggestion.via || []).map(String).filter((v) => visible.has(v))]);
-      for (const e of filtered.edges) {
+      for (const e of view.edges) {
         const s = String(e.source); const tg = String(e.target);
         if (ids.has(s) && ids.has(tg)) ids.add(e.id);
       }
       return [...ids];
     }
     if (groupPair) {
-      const commOf = new Map(filtered.nodes.map((n) => [String(n.id), String(n.communityId ?? '')]));
+      const commOf = new Map(view.nodes.map((n) => [String(n.id), String(n.communityId ?? '')]));
       const ids = new Set();
-      for (const e of filtered.edges) {
+      for (const e of view.edges) {
         const cs = commOf.get(String(e.source)); const ct = commOf.get(String(e.target));
         const hit = (cs === groupPair[0] && ct === groupPair[1]) || (cs === groupPair[1] && ct === groupPair[0]);
         if (hit) { ids.add(e.id); ids.add(String(e.source)); ids.add(String(e.target)); }
@@ -395,29 +536,29 @@ export default function Network() {
     const ids = new Set();
     if (showBridges) for (const id of crossCommunityIds) ids.add(id);
     if (showWeak) {
-      for (const e of filtered.edges) {
+      for (const e of view.edges) {
         if (!weakSet.has(e.id)) continue;
         ids.add(e.id); ids.add(String(e.source)); ids.add(String(e.target));
       }
     }
     return [...ids];
-  }, [suggestion, groupPair, showBridges, showWeak, weakSet, crossCommunityIds, filtered.nodes, filtered.edges]);
+  }, [suggestion, groupPair, showBridges, showWeak, weakSet, crossCommunityIds, view.nodes, view.edges]);
 
-  const density = filtered.nodes.length > 1
-    ? (2 * filtered.edges.length) / (filtered.nodes.length * (filtered.nodes.length - 1))
+  const density = view.nodes.length > 1
+    ? (2 * view.edges.length) / (view.nodes.length * (view.nodes.length - 1))
     : 0;
-  const avgDegree = filtered.nodes.length ? (2 * filtered.edges.length) / filtered.nodes.length : 0;
+  const avgDegree = view.nodes.length ? (2 * view.edges.length) / view.nodes.length : 0;
 
   const nodesById = useMemo(() => {
     const m = new Map();
-    for (const n of filtered.nodes) m.set(String(n.id), n);
+    for (const n of view.nodes) m.set(String(n.id), n);
     return m;
-  }, [filtered.nodes]);
+  }, [view.nodes]);
 
-  const elements = useMemo(() => {
-    const maxDegree = Math.max(1, ...filtered.nodes.map((n) => degrees.get(String(n.id))?.links || 0));
-    const maxWeight = Math.max(1, ...filtered.edges.map((e) => Number(e.weight) || 0));
-    const nodes = filtered.nodes.map((n) => ({
+  const coElements = useMemo(() => {
+    const maxDegree = Math.max(1, ...view.nodes.map((n) => degrees.get(String(n.id))?.links || 0));
+    const maxWeight = Math.max(1, ...view.edges.map((e) => Number(e.weight) || 0));
+    const nodes = view.nodes.map((n) => ({
       data: {
         id: String(n.id),
         label: n.label || String(n.id),
@@ -427,12 +568,12 @@ export default function Network() {
         caseCount: n.caseCount,
         degree: n.degree,
         links: degrees.get(String(n.id))?.links || 0,
-        coreness: filtered.core.get(String(n.id)) || 0,
+        coreness: view.core.get(String(n.id)) || 0,
         isEgo: ego && String(n.id) === ego ? 1 : 0,
         watch: watchKeys.has(String(n.id)) ? 1 : 0,
       },
     }));
-    const edges = filtered.edges.map((e) => ({
+    const edges = view.edges.map((e) => ({
       data: {
         id: e.id,
         source: String(e.source),
@@ -443,31 +584,52 @@ export default function Network() {
       },
     }));
     return [...nodes, ...edges];
-  }, [filtered, degrees, ego, watchKeys]);
+  }, [view, degrees, ego, watchKeys]);
+
+  // The suspect↔victim and suspect↔location projections. Both are built off
+  // the whole visible edge set rather than the unit/period slice so the
+  // projection stays a stable frame of reference while those slices move.
+  const projection = useMemo(() => {
+    if (graphMode === 'victim') {
+      return victimElements(entityIndex, {
+        nodesById: allNodesById, colorOf: communityColor, cap: VICTIM_NODE_CAP, watchKeys,
+      });
+    }
+    if (graphMode === 'location') {
+      return locationElements(entityIndex, {
+        nodesById: allNodesById, colorOf: communityColor, cap: LOCATION_NODE_CAP, watchKeys, riskByUnit,
+      });
+    }
+    return null;
+  }, [graphMode, entityIndex, allNodesById, watchKeys, riskByUnit]);
+
+  const elements = graphMode === 'cooffend' ? coElements : (projection?.elements || []);
 
   // Association path over the visible edges — fewest hops (BFS) or strongest
   // evidence (Dijkstra on 1/shared-FIRs, so repeat co-offending beats a chain
-  // of one-off links even when that costs an extra hop).
-  const path = useMemo(() => {
+  // of one-off links even when that costs an extra hop). A route picked in the
+  // multi-hop panel overrides the default single answer.
+  const basePath = useMemo(() => {
     if (!pathEnds.a || !pathEnds.b) return null;
     return pathMode === 'strength'
-      ? strongestPath(filtered.edges, pathEnds.a, pathEnds.b)
-      : shortestPath(filtered.edges, pathEnds.a, pathEnds.b);
-  }, [filtered.edges, pathEnds, pathMode]);
+      ? strongestPath(view.edges, pathEnds.a, pathEnds.b)
+      : shortestPath(view.edges, pathEnds.a, pathEnds.b);
+  }, [view.edges, pathEnds, pathMode]);
+  const path = routePick?.path || basePath;
   const pathIds = useMemo(() => {
-    if (!path || path.length < 2) return [];
+    if (graphMode !== 'cooffend' || !path || path.length < 2) return [];
     const ids = [...path];
     for (let i = 0; i < path.length - 1; i += 1) ids.push(edgeKey(path[i], path[i + 1]));
     return ids;
-  }, [path]);
+  }, [path, graphMode]);
   // Path strength — total shared FIRs across the hops (evidence weight).
   const pathStrength = useMemo(() => {
     if (!path || path.length < 2) return 0;
-    const wByKey = new Map(filtered.edges.map((e) => [e.id, Number(e.weight) || 0]));
+    const wByKey = new Map(view.edges.map((e) => [e.id, Number(e.weight) || 0]));
     let sum = 0;
     for (let i = 0; i < path.length - 1; i += 1) sum += wByKey.get(edgeKey(path[i], path[i + 1])) || 0;
     return sum;
-  }, [path, filtered.edges]);
+  }, [path, view.edges]);
 
   // Deep links: /network?communityId=…&focus=<personKey> (from Offender 360) —
   // select the node once and fly to it after the first layout settles.
@@ -491,16 +653,33 @@ export default function Network() {
     setPathEnds({ a: '', b: '' });
     setSuggestion(null);
     setGroupPair(null);
+    setRoutePick(null);
   }, [districtName, communityId, ego]);
+
+  // A ranked route is an answer about one edge set; changing the slice or the
+  // endpoints invalidates it.
+  useEffect(() => { setRoutePick(null); }, [pathEnds.a, pathEnds.b, pathMode, unitFocus, period]);
+
+  // Switching projection clears any co-accusal selection: a person drawer opened
+  // on the co-offending canvas is not what a tap on the victim canvas means.
+  useEffect(() => { setSelected(null); }, [graphMode]);
 
   // A drawer must never show an element the filters just removed — close it
   // (Isolate / ego / path actions would otherwise target an off-screen target).
+  // Victim/location selections live in the entity index rather than the
+  // co-accusal view, so they are validated against that index instead.
   useEffect(() => {
     if (!selected || graph.isLoading) return;
-    if (selected.type === 'node' && !nodesById.has(String(selected.data.id))) setSelected(null);
+    if (selected.type === 'victim') {
+      if (!entityIndex.victims.has(String(selected.data.id))) setSelected(null);
+    } else if (selected.type === 'location') {
+      if (!entityIndex.locations.has(String(selected.data.id))) setSelected(null);
+    } else if (graphMode !== 'cooffend') {
+      // person node inside a projection — validated by the projection itself
+    } else if (selected.type === 'node' && !nodesById.has(String(selected.data.id))) setSelected(null);
     else if (selected.type === 'edge'
-      && !filtered.edges.some((e) => String(e.id) === String(selected.data.id))) setSelected(null);
-  }, [selected, nodesById, filtered.edges, graph.isLoading]);
+      && !view.edges.some((e) => String(e.id) === String(selected.data.id))) setSelected(null);
+  }, [selected, nodesById, view.edges, graph.isLoading, entityIndex, graphMode]);
 
   const setCommunity = (cid) => {
     setSearchParams((prev) => {
@@ -536,13 +715,24 @@ export default function Network() {
     setShowWeak((v) => { writePref(WEAK_PREF, v ? '0' : '1'); return !v; });
   };
   const changeCap = (v) => { setNodeCap(v); writePref(CAP_PREF, String(v)); };
+  const changeSample = (v) => { setSampleSize(v); writePref(SAMPLE_PREF, String(v)); };
+
+  const changeMode = (m) => {
+    setParams({ mode: m === 'cooffend' ? '' : m });
+    // Both projections are FIR-derived: switching into one without the sample
+    // would show an empty canvas, so ask for it in the same gesture.
+    if (m !== 'cooffend' && !evidenceOn) setEvidenceOn(true);
+  };
+  const setUnitFocus = (unit) => setParams({ unit: unit || '' });
+  const setPeriod = (p) => setParams({ period: p || '' });
 
   const clearGraphFilters = () => {
     setCommunity('');
-    setParams({ minDegree: '', ego: '', depth: '', core: '' });
+    setParams({ minDegree: '', ego: '', depth: '', core: '', unit: '', period: '' });
     setEdgeTypes({ single: true, repeat: true, strong: true, bridge: true });
     setSuggestion(null);
     setGroupPair(null);
+    setRoutePick(null);
   };
 
   // A predicted link is inspected, not applied: both people load into the pair
@@ -560,22 +750,22 @@ export default function Network() {
   };
 
   const personOptions = useMemo(
-    () => filtered.nodes
+    () => view.nodes
       .map((n) => ({
         id: String(n.id),
         label: t('network.path.personOption', { name: n.label || n.id, n: fmtInt(n.caseCount) }),
       }))
       .sort((a, b) => a.label.localeCompare(b.label)),
-    [filtered.nodes, t],
+    [view.nodes, t],
   );
 
   const searchMatches = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
     if (!q) return [];
-    return filtered.nodes
+    return view.nodes
       .filter((n) => `${n.label || ''} ${n.id}`.toLowerCase().includes(q))
       .slice(0, 8);
-  }, [filtered.nodes, searchQ]);
+  }, [view.nodes, searchQ]);
 
   useEffect(() => { setSearchIdx(0); }, [searchQ]);
 
@@ -590,6 +780,32 @@ export default function Network() {
   const pickFromPanel = (n) => {
     selectNode(n);
     cyApi.current?.flyTo(String(n.id));
+  };
+
+  // Panels hand back bare ids; resolve them against the widest node map so a
+  // person named on a victim row is still openable when the co-accusal cap
+  // dropped them from the canvas.
+  const pickPersonKey = (personKey) => {
+    const n = nodesById.get(String(personKey)) || allNodesById.get(String(personKey));
+    if (n) pickFromPanel(n);
+  };
+  const pickVictim = (victimId) => {
+    const v = entityIndex.victims.get(String(victimId));
+    if (!v) return;
+    setSelected({ type: 'victim', data: { id: v.id, label: v.name, age: v.age, gender: v.gender } });
+    if (graphMode === 'victim') cyApi.current?.flyTo(v.id);
+  };
+  const pickLocationNode = (unitName) => {
+    const loc = entityIndex.locations.get(LOCATION_PREFIX + String(unitName));
+    if (!loc) return;
+    setSelected({ type: 'location', data: { id: loc.id, label: loc.unitName, unitName: loc.unitName, districtName: loc.districtName } });
+    if (graphMode === 'location') cyApi.current?.flyTo(loc.id);
+  };
+  const onCanvasNodeTap = (d) => {
+    const id = String(d.id);
+    if (isVictimId(id)) setSelected({ type: 'victim', data: d });
+    else if (isLocationId(id)) setSelected({ type: 'location', data: d });
+    else setSelected({ type: 'node', data: d });
   };
 
   const onSearchKeyDown = (e) => {
@@ -634,13 +850,13 @@ export default function Network() {
   };
 
   const exportCsv = () => {
-    if (!filtered.nodes.length) { toast.info(t('network.toast.nothingToExport')); return; }
+    if (!view.nodes.length) { toast.info(t('network.toast.nothingToExport')); return; }
     const day = new Date().toISOString().slice(0, 10);
-    downloadCsv(`dappa-network-nodes-${day}.csv`, nodeCsvColumns(t, degrees, filtered.core), filtered.nodes);
-    downloadCsv(`dappa-network-edges-${day}.csv`, edgeCsvColumns(t), filtered.edges);
+    downloadCsv(`dappa-network-nodes-${day}.csv`, nodeCsvColumns(t, degrees, view.core), view.nodes);
+    downloadCsv(`dappa-network-edges-${day}.csv`, edgeCsvColumns(t), view.edges);
     toast.success(t('network.toast.csvExported', {
-      n: fmtInt(filtered.nodes.length),
-      m: fmtInt(filtered.edges.length),
+      n: fmtInt(view.nodes.length),
+      m: fmtInt(view.edges.length),
     }));
   };
 
@@ -648,7 +864,7 @@ export default function Network() {
   // (nodes with community/degree/coreness + weighted edges with case ids), so
   // the view can travel into a case file or another tool without a re-query.
   const exportJson = () => {
-    if (!filtered.nodes.length) { toast.info(t('network.toast.nothingToExport')); return; }
+    if (!view.nodes.length) { toast.info(t('network.toast.nothingToExport')); return; }
     const payload = {
       generatedAt: new Date().toISOString(),
       scope: {
@@ -660,25 +876,25 @@ export default function Network() {
         minCore,
         edgeTiers: Object.entries(edgeTypes).filter(([, v]) => v).map(([k]) => k),
         nodeCap,
-        capped: filtered.capped || 0,
+        capped: view.capped || 0,
       },
       stats: {
-        people: filtered.nodes.length,
-        links: filtered.edges.length,
+        people: view.nodes.length,
+        links: view.edges.length,
         components,
         groups: communities.length,
         density,
       },
-      nodes: filtered.nodes.map((n) => ({
+      nodes: view.nodes.map((n) => ({
         personKey: String(n.id),
         name: n.label || String(n.id),
         communityId: n.communityId ?? null,
         caseCount: Number(n.caseCount) || 0,
         links: degrees.get(String(n.id))?.links || 0,
         sharedFirs: degrees.get(String(n.id))?.weight || 0,
-        coreness: filtered.core.get(String(n.id)) || 0,
+        coreness: view.core.get(String(n.id)) || 0,
       })),
-      edges: filtered.edges.map((e) => ({
+      edges: view.edges.map((e) => ({
         source: String(e.source),
         target: String(e.target),
         sharedCases: Number(e.weight) || 0,
@@ -690,8 +906,8 @@ export default function Network() {
       new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
     );
     toast.success(t('network.toast.jsonExported', {
-      n: fmtInt(filtered.nodes.length),
-      m: fmtInt(filtered.edges.length),
+      n: fmtInt(view.nodes.length),
+      m: fmtInt(view.edges.length),
     }));
   };
 
@@ -702,7 +918,7 @@ export default function Network() {
       ego ? t('network.ego.badge', { name: egoLabel }) : '',
     ].filter(Boolean).join(' · ');
     const text = graphBrief({
-      nodes: filtered.nodes, edges: filtered.edges, communities, scope,
+      nodes: view.nodes, edges: view.edges, communities, scope,
     });
     const ok = await copyText(text);
     if (ok) toast.success(t('network.toast.briefCopied'));
@@ -736,8 +952,8 @@ export default function Network() {
           isCut={cutSet.has(String(sel.data.id))}
           links={degrees.get(String(sel.data.id))?.links ?? null}
           sharedFirs={degrees.get(String(sel.data.id))?.weight ?? null}
-          coreness={filtered.core.get(String(sel.data.id)) ?? null}
-          viewEdges={filtered.edges}
+          coreness={view.core.get(String(sel.data.id)) ?? null}
+          viewEdges={view.edges}
         />
       );
     }
@@ -748,9 +964,34 @@ export default function Network() {
           nodesById={nodesById}
           onClose={() => setSelected(null)}
           onSelectNode={selectNode}
-          mutuals={mutualNeighbors(filtered.edges, sel.data.source, sel.data.target)
+          mutuals={mutualNeighbors(view.edges, sel.data.source, sel.data.target)
             .map((id) => nodesById.get(id))
             .filter(Boolean)}
+        />
+      );
+    }
+    if (sel?.type === 'victim') {
+      return (
+        <VictimDrawer
+          victim={sel.data}
+          index={entityIndex}
+          nodesById={allNodesById}
+          onClose={() => setSelected(null)}
+          onPickPerson={pickPersonKey}
+        />
+      );
+    }
+    if (sel?.type === 'location') {
+      return (
+        <LocationDrawer
+          location={sel.data}
+          index={entityIndex}
+          nodesById={allNodesById}
+          onClose={() => setSelected(null)}
+          onPickPerson={pickPersonKey}
+          onIsolateUnit={setUnitFocus}
+          activeUnit={unitFocus}
+          riskScore={riskByUnit.get(sel.data.unitName || sel.data.label) ?? null}
         />
       );
     }
@@ -768,7 +1009,60 @@ export default function Network() {
       );
     }
     if (graph.isLoading) return <div className="p-4"><LoadingSkeleton height={540} /></div>;
-    if (!filtered.nodes.length) {
+    // The two projections need the FIR sample; say so and offer it in one tap
+    // rather than rendering an unexplained empty canvas.
+    if (graphMode !== 'cooffend') {
+      if (!evidenceOn) {
+        return (
+          <EmptyState
+            title={t(graphMode === 'victim' ? 'network.mode.victimNeedTitle' : 'network.mode.locationNeedTitle')}
+            message={t('network.mode.needMsg', { n: fmtInt(Math.min(sampleSize, caseRank.total)), total: fmtInt(caseRank.total) })}
+            action={(
+              <button type="button" className="btn btn-primary" onClick={() => setEvidenceOn(true)} disabled={!caseRank.total}>
+                {t('network.sample.load', { n: fmtInt(Math.min(sampleSize, caseRank.total)) })}
+              </button>
+            )}
+          />
+        );
+      }
+      if (evidence.isFetching && !elements.length) return <div className="p-4"><LoadingSkeleton height={540} /></div>;
+      if (!elements.length) {
+        return (
+          <EmptyState
+            title={t('network.mode.emptyTitle')}
+            message={t('network.mode.emptyMsg')}
+            action={(
+              <button type="button" className="btn" onClick={() => changeMode('cooffend')}>
+                {t('network.mode.back')}
+              </button>
+            )}
+          />
+        );
+      }
+      return (
+        <CytoGraph
+          elements={elements}
+          layout={layout === 'breadthfirst' ? 'fcose' : layout}
+          selectedId={selected ? String(selected.data.id) : ''}
+          pathIds={[]}
+          highlightIds={[]}
+          showLabels={showLabels}
+          neighborFocus={neighborFocus}
+          ariaLabel={t(graphMode === 'victim' ? 'network.mode.victimAria' : 'network.mode.locationAria', {
+            people: fmtInt(projection?.persons || 0),
+            others: fmtInt(graphMode === 'victim' ? (projection?.shownVictims || 0) : (projection?.shownLocations || 0)),
+            links: fmtInt(projection?.links || 0),
+          })}
+          onNodeTap={onCanvasNodeTap}
+          onEdgeTap={() => {}}
+          onBackgroundTap={() => setSelected(null)}
+          onLayoutStop={onLayoutStop}
+          apiRef={cyApi}
+          height={560}
+        />
+      );
+    }
+    if (!view.nodes.length) {
       return (
         <EmptyState
           title={t('network.empty.title')}
@@ -793,10 +1087,10 @@ export default function Network() {
         showLabels={showLabels}
         neighborFocus={neighborFocus}
         ariaLabel={t('network.graph.aria', {
-          nodes: fmtInt(filtered.nodes.length),
-          edges: fmtInt(filtered.edges.length),
+          nodes: fmtInt(view.nodes.length),
+          edges: fmtInt(view.edges.length),
         })}
-        onNodeTap={(d) => setSelected({ type: 'node', data: d })}
+        onNodeTap={onCanvasNodeTap}
         onEdgeTap={(d) => setSelected({ type: 'edge', data: d })}
         onBackgroundTap={() => setSelected(null)}
         onLayoutStop={onLayoutStop}
@@ -819,6 +1113,21 @@ export default function Network() {
       </div>
 
       <FilterBar show={['district']}>
+        <Tooltip label={t('network.mode.hint')}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted whitespace-nowrap hidden sm:inline">{t('network.mode.label')}</span>
+            <SegmentedControl
+              ariaLabel={t('network.mode.aria')}
+              value={graphMode}
+              onChange={changeMode}
+              options={[
+                { value: 'cooffend', label: t('network.mode.cooffend') },
+                { value: 'victim', label: t('network.mode.victim') },
+                { value: 'location', label: t('network.mode.location') },
+              ]}
+            />
+          </div>
+        </Tooltip>
         <label className="flex items-center gap-2 text-xs text-muted whitespace-nowrap min-h-[40px]">
           <span>{t('network.control.degreeMin')} <span className="num text-ink">{fmtInt(minDegree)}</span></span>
           <input
@@ -916,38 +1225,75 @@ export default function Network() {
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_330px] gap-4 items-start">
         <Card padded={false}>
           <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-grid/60 text-[11px] text-muted">
-            <span className="num">{t('network.stat.people', { n: fmtInt(filtered.nodes.length) })}</span>
-            <span>·</span>
-            <span className="num">{t('network.stat.links', { n: fmtInt(filtered.edges.length) })}</span>
-            <span>·</span>
-            <span className="num">
-              {t(components === 1 ? 'network.stat.components.one' : 'network.stat.components.other', { n: fmtInt(components) })}
-            </span>
-            <span>·</span>
-            <span className="num">{t('network.stat.groups', { n: fmtInt(communities.length) })}</span>
-            <span className="hidden md:inline">·</span>
-            <Tooltip label={t('network.stat.densityHint')}>
-              <span className="num hidden md:inline">{t('network.stat.density', { pct: fmtPct(density * 100, { digits: 1 }) })}</span>
-            </Tooltip>
-            <span className="hidden md:inline">·</span>
-            <Tooltip label={t('network.stat.avgLinksHint')}>
-              <span className="num hidden md:inline">{t('network.stat.avgLinks', { n: fmtNum(avgDegree, 1) })}</span>
-            </Tooltip>
-            <span className="hidden lg:inline">·</span>
-            <Tooltip label={t('network.stat.maxCoreHint')}>
-              <span className="num hidden lg:inline">{t('network.stat.maxCore', { n: fmtInt(filtered.maxCore) })}</span>
-            </Tooltip>
+            {graphMode === 'cooffend' ? (
+              <>
+                <span className="num">{t('network.stat.people', { n: fmtInt(view.nodes.length) })}</span>
+                <span>·</span>
+                <span className="num">{t('network.stat.links', { n: fmtInt(view.edges.length) })}</span>
+                <span>·</span>
+                <span className="num">
+                  {t(components === 1 ? 'network.stat.components.one' : 'network.stat.components.other', { n: fmtInt(components) })}
+                </span>
+                <span>·</span>
+                <span className="num">{t('network.stat.groups', { n: fmtInt(communities.length) })}</span>
+                <span className="hidden md:inline">·</span>
+                <Tooltip label={t('network.stat.densityHint')}>
+                  <span className="num hidden md:inline">{t('network.stat.density', { pct: fmtPct(density * 100, { digits: 1 }) })}</span>
+                </Tooltip>
+                <span className="hidden md:inline">·</span>
+                <Tooltip label={t('network.stat.avgLinksHint')}>
+                  <span className="num hidden md:inline">{t('network.stat.avgLinks', { n: fmtNum(avgDegree, 1) })}</span>
+                </Tooltip>
+                <span className="hidden lg:inline">·</span>
+                <Tooltip label={t('network.stat.maxCoreHint')}>
+                  <span className="num hidden lg:inline">{t('network.stat.maxCore', { n: fmtInt(view.maxCore) })}</span>
+                </Tooltip>
+              </>
+            ) : (
+              <>
+                <span className="num">{t('network.stat.people', { n: fmtInt(projection?.persons || 0) })}</span>
+                <span>·</span>
+                <span className="num text-teal">
+                  {graphMode === 'victim'
+                    ? t('network.stat.victims', { n: fmtInt(projection?.shownVictims || 0) })
+                    : t('network.stat.locations', { n: fmtInt(projection?.shownLocations || 0) })}
+                </span>
+                <span>·</span>
+                <span className="num">{t('network.stat.ties', { n: fmtInt(projection?.links || 0) })}</span>
+                {graphMode === 'victim' && (projection?.totalVictims || 0) > (projection?.shownVictims || 0) && (
+                  <Badge tone="slate">{t('network.stat.victimCap', { n: fmtInt(projection.shownVictims), total: fmtInt(projection.totalVictims) })}</Badge>
+                )}
+                {graphMode === 'location' && (projection?.totalLocations || 0) > (projection?.shownLocations || 0) && (
+                  <Badge tone="slate">{t('network.stat.locationCap', { n: fmtInt(projection.shownLocations), total: fmtInt(projection.totalLocations) })}</Badge>
+                )}
+                <Badge tone="teal">{t('network.stat.fromSample', { n: fmtInt(evidence.loaded), total: fmtInt(caseRank.total) })}</Badge>
+              </>
+            )}
             {districtName && <Badge tone="amber">{tName('districts', districtId, districtName)}</Badge>}
             {communityId && <Badge tone="teal">{t('network.badge.isolated', { id: communityId })}</Badge>}
-            {filtered.capped > 0 && (
-              <Badge tone="slate">{t('network.badge.cappedOf', { n: fmtInt(nodeCap), total: fmtInt(filtered.capped) })}</Badge>
+            {/* Co-accusal-view bookkeeping — a node cap or k-core floor says
+                nothing about a projection, so it is not shown against one. */}
+            {graphMode === 'cooffend' && !unitFocus && !period && view.capped > 0 && (
+              <Badge tone="slate">{t('network.badge.cappedOf', { n: fmtInt(nodeCap), total: fmtInt(view.capped) })}</Badge>
             )}
-            {minCore > 0 && <Badge tone="teal">{t('network.badge.core', { n: fmtInt(minCore) })}</Badge>}
-            {filtered.egoMissing && <Badge tone="slate">{t('network.badge.egoMissing')}</Badge>}
-            {showWeak && <Badge tone="red">{t('network.badge.weak', { n: fmtInt(weakSet.size) })}</Badge>}
-            {suggestion && <Badge tone="amber" pulse>{t('network.badge.inspecting')}</Badge>}
-            {groupPair && <Badge tone="amber">{t('network.badge.groupPair', { a: groupPair[0], b: groupPair[1] })}</Badge>}
-            {showBridges && !crossCommunityIds.size && <Badge tone="slate">{t('network.badge.noBridges')}</Badge>}
+            {graphMode === 'cooffend' && minCore > 0 && <Badge tone="teal">{t('network.badge.core', { n: fmtInt(minCore) })}</Badge>}
+            {graphMode === 'cooffend' && view.egoMissing && <Badge tone="slate">{t('network.badge.egoMissing')}</Badge>}
+            {unitFocus && (
+              <button type="button" className="chip !py-0.5 !px-2 text-[10px] min-h-[32px] !border-amber text-amber" onClick={() => setUnitFocus('')}>
+                {t('network.badge.unitFocus', { unit: unitFocus })} ✕
+              </button>
+            )}
+            {view.unitMissing && <Badge tone="slate">{t('network.badge.unitMissing')}</Badge>}
+            {period && (
+              <button type="button" className="chip !py-0.5 !px-2 text-[10px] min-h-[32px] !border-teal text-teal" onClick={() => setPeriod('')}>
+                {t('network.badge.period', { p: period })} ✕
+              </button>
+            )}
+            {routePick && <Badge tone="amber" pulse>{t('network.badge.route', { n: routePick.rank })}</Badge>}
+            {graphMode === 'cooffend' && showWeak && <Badge tone="red">{t('network.badge.weak', { n: fmtInt(weakSet.size) })}</Badge>}
+            {graphMode === 'cooffend' && suggestion && <Badge tone="amber" pulse>{t('network.badge.inspecting')}</Badge>}
+            {graphMode === 'cooffend' && groupPair && <Badge tone="amber">{t('network.badge.groupPair', { a: groupPair[0], b: groupPair[1] })}</Badge>}
+            {graphMode === 'cooffend' && showBridges && !crossCommunityIds.size && <Badge tone="slate">{t('network.badge.noBridges')}</Badge>}
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2 min-w-0">
               <div className="relative">
                 <input
@@ -1090,7 +1436,7 @@ export default function Network() {
             </div>
           </div>
 
-          {ego && !filtered.egoMissing && (
+          {ego && !view.egoMissing && (
             <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-grid/60 text-[11px]">
               <Badge tone="teal" pulse>{t('network.ego.badge', { name: egoLabel })}</Badge>
               <span className="text-muted">{t('network.ego.depth')}</span>
@@ -1141,8 +1487,8 @@ export default function Network() {
             <CommunitySummary
               communityId={communityId}
               community={isolatedCommunity}
-              nodes={filtered.nodes}
-              edges={filtered.edges}
+              nodes={view.nodes}
+              edges={view.edges}
               onPick={pickFromPanel}
               onClear={() => setCommunity('')}
               profilesByKey={profilesByKey}
@@ -1215,7 +1561,7 @@ export default function Network() {
             </div>
           </Card>
 
-          <TopConnectors nodes={filtered.nodes} degrees={degrees} onPick={pickFromPanel} />
+          <TopConnectors nodes={view.nodes} degrees={degrees} onPick={pickFromPanel} />
 
           <WatchlistPanel nodesById={nodesById} onPick={pickFromPanel} />
 
@@ -1257,7 +1603,7 @@ export default function Network() {
                   <li>{t('network.legend.gestures')}</li>
                 </ul>
                 <div className="border-t border-grid/60 pt-2.5">
-                  <DegreeHistogram nodes={filtered.nodes} degrees={degrees} />
+                  <DegreeHistogram nodes={view.nodes} degrees={degrees} />
                 </div>
                 <div className="border-t border-grid/60 pt-2.5">
                   <p className="text-[10px] uppercase tracking-wide mb-1.5">{t('network.legend.keyboard')}</p>
@@ -1271,10 +1617,7 @@ export default function Network() {
           </Card>
 
           {isDesktop && (
-            <Card title={selected
-              ? (selected.type === 'node' ? t('network.select.person') : t('network.select.link'))
-              : t('network.select.none')}
-            >
+            <Card title={selected ? t(SELECT_TITLE[selected.type] || 'network.select.person') : t('network.select.none')}>
               {!selected && (
                 <EmptyState
                   compact
@@ -1288,7 +1631,7 @@ export default function Network() {
         </div>
       </div>
 
-      {!graph.isLoading && !graph.error && filtered.nodes.length > 0 && (
+      {!graph.isLoading && !graph.error && view.nodes.length > 0 && (
         <>
           <div>
             <h2 className="text-sm font-semibold text-ink">{t('network.analysis.title')}</h2>
@@ -1296,30 +1639,30 @@ export default function Network() {
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             <LinkSuggestions
-              edges={filtered.edges}
+              edges={view.edges}
               nodesById={nodesById}
               activeKey={suggestion ? `${suggestion.a}~~${suggestion.b}` : ''}
               onInspect={inspectSuggestion}
             />
             <BrokerBoard
-              nodes={filtered.nodes}
-              edges={filtered.edges}
+              nodes={view.nodes}
+              edges={view.edges}
               degrees={degrees}
-              core={filtered.core}
+              core={view.core}
               brokers={brokers}
               cutSet={cutSet}
               onPick={pickFromPanel}
             />
             <PairAnalyzer
-              edges={filtered.edges}
+              edges={view.edges}
               nodesById={nodesById}
               a={pathEnds.a}
               b={pathEnds.b}
               onSelectNode={pickFromPanel}
             />
             <GroupMatrix
-              nodes={filtered.nodes}
-              edges={filtered.edges}
+              nodes={view.nodes}
+              edges={view.edges}
               activePair={groupPair}
               onIsolate={setCommunity}
               onPickPair={pickGroupPair}
@@ -1328,11 +1671,163 @@ export default function Network() {
         </>
       )}
 
+      {!graph.isLoading && !graph.error && filtered.nodes.length > 0 && (
+        <>
+          <div>
+            <h2 className="text-sm font-semibold text-ink">{t('network.entity.sectionTitle')}</h2>
+            <p className="text-[11px] text-muted">{t('network.entity.sectionSubtitle')}</p>
+          </div>
+
+          <EvidenceLoader
+            sampleSize={sampleSize}
+            onSampleSize={changeSample}
+            enabled={evidenceOn}
+            onLoad={() => setEvidenceOn(true)}
+            onClear={() => { setEvidenceOn(false); setUnitFocus(''); setPeriod(''); changeMode('cooffend'); }}
+            requested={evidence.requested}
+            loaded={evidence.loaded}
+            failed={evidence.failed}
+            isFetching={evidence.isFetching}
+            progress={evidence.progress}
+            totalCases={caseRank.total}
+            victimCount={entityIndex.victimCount}
+            locationCount={entityIndex.locationCount}
+          />
+
+          <Tabs
+            ariaLabel={t('network.entity.tabsAria')}
+            value={entityTab}
+            onChange={setEntityTab}
+            tabs={[
+              { value: 'victims', label: t('network.entity.tabVictims'), badge: entityIndex.victimCount || undefined },
+              { value: 'locations', label: t('network.entity.tabLocations'), badge: entityIndex.locationCount || undefined },
+              { value: 'links', label: t('network.entity.tabLinks') },
+            ]}
+          />
+
+          {entityTab === 'victims' && (
+            entityIndex.victimCount === 0 ? (
+              <Card>
+                <EmptyState
+                  title={t('network.entity.noSampleTitle')}
+                  message={t('network.entity.noSampleMsg')}
+                  action={!evidenceOn ? (
+                    <button type="button" className="btn btn-primary" onClick={() => setEvidenceOn(true)} disabled={!caseRank.total}>
+                      {t('network.sample.load', { n: fmtInt(Math.min(sampleSize, caseRank.total)) })}
+                    </button>
+                  ) : undefined}
+                />
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <RepeatVictimPanel
+                  index={entityIndex}
+                  nodesById={allNodesById}
+                  onPickPerson={pickPersonKey}
+                  onPickVictim={pickVictim}
+                />
+                <VictimDemographicsPanel index={entityIndex} headLabel={headLabel} />
+                <SuspectVictimPanel
+                  index={entityIndex}
+                  nodesById={allNodesById}
+                  onPickPerson={pickPersonKey}
+                  onPickVictim={pickVictim}
+                />
+                <VictimAgeProfile index={entityIndex} />
+                <MultiVictimPanel index={entityIndex} nodesById={allNodesById} onPickPerson={pickPersonKey} />
+              </div>
+            )
+          )}
+
+          {entityTab === 'locations' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              {entityIndex.locationCount === 0 ? (
+                <Card className="lg:col-span-2">
+                  <EmptyState
+                    title={t('network.entity.noSampleTitle')}
+                    message={t('network.entity.noSampleLocMsg')}
+                    action={!evidenceOn ? (
+                      <button type="button" className="btn btn-primary" onClick={() => setEvidenceOn(true)} disabled={!caseRank.total}>
+                        {t('network.sample.load', { n: fmtInt(Math.min(sampleSize, caseRank.total)) })}
+                      </button>
+                    ) : undefined}
+                  />
+                </Card>
+              ) : (
+                <>
+                  <RecurringLocationPanel
+                    index={entityIndex}
+                    activeUnit={unitFocus}
+                    onPickLocation={setUnitFocus}
+                    riskByUnit={riskByUnit}
+                  />
+                  <LocationAffiliationPanel index={entityIndex} nodesById={allNodesById} onPickPerson={pickPersonKey} />
+                  <ColocationPanel
+                    index={entityIndex}
+                    commOf={communityOf}
+                    edges={graph.data?.edges || []}
+                    activeUnit={unitFocus}
+                    onPickLocation={setUnitFocus}
+                  />
+                </>
+              )}
+              {selected?.type === 'node' && (
+                <LocationFootprintPanel
+                  personKey={String(selected.data.id)}
+                  personName={selected.data.label}
+                  onOpenUnit={setUnitFocus}
+                />
+              )}
+              <CommunityDistrictPanel
+                nodes={graph.data?.nodes || []}
+                districtsByPerson={districtsByPerson}
+                onIsolate={setCommunity}
+              />
+              <HotspotEntityPanel
+                hotspots={hotspots.data || []}
+                loading={hotspots.isLoading}
+                districtNameById={districtNameById}
+                index={entityIndex}
+              />
+            </div>
+          )}
+
+          {entityTab === 'links' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              <MultiHopPanel
+                edges={view.edges}
+                nodesById={nodesById}
+                a={pathEnds.a}
+                b={pathEnds.b}
+                mode={pathMode}
+                activeRank={routePick?.rank || 0}
+                onSelectRoute={setRoutePick}
+                onSelectNode={pickPersonKey}
+              />
+              <TemporalPanel
+                edges={filtered.edges}
+                dateByCase={dateByCase}
+                activePeriod={period}
+                onPickPeriod={setPeriod}
+              />
+              <div className="lg:col-span-2">
+                <PredictionLab
+                  edges={view.edges}
+                  nodesById={nodesById}
+                  activeKey={suggestion ? `${suggestion.a}~~${suggestion.b}` : ''}
+                  onInspect={inspectSuggestion}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
       {!isDesktop && (
         <Sheet
           open={!!selected}
           onClose={() => setSelected(null)}
-          title={selected?.type === 'node' ? t('network.select.person') : t('network.edge.title')}
+          title={t(SELECT_TITLE[selected?.type] || 'network.select.person')}
         >
           {drawerFor(selected)}
         </Sheet>

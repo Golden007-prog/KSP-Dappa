@@ -2,7 +2,12 @@
 // Props:
 //   elements      — cytoscape element list ({data:{…}} nodes + edges); node data
 //                   must carry color/size, edge data width (precomputed by caller);
-//                   node data.isEgo === 1 gets the teal ego ring
+//                   node data.isEgo === 1 gets the teal ego ring.
+//                   Optional data.kind selects the entity shape — 'person'
+//                   (default, round) · 'victim' (square) · 'location' (hexagon) —
+//                   and on edges 'victimLink'/'locationLink' render as dotted /
+//                   dashed ties so a projection never reads as co-accusal.
+//                   node data.repeat === 1 adds the red repeat-victim ring.
 //   layout        — 'fcose' (default) | 'concentric' | 'grid' | 'breadthfirst'
 //                   (breadthfirst roots each component at its top-degree node
 //                   for an org-chart style tier view)
@@ -41,11 +46,11 @@ cytoscape.use(fcose);
 const THEME_TOKENS = {
   dark: {
     label: '#8A94A8', ink: '#E6EAF2', nodeBorder: '#0B1220', edge: '#2A3A5C',
-    amber: '#F5A623', teal: '#2DD4BF',
+    amber: '#F5A623', teal: '#2DD4BF', signal: '#E5484D',
   },
   light: {
     label: '#5C6B84', ink: '#131B2E', nodeBorder: '#F3F5FA', edge: '#A9B7CF',
-    amber: '#A16207', teal: '#0F766E',
+    amber: '#A16207', teal: '#0F766E', signal: '#B42318',
   },
 };
 
@@ -83,6 +88,16 @@ function buildStyle(tk, showLabels) {
         opacity: 0.75,
       },
     },
+    // Entity class is carried by shape so the three node types stay separable
+    // in greyscale, in print, and for colour-vision-deficient viewers: persons
+    // stay round, victims are squares, recurring locations are hexagons.
+    { selector: 'node[kind = "victim"]', style: { shape: 'round-rectangle' } },
+    { selector: 'node[kind = "location"]', style: { shape: 'hexagon', 'font-size': 10 } },
+    // A victim recorded on more than one sampled FIR gets the alert ring.
+    { selector: 'node[repeat = 1]', style: { 'border-width': 2.5, 'border-color': tk.signal } },
+    // Bipartite/affiliation links read as thin dotted ties, never as co-accusal.
+    { selector: 'edge[kind = "victimLink"]', style: { 'curve-style': 'bezier', 'line-style': 'dotted', 'line-color': tk.teal, opacity: 0.55 } },
+    { selector: 'edge[kind = "locationLink"]', style: { 'curve-style': 'bezier', 'line-style': 'dashed', 'line-color': tk.amber, opacity: 0.45 } },
     // Watchlisted people render as diamonds (shape survives all ring states).
     { selector: 'node[watch = 1]', style: { shape: 'diamond' } },
     // Ego focus ring (teal) — under the amber selected/path rings in priority.

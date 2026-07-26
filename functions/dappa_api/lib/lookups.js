@@ -4,6 +4,7 @@
 
 const constants = require('./constants');
 const { toNum } = require('./util');
+const { districtKey } = require('./analytics');
 
 const TTL_SEC = 3600;
 
@@ -76,11 +77,8 @@ function withMaps(lk) {
     // unpadded form in both directions.
     districtName: (id) => {
       const raw = String(id);
-      const bare = raw.replace(/^0+(?=\d)/, '');
-      const hit = lk.districts.find((d) => {
-        const dv = String(d.districtId);
-        return dv === raw || dv.replace(/^0+(?=\d)/, '') === bare;
-      });
+      const bare = districtKey(raw);
+      const hit = lk.districts.find((d) => districtKey(d.districtId) === bare);
       return hit ? hit.districtName : raw;
     },
     unitById: new Map(lk.units.map((u) => [u.unitId, u])),
@@ -104,11 +102,21 @@ function withMaps(lk) {
       const hit = lk.categories.find((c) => c.id === toNum(id));
       return hit ? hit.name : String(id);
     },
+    // The District/Unit/SocioEconomic masters and the fact tables disagree on
+    // zero padding depending on how each table was loaded ('101' vs '0101'), so
+    // every district comparison collapses both sides first. Without this a
+    // caller passing the padded form silently matches NOTHING — and an empty
+    // unit list means "no WHERE clause", i.e. an unfiltered answer that looks
+    // right and is state-wide.
     population: (districtId) => {
-      const hit = lk.socio.find((s) => s.districtId === String(districtId));
+      const key = districtKey(districtId);
+      const hit = lk.socio.find((s) => districtKey(s.districtId) === key);
       return hit && hit.population ? hit.population : null;
     },
-    unitsOfDistrict: (districtId) => lk.units.filter((u) => u.districtId === String(districtId))
+    unitsOfDistrict: (districtId) => {
+      const key = districtKey(districtId);
+      return lk.units.filter((u) => districtKey(u.districtId) === key);
+    }
   });
 }
 

@@ -66,6 +66,13 @@ async function post(path, body, headers, base) {
   return { status: res.status, json };
 }
 
+async function del(path, base) {
+  const res = await fetch((base || BASE) + path, { method: 'DELETE' });
+  let json = null;
+  try { json = await res.json(); } catch { /* ignore */ }
+  return { status: res.status, json };
+}
+
 async function getRaw(path, base) {
   const res = await fetch((base || BASE) + path);
   const text = await res.text();
@@ -78,6 +85,19 @@ async function getRaw(path, base) {
 // record) — the offset must be emitted verbatim, never off+1.
 check('buildZCQL LIMIT page 1 omits offset', buildZCQL({ table: 'T', limit: { offset: 0, count: 50 } }).endsWith(' LIMIT 50'));
 check('buildZCQL LIMIT page 2 is skip-count', buildZCQL({ table: 'T', limit: { offset: 50, count: 50 } }).endsWith(' LIMIT 50,50'));
+
+// ZCQL wildcards are * and ?, not SQL's % and _. Verified against the live
+// 45,000-row store: BriefFacts LIKE '%theft%' matches 0 rows while '*theft*'
+// matches 9,312, and GET /search/cases?q=OTP answers 10 cases through the
+// fallback-zcql-like path. These pins are what stop that regressing.
+{
+  const like = buildZCQL({ table: 'CaseMaster', columns: ['CaseMasterID'], where: [{ col: 'BriefFacts', op: 'like', val: 'OTP' }] });
+  check('ZCQL LIKE emits * wildcards, never %', like.includes("LIKE '*OTP*'") && !like.includes('%'), like);
+  const dirty = buildZCQL({ table: 'CaseMaster', columns: ['CaseMasterID'], where: [{ col: 'BriefFacts', op: 'like', val: '%OTP_%' }] });
+  check('ZCQL LIKE strips SQL wildcards out of the term', dirty.includes("LIKE '*OTP*'"), dirty);
+  const quoted = buildZCQL({ table: 'OffenderProfile', columns: ['PersonKey'], where: [{ col: 'CanonicalName', op: 'like', val: "d'souza" }] });
+  check('ZCQL LIKE escapes quotes inside the term', quoted.includes("LIKE '*d''souza*'"), quoted);
+}
 
 // Paginated reads: a table bigger than one ZCQL page must come back whole, not
 // clipped at 300 rows. This is the regression pin for /trends/seasonality.
@@ -140,6 +160,68 @@ check('buildZCQL LIMIT page 2 is skip-count', buildZCQL({ table: 'T', limit: { o
     const s = stringifyInputs({ a: 1, b: true, c: null, d: 'x' });
     return s.a === '1' && s.b === '1' && s.d === 'x' && !('c' in s);
   })());
+}
+
+// Analytics helpers behind the link-analysis (C2) and behavioural (C5) routes.
+{
+  const an = require('../lib/analytics.js');
+  check('percentile uses mid-rank for ties', an.percentileOf([1, 2, 2, 3], 2) === 50, String(an.percentileOf([1, 2, 2, 3], 2)));
+  check('percentile of the top value', an.percentileOf([1, 2, 3, 4], 4) === 87.5, String(an.percentileOf([1, 2, 3, 4], 4)));
+  check('percentile of an empty population is null, never a misleading 0', an.percentileOf([], 5) === null);
+  check('concentration is 1 for a single tag', an.concentration([7]) === 1);
+  check('concentration is 1/k when evenly spread', an.concentration([2, 2, 2, 2]) === 0.25);
+  check('concentration of nothing is 0', an.concentration([]) === 0);
+  check('scale100 guards a zero-width range', an.scale100(5, 3, 3) === 100 && an.scale100(1, 3, 3) === 0);
+  check('ymDiff counts whole months across a year boundary', an.ymDiff('2025-11', '2026-02') === 3);
+  check('ymDiff refuses garbage rather than guessing', an.ymDiff('nope', '2026-02') === null);
+  check('jaccard overlap', an.jaccard(['a', 'b'], ['b', 'c']) === 0.333, String(an.jaccard(['a', 'b'], ['b', 'c'])));
+  check('daysBetween spans a month', an.daysBetween('2026-01-01', '2026-02-01') === 31);
+  check('ymOfDate reads a datetime', an.ymOfDate('2026-03-11 08:00:00') === '2026-03' && an.ymOfDate('') === null);
+  // The padded/unpadded district split is the bug that made ?districtId=0101
+  // return the whole state: unitsOfDistrict matched nothing, so the IN clause
+  // was dropped entirely.
+  check('district key collapses zero padding', an.districtKey('0101') === '101' && an.districtKey('101') === '101');
+  const resolve = an.makeDistrictResolver({ districts: [{ districtId: '0103', districtName: 'Mysuru City' }] });
+  check('district resolver accepts either padding', resolve('0103') === '0103' && resolve('103') === '0103');
+  check('district resolver accepts a name (the live DistrictsJson dialect)', resolve('Mysuru City') === '0103');
+  check('district resolver refuses to guess', resolve('Atlantis') === null);
+  check('suspect name key normalises case and whitespace', an.nameKey('  Ravi   KUMAR ') === 'ravi kumar');
+  const co = an.coOccurrence([['a', 'b'], ['a', 'b'], ['a', 'c'], ['d']], { minSupport: 2, topTags: 10 });
+  check('co-occurrence keeps only supported tags', co.tags.join(',') === 'a,b', co.tags.join(','));
+  const ab = co.pairs.find((p) => p.a === 'a' && p.b === 'b');
+  check('co-occurrence lift is P(a,b)/P(a)P(b)', ab && ab.pairCount === 2 && ab.lift === 1.33 && ab.confidence === 0.667, JSON.stringify(ab));
+  const fam = an.tagFamilies(
+    [{ a: 'x', b: 'y', pairCount: 3, lift: 2 }, { a: 'z', b: 'w', pairCount: 1, lift: 9 }],
+    new Map([['x', 5], ['y', 2], ['z', 1], ['w', 1]]),
+    { minLift: 1.2, minPairCount: 2 }
+  );
+  check('tag families join only pairs clearing lift AND support', fam.length === 3 && fam[0].tags.join(',') === 'x,y', JSON.stringify(fam));
+  check('component sizes see one connected graph', an.componentSizes(['a', 'b', 'c'], [['a', 'b'], ['b', 'c']]).join(',') === '3');
+  check('component sizes split a disconnected graph', an.componentSizes(['a', 'b', 'c', 'd'], [['a', 'b']]).join(',') === '2,1,1');
+  const ws = an.weightedScore([
+    { key: 'k1', label: 'l1', value: 1, normalized: 100, weight: 0.5 },
+    { key: 'k2', label: 'l2', value: 0, normalized: 0, weight: 0.5 }
+  ]);
+  check('weighted score is exactly the sum of its drivers', ws.score === 50 && ws.drivers[0].key === 'k1' && ws.drivers[0].contribution === 50);
+  check('chunk splits ZCQL IN lists', an.chunk([1, 2, 3, 4, 5], 2).length === 3);
+  check('score banding', an.band(80) === 'high' && an.band(50) === 'elevated' && an.band(30) === 'moderate' && an.band(10) === 'low');
+  check('median of an even list', an.median([1, 2, 3, 4]) === 2.5 && an.median([]) === null);
+}
+
+// Cache: an oversized aggregate must not poison the shared backend.
+{
+  const { createCache, MAX_REMOTE_BYTES } = require('../lib/cache.js');
+  const written = [];
+  const seg = { async put(k, v) { written.push([k, v]); }, async getValue() { return undefined; } };
+  const c = createCache({ getSegment: async () => seg });
+  await c.put('small', { a: 1 }, 60);
+  const huge = { blob: 'x'.repeat(MAX_REMOTE_BYTES + 1024) };
+  await c.put('huge', huge, 60);
+  check('cache writes a normal value through to Catalyst', written.length === 1 && written[0][0] === 'small');
+  check('cache keeps an oversized value local instead of failing the backend',
+    c.oversizedWrites === 1 && c.backend === 'catalyst', `${c.oversizedWrites}/${c.backend}`);
+  const back = await c.get('huge');
+  check('an oversized value is still served from memory', back && back.value.blob.length === huge.blob.length);
 }
 
 // Copilot parser upgrades.
@@ -222,6 +304,88 @@ const GET_CASES = [
   ['/offenders/mo-patterns', (d) => Array.isArray(d) && d.length > 0
     && hasKeys(d[0], ['tag', 'offenders', 'totalCases', 'districts', 'districtNames', 'crossJurisdiction', 'avgRisk', 'topOffenders'])
     && (() => { const v = d.find((t) => t.tag === 'vehicle-theft'); return v && v.offenders === 2 && v.totalCases === 8 && v.crossJurisdiction === true; })()],
+  // --- link-analysis endpoints (C2) -----------------------------------------
+  ['/network/victim-links?perPage=5', (d, meta) => hasKeys(d, ['scope', 'summary', 'nodes', 'links', 'topSuspects', 'topVictims', 'bridgeCases', 'scan'])
+    && d.summary.cases === 40 && d.summary.victims === 6 && d.summary.suspects === 6
+    && d.summary.components === 1 && d.summary.largestComponent === 52
+    && d.summary.avgVictimsPerCase > 1 && d.summary.repeatSuspects === 6
+    && d.nodes.filter((n) => n.type === 'case').length === 5
+    && d.nodes.every((n) => ['case', 'victim', 'suspect'].includes(n.type))
+    && d.links.length > 0 && d.links.every((l) => ['victim-case', 'case-suspect'].includes(l.type))
+    && d.topSuspects.length > 0
+    && hasKeys(d.topSuspects[0], ['suspectKey', 'name', 'caseCount', 'victimCount', 'districtCount', 'districtNames', 'personKey', 'riskScore'])
+    && d.bridgeCases.length > 0 && hasKeys(d.bridgeCases[0], ['caseMasterId', 'victims', 'suspects', 'degree'])
+    && d.scan.casesScanned === 40 && d.scan.casesTruncated === false && d.scan.childTruncated === false
+    && meta.total === 40 && meta.perPage === 5],
+  ['/network/victim-links?districtId=0103', (d) => d.scope.districtId === '0103' && d.summary.cases === 8
+    && d.summary.victims > 0 && d.summary.suspects > 0],
+  // An unknown district must answer "nothing", never silently drop the filter
+  // and hand back the whole state.
+  ['/network/victim-links?districtId=9999', (d) => d.summary.cases === 0 && d.nodes.length === 0
+    && d.links.length === 0 && d.topSuspects.length === 0 && d.summary.largestComponent === 0],
+  ['/network/locations', (d, meta) => hasKeys(d, ['window', 'method', 'locations', 'summary', 'scan'])
+    && d.summary.locations === 8 && d.summary.units === 5 && d.summary.hotspots === 3
+    && d.locations[0].recurrenceScore >= d.locations[1].recurrenceScore
+    && hasKeys(d.locations[0], ['locationId', 'locationType', 'name', 'districtId', 'districtName', 'lat', 'lng',
+      'caseCount', 'monthsActive', 'persistencePct', 'offenderAffiliation', 'communities', 'recurrenceScore', 'band', 'drivers', 'crossCommunity'])
+    && hasKeys(d.locations[0].offenderAffiliation, ['offenders', 'basis', 'strength', 'topOffenders'])
+    && d.locations[0].drivers.length === 4
+    && Math.abs(d.locations[0].drivers.reduce((s, x) => s + x.contribution, 0) - d.locations[0].recurrenceScore) < 0.2
+    && d.locations.some((l) => l.locationType === 'hotspot' && typeof l.lat === 'number')
+    && d.locations.filter((l) => l.locationType === 'unit').every((l) => typeof l.lat === 'number')
+    && meta.total === 8],
+  ['/network/locations?type=hotspot', (d, meta) => meta.total === 3 && d.locations.every((l) => l.locationType === 'hotspot' && l.clusterId)],
+  ['/network/locations?districtId=0101', (d) => d.locations.length === 3 && d.locations.every((l) => l.districtId === '0101')],
+  ['/network/communities/score', (d, meta) => hasKeys(d, ['communities', 'weights', 'method', 'population', 'scan'])
+    && d.communities.length === 2 && d.communities[0].communityId === 1
+    && d.communities[0].memberCount === 3 && d.communities[0].edgeCount === 3 && d.communities[0].density === 1
+    && d.communities[0].districtSpan === 2 && d.communities[0].repeatOffenderShare === 1
+    && d.communities[0].score >= d.communities[1].score
+    && d.communities[0].drivers.length === 6
+    && Math.abs(d.communities[0].drivers.reduce((s, x) => s + x.contribution, 0) - d.communities[0].score) < 0.2
+    && d.communities[0].drivers.every((x) => hasKeys(x, ['key', 'label', 'value', 'unit', 'normalized', 'weight', 'contribution']))
+    && ['low', 'moderate', 'elevated', 'high'].includes(d.communities[0].band)
+    && d.communities[0].districtBreakdown.length === 2 && d.communities[0].keyPerson.personKey === 'P001'
+    && d.population.offenders === 6 && d.population.unassignedOffenders === 1
+    && d.scan.edgeMode === 'grouped' && meta.total === 2],
+  ['/network/communities/score?minSize=3', (d, meta) => d.communities.length === 1 && d.communities[0].memberCount === 3 && meta.total === 1],
+  // --- behavioural endpoints (C5) -------------------------------------------
+  ['/offenders/mo-evolution?months=12&minSupport=1', (d, meta) => hasKeys(d, ['window', 'months', 'activeOffenders', 'series', 'emerging', 'fading', 'cooccurrence', 'families', 'params', 'method', 'scan'])
+    && d.months.length === 12 && d.activeOffenders.length === 12 && d.activeOffenders.some((n) => n > 0)
+    && d.series.length > 0 && d.series.every((s) => s.counts.length === 12)
+    && d.series.some((s) => s.tag === 'vehicle-theft' && s.offenders === 2 && s.cases === 8)
+    && d.cooccurrence.length > 0 && d.cooccurrence.every((p) => hasKeys(p, ['a', 'b', 'pairCount', 'support', 'lift', 'confidence']))
+    && d.families.length > 0 && d.families[0].familyId === 'F01'
+    && d.families.every((f) => hasKeys(f, ['familyId', 'label', 'tags', 'tagCount', 'offenders', 'cases', 'avgRisk', 'sharePct']))
+    && d.scan.profilesScanned === 6 && d.scan.profilesTruncated === false
+    && meta.tags === d.series.length],
+  // Empty result: nothing clears a support of 99, and that must be a clean 200.
+  ['/offenders/mo-evolution?months=6&minSupport=99', (d) => d.months.length === 6 && d.series.length === 0
+    && d.cooccurrence.length === 0 && d.families.length === 0 && d.emerging.length === 0],
+  ['/offenders/P001/behaviour', (d, meta) => hasKeys(d, ['personKey', 'canonicalName', 'escalationScore', 'band', 'verdict', 'signals', 'timeline', 'halves', 'recent', 'dormancy', 'recentHeadMix', 'scan'])
+    && d.personKey === 'P001'
+    && d.signals.map((s) => s.key).join(',') === 'gravity,frequency,districtSpread,dormancy'
+    && d.signals.every((s) => ['up', 'down', 'flat', 'unknown'].includes(s.direction) && typeof s.note === 'string')
+    && d.escalationScore >= 0 && d.escalationScore <= 100
+    && ['escalating', 'stable', 'de-escalating', 'dormant', 'insufficient-data'].includes(d.verdict)
+    && d.scan.caseIdsLinked === 4 && d.scan.casesDated === 4 && d.scan.caseIdsTruncated === false
+    && d.timeline.length > 0 && d.timeline.every((t) => /^\d{4}-\d{2}$/.test(t.ym) && typeof t.cases === 'number')
+    && hasKeys(d.halves.early, ['cases', 'months', 'casesPerMonth', 'heinousShare', 'districts'])
+    && hasKeys(d.dormancy, ['monthsSinceLastCase', 'longestGapDays', 'dormantSpells', 'reactivated', 'lastCaseYm'])
+    && meta.personKey === 'P001'],
+  // An offender with no linked cases must degrade, not throw or overclaim.
+  ['/offenders/P006/behaviour', (d) => d.verdict === 'insufficient-data' && d.scan.caseIdsLinked === 0
+    && d.signals.length === 4 && d.signals[0].direction === 'unknown'],
+  ['/offenders/P001/cohort?size=5', (d, meta) => hasKeys(d, ['subject', 'cohort', 'peers', 'percentiles', 'population', 'method', 'scan'])
+    && d.subject.personKey === 'P001' && d.subject.districtSpan === 2
+    && d.peers.length === 5 && d.peers.every((p) => p.personKey !== 'P001')
+    && d.peers.every((p) => hasKeys(p, ['personKey', 'canonicalName', 'caseCount', 'riskScore', 'communityId', 'districtSpan', 'sharedMoTags', 'matchedOn', 'similarity']))
+    && d.peers[0].similarity >= d.peers[4].similarity
+    && d.peers[0].personKey === 'P002' && d.peers[0].sameCommunity === true
+    && d.percentiles.riskScore.cohort > 80 && d.percentiles.riskScore.population > 80
+    && typeof d.percentiles.caseCount.population === 'number'
+    && d.cohort.criteria.caseCountRange[0] === 3 && d.cohort.criteria.caseCountRange[1] === 12
+    && d.population.offenders === 6 && meta.cohortSize === 5],
   // --- Catalyst service surface ---------------------------------------------
   ['/meta/services', (d) => Array.isArray(d.services) && d.services.length >= 20
     && d.services.every((s) => hasKeys(s, ['key', 'name', 'category', 'status', 'statusReason', 'fallback', 'endpoints']))
@@ -236,6 +400,10 @@ const GET_CASES = [
   ['/search/cases?q=ravi&scope=offenders', (d) => d.scope === 'offenders'
     && d.results.length === 1 && d.results[0].type === 'offender' && d.results[0].personKey === 'P001'],
   ['/search/cases?q=zzzznothing', (d) => d.results.length === 0 && d.matched === 0],
+  // A term buried mid-sentence only matches because buildZCQL wraps it in
+  // LEADING and trailing '*' — the pin for the wildcard fix, end to end.
+  ['/search/cases?q=mangalsutra', (d) => d.source === 'fallback-zcql-like' && d.results.length > 0
+    && d.results.some((r) => r.type === 'case' && String(r.snippet).toLowerCase().includes('mangalsutra'))],
   ['/auth/me', (d) => d.authenticated === false && d.anonymous === true && d.role === 'viewer'
     && d.capabilities.read === true && d.capabilities.acknowledgeAlerts === false
     && d.publicDemo === true && d.source === 'fallback-local'],
@@ -372,6 +540,211 @@ for (const utterance of CANNED_UTTERANCES) {
   check('watch empty list -> 400', empty.status === 400);
   const huge = await post('/offenders/watch', { personKeys: Array.from({ length: 51 }, (_, i) => `X${i}`) });
   check('watch >50 keys -> 400', huge.status === 400);
+}
+
+// --- watchlist persistence (Catalyst Cache, not localStorage) ----------------
+
+{
+  const seed = await post('/offenders/watch', { personKeys: ['P001', 'P004', 'ZZZ'], listId: 'crb' });
+  check('watch stores only the keys that resolved to a person',
+    seed.json.data.watchlist.keys.join(',') === 'P001,P004', JSON.stringify(seed.json.data.watchlist));
+  check('watch reports the list and mode it wrote', seed.json.data.listId === 'crb'
+    && seed.json.data.mode === 'add' && seed.json.meta.persisted === true && seed.json.data.notFound[0] === 'ZZZ');
+  const add = await post('/offenders/watch', { personKeys: ['P002'], listId: 'crb' });
+  check('watch add is a union, not a replace', add.json.data.watchlist.keys.join(',') === 'P001,P004,P002',
+    add.json.data.watchlist.keys.join(','));
+  const read = await get('/offenders/watchlist?listId=crb');
+  check('the stored watchlist reads back enriched and risk-sorted', read.status === 200
+    && read.json.data.profiles.length === 3
+    && read.json.data.profiles[0].riskScore >= read.json.data.profiles[1].riskScore
+    && hasKeys(read.json.data.profiles[0], ['personKey', 'canonicalName', 'aliases', 'caseCount', 'districts',
+      'districtNames', 'daysSinceLastSeen', 'moTags', 'riskScore', 'associates', 'openAlertsInDistricts']));
+  const removed = await post('/offenders/watch', { personKeys: ['P004'], listId: 'crb', mode: 'remove' });
+  check('watch remove drops the key', removed.json.data.watchlist.keys.join(',') === 'P001,P002');
+  const replaced = await post('/offenders/watch', { personKeys: ['P003'], listId: 'crb', mode: 'replace' });
+  check('watch replace swaps the whole list', replaced.json.data.watchlist.keys.join(',') === 'P003');
+  const dry = await post('/offenders/watch', { personKeys: ['P005'], listId: 'crb', mode: 'none' });
+  check('watch mode=none validates without writing', dry.json.data.profiles.length === 1
+    && dry.json.data.watchlist.keys.join(',') === 'P003' && dry.json.meta.persisted === false);
+  const badMode = await post('/offenders/watch', { personKeys: ['P001'], mode: 'obliterate' });
+  check('watch with an unknown mode -> 400', badMode.status === 400 && badMode.json.error.code === 'BAD_REQUEST');
+  const badList = await post('/offenders/watch', { personKeys: ['P001'], listId: 'has spaces' });
+  check('watch with a malformed listId -> 400', badList.status === 400);
+  const badListRead = await get('/offenders/watchlist?listId=has%20spaces');
+  check('watchlist read with a malformed listId -> 400', badListRead.status === 400);
+  const cleared = await del('/offenders/watchlist?listId=crb');
+  check('watchlist clears', cleared.status === 200 && cleared.json.data.cleared === 1
+    && cleared.json.data.watchlist.count === 0);
+  const afterClear = await get('/offenders/watchlist?listId=crb');
+  check('a cleared watchlist reads empty, not 404', afterClear.status === 200
+    && afterClear.json.data.profiles.length === 0 && afterClear.json.data.requested === 0);
+  // The earlier POST /offenders/watch (no listId) seeded 'default'; named lists
+  // must not have leaked into it.
+  const legacy = await get('/offenders/watchlist');
+  check('the default list is independent of a named one', legacy.json.data.listId === 'default'
+    && legacy.json.data.watchlist.keys.includes('P001') && !legacy.json.data.watchlist.keys.includes('P003'),
+    JSON.stringify(legacy.json.data.watchlist));
+}
+
+// --- link-analysis + behavioural paging, caching and bad input ---------------
+
+{
+  const p1 = await get('/network/victim-links?perPage=10&page=1');
+  const p2 = await get('/network/victim-links?perPage=10&page=2');
+  const ids1 = p1.json.data.nodes.filter((n) => n.type === 'case').map((n) => n.caseMasterId);
+  const ids2 = p2.json.data.nodes.filter((n) => n.type === 'case').map((n) => n.caseMasterId);
+  check('victim-links pages the case list', ids1.length === 10 && ids2.length === 10
+    && !ids1.some((id) => ids2.includes(id)), JSON.stringify([ids1.length, ids2.length]));
+  check('victim-links keeps the summary page-independent',
+    JSON.stringify(p1.json.data.summary) === JSON.stringify(p2.json.data.summary));
+  // The cache key deliberately drops page/perPage: one scope is computed once
+  // and sliced, instead of re-walking Victim and Accused for every page.
+  check('victim-links caches the scope, not the page', p2.json.meta.cached === true);
+  check('victim-links only ships nodes its page actually links',
+    p1.json.data.nodes.filter((n) => n.type !== 'case').every((n) => p1.json.data.links.some((l) => l.source === n.id || l.target === n.id)));
+  const ravi = p1.json.data.topSuspects.find((s) => s.name === 'Ravi Kumar');
+  check('victim-links resolves a suspect to their offender profile',
+    ravi && ravi.personKey === 'P001' && ravi.riskScore === 87.5, JSON.stringify(ravi));
+  const sampled = await get('/network/victim-links?sample=50');
+  check('victim-links honours a smaller sample budget',
+    sampled.json.data.scan.budget === 50 && sampled.json.data.summary.cases <= 50);
+  const clamped = await get('/network/victim-links?perPage=9999&sample=99999');
+  check('victim-links clamps perPage and the sample budget',
+    clamped.json.meta.perPage === 200 && clamped.json.data.scan.budget === 1200);
+  const badTo = await get('/network/victim-links?to=last-tuesday');
+  check('victim-links rejects a malformed date window', badTo.status === 400 && badTo.json.error.code === 'BAD_REQUEST');
+  const badLocDate = await get('/network/locations?from=whenever');
+  check('locations rejects a malformed date window', badLocDate.status === 400);
+  const badKey = await get('/offenders/not%20a%20key/behaviour');
+  check('behaviour rejects a malformed personKey', badKey.status === 400 && badKey.json.error.code === 'BAD_ID');
+  const missingBehaviour = await get('/offenders/NOPE/behaviour');
+  check('behaviour 404s an unknown offender', missingBehaviour.status === 404 && missingBehaviour.json.error.code === 'NOT_FOUND');
+  const badCohortKey = await get('/offenders/not%20a%20key/cohort');
+  check('cohort rejects a malformed personKey', badCohortKey.status === 400);
+  const missingCohort = await get('/offenders/NOPE/cohort');
+  check('cohort 404s an unknown offender', missingCohort.status === 404);
+  // /offenders/mo-evolution must beat the /offenders/:personKey param route.
+  const evo = await get('/offenders/mo-evolution?months=12&minSupport=1');
+  check('mo-evolution wins over the :personKey param route',
+    evo.status === 200 && Array.isArray(evo.json.data.series) && evo.json.data.months.length === 12);
+  const profile = await get('/offenders/P001');
+  check('the param route still answers a real key', profile.status === 200 && profile.json.data.personKey === 'P001');
+}
+
+// --- degradation when the store refuses a grouped/mixed aggregate -----------
+// PUBLIC_DEMO is switched OFF for these two apps on purpose: with the fixture
+// fallback in play the rejection would be silently answered from the fixture
+// and the real degradation path would never run.
+
+{
+  const pickyAgg = {
+    async execute(sql, q) {
+      if (q && q.table === 'AggMonthly' && (q.columns || []).some((c) => /^MIN\(/i.test(c))) {
+        throw new Error('ZCQL QUERY EXECUTION ERROR: unsupported aggregate combination');
+      }
+      return stub.execute(sql, q);
+    }
+  };
+  const aggApp = createApp({ clientFactory: () => pickyAgg, flags: { publicDemo: false } });
+  const aggServer = aggApp.listen(0);
+  await new Promise((r) => aggServer.once('listening', r));
+  const AG = `http://127.0.0.1:${aggServer.address().port}/api/v1`;
+  const loc = await get('/network/locations', AG);
+  check('locations degrades to the SUM-only unit aggregate', loc.status === 200
+    && loc.json.data.scan.unitAggMode === 'sum-only' && loc.json.data.summary.units === 5,
+    JSON.stringify(loc.json && loc.json.data && loc.json.data.scan));
+  check('the degraded aggregate assumes the full window rather than one month',
+    loc.json.data.locations.filter((l) => l.locationType === 'unit').every((l) => l.persistencePct === 100));
+  aggServer.close();
+
+  const noGroupedEdges = {
+    async execute(sql, q) {
+      if (q && q.table === 'NetworkEdge' && (q.groupBy || []).length) {
+        throw new Error('ZCQL QUERY EXECUTION ERROR: group by unsupported');
+      }
+      return stub.execute(sql, q);
+    }
+  };
+  const edgeApp = createApp({ clientFactory: () => noGroupedEdges, flags: { publicDemo: false } });
+  const edgeServer = edgeApp.listen(0);
+  await new Promise((r) => edgeServer.once('listening', r));
+  const EG = `http://127.0.0.1:${edgeServer.address().port}/api/v1`;
+  const scored = await get('/network/communities/score', EG);
+  check('community scoring falls back to a paged edge scan', scored.status === 200
+    && scored.json.data.scan.edgeMode === 'scan'
+    && scored.json.data.communities[0].edgeCount === 3
+    && scored.json.data.communities[0].density === 1,
+    JSON.stringify(scored.json && scored.json.data && scored.json.data.scan));
+  edgeServer.close();
+}
+
+// --- live-dialect regression: unpadded ids + district NAMES in DistrictsJson -
+// The real Data Store holds District/Unit/AggMonthly ids UNPADDED ('101') and
+// OffenderProfile.DistrictsJson as district NAMES, while the bundled fixture
+// uses the padded id form throughout. Code that only understands one dialect
+// matches nothing — and an empty unit list means the IN clause is dropped, so
+// ?districtId=0101 quietly answered for the whole state. This scenario replays
+// every district-scoped route against the live dialect.
+
+{
+  const live = buildFixtureTables();
+  const nameById = new Map(live.District.map((d) => [String(d.DistrictID), d.DistrictName]));
+  const bare = (v) => (v === null || v === undefined ? v : String(v).replace(/^0+(?=\d)/, ''));
+  for (const d of live.District) d.DistrictID = bare(d.DistrictID);
+  for (const u of live.Unit) { u.DistrictID = bare(u.DistrictID); u.ParentUnit = bare(u.ParentUnit); }
+  for (const a of live.AggMonthly) a.DistrictID = bare(a.DistrictID);
+  for (const s of live.SocioEconomic) s.DistrictID = bare(s.DistrictID);
+  for (const a of live.AnomalyAlert) a.DistrictID = bare(a.DistrictID);
+  for (const h of live.HotspotCluster) h.DistrictID = bare(h.DistrictID);
+  for (const f of live.ForecastMonthly) f.DistrictID = bare(f.DistrictID);
+  for (const p of live.OffenderProfile) {
+    p.DistrictsJson = JSON.stringify(JSON.parse(p.DistrictsJson).map((id) => nameById.get(String(id)) || String(id)));
+  }
+  // The live store also hands ids back as strings.
+  for (const c of live.CaseMaster) c.CaseMasterID = String(c.CaseMasterID);
+  for (const t of ['Victim', 'Accused', 'ComplainantDetails', 'ActSectionAssociation', 'ArrestSurrender', 'ChargesheetDetails', 'CaseAnomaly']) {
+    for (const r of live[t]) r.CaseMasterID = String(r.CaseMasterID);
+  }
+
+  const liveApp = createApp({ clientFactory: () => createStubClient(live) });
+  const liveServer = liveApp.listen(0);
+  await new Promise((r) => liveServer.once('listening', r));
+  const L = `http://127.0.0.1:${liveServer.address().port}/api/v1`;
+
+  const padded = await get('/cases?districtId=0101&perPage=50', L);
+  const unpadded = await get('/cases?districtId=101&perPage=50', L);
+  check('the padded district form actually filters cases now',
+    padded.json.meta.total === 8 && padded.json.data.every((r) => r.districtName === 'Bengaluru City'),
+    `${padded.json.meta.total} cases`);
+  check('both district dialects give the same answer', unpadded.json.meta.total === padded.json.meta.total);
+  const vl = await get('/network/victim-links?districtId=0101', L);
+  check('victim-links scopes to the district in the live dialect',
+    vl.json.data.summary.cases === 8 && vl.json.data.summary.victims > 0,
+    JSON.stringify(vl.json.data.summary));
+  const loc = await get('/network/locations?districtId=0101', L);
+  check('locations scopes to the district in the live dialect',
+    loc.json.meta.total === 3 && loc.json.data.locations.every((l) => l.districtId === '101'),
+    JSON.stringify(loc.json.data.locations.map((l) => [l.locationId, l.districtId])));
+  check('locations still names the district and maps the offenders on to it',
+    loc.json.data.locations[0].districtName === 'Bengaluru City'
+    && loc.json.data.locations[0].offenderAffiliation.offenders === 2);
+  const score = await get('/network/communities/score', L);
+  check('community scoring resolves district NAMES back to a span',
+    score.json.data.communities[0].districtSpan === 2
+    && score.json.data.communities[0].districtBreakdown.every((b) => b.districtName && b.districtName !== b.districtId),
+    JSON.stringify(score.json.data.communities[0].districtBreakdown));
+  const cohort = await get('/offenders/P001/cohort?size=5', L);
+  check('cohort resolves district names into a span', cohort.json.data.subject.districtSpan === 2
+    && cohort.json.data.subject.districtNames.includes('Bengaluru City'));
+  const geo = await get('/geo/districts', L);
+  check('district rates still resolve population across the padding split',
+    geo.json.data.some((r) => r.districtName === 'Bengaluru City' && r.ratePerLakh > 0),
+    JSON.stringify(geo.json.data[0]));
+  const watch = await post('/offenders/watch', { personKeys: ['P001'], listId: 'live' }, null, L);
+  check('watch links open alerts to a profile whose districts are names',
+    watch.json.data.profiles[0].openAlertsInDistricts === 2,
+    String(watch.json.data.profiles[0].openAlertsInDistricts));
+  liveServer.close();
 }
 
 // --- network path validation --------------------------------------------------

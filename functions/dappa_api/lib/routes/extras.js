@@ -9,6 +9,7 @@ const { ok, fail, asyncH, commonFilters, nocache, cacheKey, ttlFor } = require('
 const { getLookups } = require('../lookups');
 const { anchorYm, ymWindow } = require('./read');
 const network = require('../network');
+const watchlist = require('../watchlist');
 const { CANNED_UTTERANCES } = require('../copilot');
 const { toNum, round, ymAdd, ymRange, pctDelta, pearson, parseJsonSafe } = require('../util');
 
@@ -43,10 +44,12 @@ const CAPABILITIES = [
       'Co-accusal network graph with community detection and ego drill-down',
       'Shortest association path between any two persons with shared-case evidence',
       'Repeat offender profiles with aliases, districts spanned and MO tags',
-      'Watchlist validation enriching person keys with live risk context'
+      'Victim-to-case-to-suspect adjacency for any district, crime head or period',
+      'Recurring-location entities scored by offender affiliation and co-located communities',
+      'Cache-backed watchlist enriching person keys with live risk context'
     ],
-    endpoints: ['/network/graph', '/network/path', '/network/communities', '/offenders', '/offenders/:personKey', '/offenders/watch', '/search/cases'],
-    services: ['NoSQL', 'Stratus', 'Data Store', 'Data Store full-text Search']
+    endpoints: ['/network/graph', '/network/path', '/network/communities', '/network/victim-links', '/network/locations', '/offenders', '/offenders/:personKey', '/offenders/watch', '/offenders/watchlist', '/search/cases'],
+    services: ['NoSQL', 'Stratus', 'Data Store', 'Cache', 'Data Store full-text Search']
   },
   {
     id: 3,
@@ -86,12 +89,14 @@ const CAPABILITIES = [
     summary: 'Suspect connections, organized-crime community roll-ups and recurring modus operandi.',
     highlights: [
       'Community roll-ups: members, density, districts spanned, key person',
-      'MO signature mining with cross-jurisdiction detection',
-      'Narrative MO extraction (weapon / vehicle / entry / approach vocabulary)',
-      'Offender timelines across stations and districts'
+      'Organised-crime scoring per community with the driver breakdown behind it',
+      'Escalation / de-escalation signals per offender: gravity, frequency, spread, dormancy',
+      'MO signature mining, MO evolution over time and derived MO families',
+      'Peer cohorts placing an offender at a percentile among comparable people',
+      'Narrative MO extraction (weapon / vehicle / entry / approach vocabulary)'
     ],
-    endpoints: ['/network/communities', '/offenders/mo-patterns', '/ai/narrative', '/offenders/:personKey', '/zia/ocr'],
-    services: ['NoSQL', 'Data Store', 'Zia Services']
+    endpoints: ['/network/communities', '/network/communities/score', '/offenders/mo-patterns', '/offenders/mo-evolution', '/offenders/:personKey/behaviour', '/offenders/:personKey/cohort', '/ai/narrative', '/offenders/:personKey', '/zia/ocr'],
+    services: ['NoSQL', 'Data Store', 'Cache', 'Zia Services']
   },
   {
     id: 6,
@@ -485,56 +490,70 @@ function register(router) {
     ok(res, value, { cached, ttlSec: ttl, count: value.length });
   }));
 
-  // Watchlist validation: POST a list of personKeys, get back enriched
-  // profiles (recency, associate counts, open alerts in their districts) plus
-  // the keys that resolved to nothing.
+  // Watchlist validation + persistence: POST a list of personKeys, get back
+  // enriched profiles (recency, associate counts, open alerts in their
+  // districts) plus the keys that resolved to nothing. The keys are also folded
+  // into a Catalyst Cache-backed list so the watchlist survives the browser and
+  // is readable from GET /offenders/watchlist — `mode` picks add (default),
+  // replace, remove or none (validate without writing).
   router.post('/offenders/watch', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const body = req.body || {};
     const raw = Array.isArray(body.personKeys) ? body.personKeys : Array.isArray(body.keys) ? body.keys : null;
     if (!raw || !raw.length) return fail(res, 400, 'BAD_REQUEST', 'Provide personKeys as a non-empty array.');
     if (raw.length > 50) return fail(res, 400, 'BAD_REQUEST', 'Max 50 personKeys per request.');
-    const keys = [...new Set(raw.map((k) => String(k).trim()).filter(Boolean))];
+    const keys = watchlist.normalizeKeys(raw);
     if (!keys.length) return fail(res, 400, 'BAD_REQUEST', 'No usable personKeys in the list.');
-    const [rows, edgesA, edgesB, openAlerts] = await Promise.all([
-      ctx.ds.query({
-        table: 'OffenderProfile',
-        columns: ['PersonKey', 'CanonicalName', 'AliasesJson', 'CaseCount', 'DistrictsJson', 'FirstSeen', 'LastSeen', 'MOTagsJson', 'CommunityID', 'RiskScore'],
-        where: [{ col: 'PersonKey', op: 'in', val: keys }]
-      }),
-      ctx.ds.query({ table: 'NetworkEdge', columns: ['PersonKeyA'], where: [{ col: 'PersonKeyA', op: 'in', val: keys }] }),
-      ctx.ds.query({ table: 'NetworkEdge', columns: ['PersonKeyB'], where: [{ col: 'PersonKeyB', op: 'in', val: keys }] }),
-      ctx.ds.query({ table: 'AnomalyAlert', columns: ['AlertID', 'DistrictID'], where: [{ col: 'Status', op: '=', val: 'OPEN' }] }).catch(() => [])
-    ]);
-    const assoc = new Map();
-    for (const e of edgesA) assoc.set(String(e.PersonKeyA), (assoc.get(String(e.PersonKeyA)) || 0) + 1);
-    for (const e of edgesB) assoc.set(String(e.PersonKeyB), (assoc.get(String(e.PersonKeyB)) || 0) + 1);
-    const lk = await getLookups(ctx);
-    const profiles = rows.map((r) => {
-      const districts = parseJsonSafe(r.DistrictsJson, []).map(String);
-      let daysSinceLastSeen = null;
-      const ls = String(r.LastSeen || '');
-      const parsed = new Date(ls.length === 7 ? `${ls}-01` : ls.replace(' ', 'T'));
-      if (!Number.isNaN(parsed.getTime())) daysSinceLastSeen = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 86400000));
-      return {
-        personKey: String(r.PersonKey),
-        canonicalName: r.CanonicalName,
-        aliases: parseJsonSafe(r.AliasesJson, []),
-        caseCount: toNum(r.CaseCount),
-        districts,
-        districtNames: districts.map((d) => lk.districtName(d)),
-        firstSeen: r.FirstSeen,
-        lastSeen: r.LastSeen,
-        daysSinceLastSeen,
-        moTags: parseJsonSafe(r.MOTagsJson, []),
-        communityId: r.CommunityID === undefined || r.CommunityID === null ? null : toNum(r.CommunityID),
-        riskScore: round(toNum(r.RiskScore), 1),
-        associates: assoc.get(String(r.PersonKey)) || 0,
-        openAlertsInDistricts: openAlerts.filter((a) => districts.includes(String(a.DistrictID))).length
-      };
-    }).sort((a, b) => b.riskScore - a.riskScore);
+    const listId = watchlist.normalizeListId(body.listId);
+    if (!listId) return fail(res, 400, 'BAD_REQUEST', 'listId must be 1-40 characters of A-Z, a-z, 0-9, dot, dash or underscore.');
+    const mode = String(body.mode || 'add').toLowerCase();
+    if (!watchlist.MODES.includes(mode)) {
+      return fail(res, 400, 'BAD_REQUEST', `mode must be one of ${watchlist.MODES.join(', ')}.`);
+    }
+    const profiles = await watchlist.enrichProfiles(ctx, keys);
+    const before = await watchlist.loadWatchlist(ctx.cache, listId);
+    // Only keys that resolved to a real person are ADDED — a watchlist full of
+    // dead keys is noise, and `notFound` already tells the caller what missed.
+    // Removal works on what was asked for, so a stale key can still be dropped.
+    const incoming = mode === 'remove' ? keys : profiles.map((p) => p.personKey);
+    const next = watchlist.applyMode(before.keys, incoming, mode);
+    const stored = mode === 'none' ? before : await watchlist.saveWatchlist(ctx.cache, listId, next);
     const foundSet = new Set(profiles.map((p) => p.personKey));
-    ok(res, { profiles, notFound: keys.filter((k) => !foundSet.has(k)), requested: keys.length }, { count: profiles.length });
+    ok(res, {
+      profiles,
+      notFound: keys.filter((k) => !foundSet.has(k)),
+      requested: keys.length,
+      listId,
+      mode,
+      watchlist: stored
+    }, { count: profiles.length, listId, mode, persisted: mode !== 'none', backend: ctx.cache.backend });
+  }));
+
+  // Read the persisted watchlist back, enriched exactly like POST returns it.
+  router.get('/offenders/watchlist', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const listId = watchlist.normalizeListId(req.query.listId);
+    if (!listId) return fail(res, 400, 'BAD_REQUEST', 'listId must be 1-40 characters of A-Z, a-z, 0-9, dot, dash or underscore.');
+    const stored = await watchlist.loadWatchlist(ctx.cache, listId);
+    const profiles = stored.keys.length ? await watchlist.enrichProfiles(ctx, stored.keys) : [];
+    const foundSet = new Set(profiles.map((p) => p.personKey));
+    ok(res, {
+      profiles,
+      notFound: stored.keys.filter((k) => !foundSet.has(k)),
+      requested: stored.keys.length,
+      listId,
+      watchlist: stored
+    }, { count: profiles.length, listId, backend: ctx.cache.backend });
+  }));
+
+  // Clear a stored watchlist. Empty is a valid state, so this is idempotent.
+  router.delete('/offenders/watchlist', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    const listId = watchlist.normalizeListId(req.query.listId);
+    if (!listId) return fail(res, 400, 'BAD_REQUEST', 'listId must be 1-40 characters of A-Z, a-z, 0-9, dot, dash or underscore.');
+    const before = await watchlist.loadWatchlist(ctx.cache, listId);
+    const stored = await watchlist.saveWatchlist(ctx.cache, listId, []);
+    ok(res, { listId, cleared: before.count, watchlist: stored }, { listId, backend: ctx.cache.backend });
   }));
 
   // Alert triage summary for dashboard badges: counts by status, open counts

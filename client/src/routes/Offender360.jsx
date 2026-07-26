@@ -26,6 +26,11 @@ import OffenderTimeline from './offenders/Timeline.jsx';
 import { TempoCard, CaseMixCard } from './offenders/BehaviorCards.jsx';
 import NetworkPosition from './offenders/NetworkPosition.jsx';
 import SimilarMo from './offenders/SimilarMo.jsx';
+import MoEvolutionCard from './offenders/MoEvolutionCard.jsx';
+import BehaviourChangeCard from './offenders/BehaviourChangeCard.jsx';
+import PeerCohortCard from './offenders/PeerCohortCard.jsx';
+import CrewMembershipCard from './offenders/CrewMembershipCard.jsx';
+import { useMoAnalysis } from './offenders/useMoAnalysis.js';
 import { jurisdictionSpan } from './network/analysis.js';
 import { RiskBadge, useDistrictName } from './offenders/common.jsx';
 import { aliasConfidence, confidenceBand } from './offenders/identity.js';
@@ -58,6 +63,9 @@ export default function Offender360() {
   const localDistrict = useDistrictName();
   const off = useOffender(personKey);
   const registry = useOffenders({ perPage: 200 }); // associate name enrichment (cached with /offenders)
+  // Whole-population pass — peer cohorts and crew membership are only
+  // meaningful against everybody, not against the top-200 slice.
+  const analysis = useMoAnalysis();
 
   const p = off.data || {};
   const timeline = p.timeline || [];
@@ -475,16 +483,37 @@ export default function Offender360() {
             rows={registry.data?.rows || []}
             loading={registry.isLoading}
           />
+
+          <CrewMembershipCard personKey={p.personKey || personKey} analysis={analysis} />
+
+          <PeerCohortCard
+            subject={{
+              personKey: p.personKey || personKey,
+              canonicalName: p.canonicalName,
+              caseCount: p.caseCount,
+              districts: p.districts || [],
+              moTags: p.moTags || [],
+              aliases: p.aliases || [],
+              riskScore: p.riskScore,
+              communityId: p.communityId,
+            }}
+            analysis={analysis}
+          />
         </div>
 
-        <Card
-          className="xl:col-span-2"
-          title={t('network.o360.timeline')}
-          subtitle={t(timeline.length === 1 ? 'network.o360.timelineSub.one' : 'network.o360.timelineSub.other',
-            { n: fmtInt(timeline.length) })}
-        >
-          <OffenderTimeline timeline={timeline} />
-        </Card>
+        <div className="xl:col-span-2 space-y-4">
+          <BehaviourChangeCard timeline={timeline} />
+
+          <MoEvolutionCard timeline={timeline} />
+
+          <Card
+            title={t('network.o360.timeline')}
+            subtitle={t(timeline.length === 1 ? 'network.o360.timelineSub.one' : 'network.o360.timelineSub.other',
+              { n: fmtInt(timeline.length) })}
+          >
+            <OffenderTimeline timeline={timeline} />
+          </Card>
+        </div>
       </div>
     </div>
   );

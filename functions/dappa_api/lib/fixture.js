@@ -171,6 +171,41 @@ function buildFixtureTables() {
     { AccusedMasterID: 31, CaseMasterID: 1, AccusedName: 'Ravi Kumar', AgeYear: 29, GenderID: 1, PersonID: 'A1' },
     { AccusedMasterID: 32, CaseMasterID: 1, AccusedName: 'Manjunath Shetty', AgeYear: 33, GenderID: 1, PersonID: 'A2' }
   ];
+
+  // Victim/accused rows for cases 2..40 so the link-analysis endpoints have a
+  // real bipartite graph to walk: names repeat across cases on purpose, which
+  // is what makes "repeat victim" and "cross-district suspect" mean something.
+  // Case 1 is left exactly as it was — the ER-join contract test pins it.
+  const VICTIM_NAMES = ['Lakshmamma Gowda', 'Rekha Hegde', 'Anitha Rao', 'Bhavana Patil', 'Girish Naik', 'Suma Shetty'];
+  const SUSPECT_NAMES = ['Ravi Kumar', 'Manjunath Shetty', 'Nagaraj Gowda', 'Prakash Naik', 'Vinay Swamy', 'Gopal Naik'];
+  let victimId = 22;
+  let accusedId = 33;
+  for (let i = 2; i <= 40; i += 1) {
+    const seen = new Set();
+    const vCount = 1 + (hash32(`vc|${i}`) % 3 === 0 ? 1 : 0);
+    for (let j = 0; j < vCount; j += 1) {
+      const name = VICTIM_NAMES[hash32(`vn|${i}|${j}`) % VICTIM_NAMES.length];
+      if (seen.has(name)) continue;
+      seen.add(name);
+      tables.Victim.push({
+        VictimMasterID: victimId, CaseMasterID: i, VictimName: name,
+        AgeYear: 21 + (hash32(`va|${i}|${j}`) % 45), GenderID: (hash32(`vg|${i}|${j}`) % 2) + 1, VictimPolice: 0
+      });
+      victimId += 1;
+    }
+    const aCount = hash32(`ac|${i}`) % 3;
+    const usedAccused = new Set();
+    for (let j = 0; j < aCount; j += 1) {
+      const name = SUSPECT_NAMES[hash32(`an|${i}|${j}`) % SUSPECT_NAMES.length];
+      if (usedAccused.has(name)) continue;
+      usedAccused.add(name);
+      tables.Accused.push({
+        AccusedMasterID: accusedId, CaseMasterID: i, AccusedName: name,
+        AgeYear: 22 + (hash32(`aa|${i}|${j}`) % 30), GenderID: 1, PersonID: `A${j + 1}`
+      });
+      accusedId += 1;
+    }
+  }
   tables.ActSectionAssociation = [
     { CaseMasterID: 1, ActID: 'BNS', SectionID: '304', ActOrderID: 1, SectionOrderID: 1 },
     { CaseMasterID: 1, ActID: 'BNS', SectionID: '351', ActOrderID: 1, SectionOrderID: 2 }

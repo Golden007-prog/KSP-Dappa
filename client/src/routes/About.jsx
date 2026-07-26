@@ -1,26 +1,53 @@
-// About — project story, quick links (live demo / static demo / source, each
-// with a copy-link button), sticky in-page anchor nav with scroll-spy
-// highlighting, datathon challenge-coverage matrix (6 scored capabilities →
-// in-app routes), architecture diagram (pure CSS/SVG), data-lineage strip
-// (generate.py → Data Store → API → UI), AI degradation-design explainer,
-// filterable Catalyst services matrix (live count computed from the data),
-// synthetic-data + ethics statement, accessibility statement, trilingual
-// (English · ಕನ್ನಡ · हिन्दी) support statement, embedded keyboard-shortcut
-// reference, layered tech stack and team credits (degrades to a single
-// "Team Rainfall" card until names are added).
+// About — the page a judge reads to decide whether the rest of the app is real.
 //
-// Every user-visible string lives in the `copilot` namespace under `about.*`.
-// Product names (Catalyst services, libraries), file paths, table names and
-// key glyphs stay verbatim in all three languages — translating them would
-// make the page unusable to a judge checking the submission against Catalyst.
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+// Half of it is written copy (story, links, architecture, lineage, AI
+// degradation design, ethics, accessibility, languages, shortcuts, team). The
+// other half is runtime introspection: four live endpoints are called on load
+// and rendered as-is, so no claim on this page can outlive the deployment that
+// backs it.
+//
+//   GET /meta/services  → the 28-service Catalyst coverage matrix, grouped by
+//                         status. flag-gated is NOT presented as live: it means
+//                         the code path is wired and exercised but the service
+//                         needs a console step or an env var first.
+//   GET /ml/models      → the model registry and the resolution chain behind
+//                         each ML endpoint.
+//   GET /search/cases   → a working search box over the real CaseMaster store,
+//                         showing which backend answered (meta.source).
+//   GET /healthz        → per-table completeness, including the tables that are
+//                         short and why the KPIs that depend on them read "—".
+//   GET /meta/challenge → the six scored capability areas with the endpoints
+//                         and services behind each, layered onto the existing
+//                         translated coverage matrix.
+//
+// The honesty ledger at the end is derived from those same payloads, so it
+// cannot drift: flip a flag on and its line disappears by itself.
+//
+// Every user-visible string of the written half lives in the `copilot`
+// namespace under `about.*`; everything added for the introspection panels
+// lives in the `about` namespace. Product names (Catalyst services,
+// libraries), file paths, table names, endpoint paths, env vars and key glyphs
+// stay verbatim in all three languages — translating them would make the page
+// unusable to a judge checking the submission against Catalyst. Text that the
+// API itself returns (service reasons, model names, capability highlights) is
+// English wherever it appears, and the page says so.
+import { useCallback, useEffect, useState } from 'react';
 import Card from '../components/Card.jsx';
 import Badge from '../components/Badge.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { useT } from '../lib/i18n.jsx';
 import { copyText } from './copilot/clipboard.js';
+import {
+  useServiceMatrix, useModelRegistry, useProvenance, useChallengeCoverage, useCaseSearch,
+} from './about/useAboutIntrospection.js';
+import EvidenceStrip from './about/EvidenceStrip.jsx';
+import ServiceMatrix from './about/ServiceMatrix.jsx';
+import ModelRegistry from './about/ModelRegistry.jsx';
+import CaseSearchDemo from './about/CaseSearchDemo.jsx';
+import ProvenancePanel from './about/ProvenancePanel.jsx';
+import ChallengeCoverage from './about/ChallengeCoverage.jsx';
+import HonestyLedger from './about/HonestyLedger.jsx';
 
 const LINKS = {
   live: 'https://project-rainfall-60079891305.development.catalystserverless.in/app/index.html',
@@ -28,28 +55,11 @@ const LINKS = {
   repo: 'https://github.com/Golden007-prog/KSP-Dappa',
 };
 
-// Service names are Catalyst product names — untranslated by design; the
-// "use" column is t('copilot.about.services.s<n>').
-const SERVICES = [
-  { n: 1, name: 'Web Client Hosting / Slate' },
-  { n: 2, name: 'Serverless Functions — Advanced I/O' },
-  { n: 3, name: 'Functions — Cron/Job Scheduling' },
-  { n: 4, name: 'Signals + Event Functions' },
-  { n: 5, name: 'Data Store (+ ZCQL)' },
-  { n: 6, name: 'NoSQL' },
-  { n: 7, name: 'Stratus' },
-  { n: 8, name: 'Cache' },
-  { n: 9, name: 'QuickML (tabular)' },
-  { n: 10, name: 'QuickML LLM Serving + RAG' },
-  { n: 11, name: 'Zia Text Analytics' },
-  { n: 12, name: 'SmartBrowz' },
-  { n: 13, name: 'Catalyst Mail' },
-  { n: 14, name: 'Authentication' },
-  { n: 15, name: 'API Gateway' },
-  { n: 16, name: 'Pipelines (CI/CD) + GitHub integration' },
-  { n: 17, name: 'Circuits', stretch: true },
-  { n: 18, name: 'ConvoKraft', stretch: true },
-];
+// The Catalyst service matrix used to be a hand-maintained list here. It now
+// comes from GET /meta/services (routes/about/ServiceMatrix.jsx) — a static
+// list would eventually contradict the deployment, and one inflated claim on
+// this page discounts every other one. The old `copilot.about.services.*`
+// strings stay in the locale files; nothing else references them.
 
 // Layered tech stack (grouping only — no item was removed). Library names
 // stay as-is; only the group label is translated.
@@ -129,10 +139,34 @@ const SHORTCUTS = [
   },
 ];
 
+// The four evidence sections sit directly after the coverage matrix: a judge
+// scrolling top-to-bottom hits the live proof before the written narrative.
 const SECTIONS = [
-  'story', 'links', 'challenge', 'architecture', 'lineage', 'ai',
-  'services', 'ethics', 'access', 'languages', 'shortcuts', 'team',
+  'story', 'links', 'challenge', 'services', 'models', 'search', 'provenance',
+  'honesty', 'architecture', 'lineage', 'ai', 'ethics', 'access', 'languages',
+  'shortcuts', 'team',
 ];
+
+// Sections added with the introspection panels label themselves from the new
+// `about` namespace; the pre-existing ones keep their `copilot.about.sec.*`
+// keys so no translated string is orphaned.
+const NEW_SECTIONS = new Set(['models', 'search', 'provenance', 'honesty']);
+
+// 20 rows is the /search/cases default. It is also the limit the "68 matches
+// for theft" figure was measured at — the search path fetches at most limit×2
+// rows per column, so raising it raises `matched` too. Keeping the demo on the
+// default means the number on screen is the number a judge gets from curl.
+const SEARCH_LIMIT = 20;
+
+const sectionKey = (id) => (NEW_SECTIONS.has(id) ? `about.sec.${id}` : `copilot.about.sec.${id}`);
+
+/** Scroll a section into view, honouring prefers-reduced-motion. */
+function scrollToSection(id) {
+  const el = document.getElementById(`about-${id}`);
+  if (!el) return;
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+}
 
 const ARCH_BOXES = {
   api: ['gateway', 'api'],
@@ -172,10 +206,7 @@ function AnchorNav() {
   }, []);
 
   const go = (id) => {
-    const el = document.getElementById(`about-${id}`);
-    if (!el) return;
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    scrollToSection(id);
     setActive(id);
   };
 
@@ -196,7 +227,7 @@ function AnchorNav() {
                   : 'border-grid bg-panel text-muted hover:text-ink hover:border-primary/60'
               }`}
             >
-              {t(`copilot.about.sec.${id}`)}
+              {t(sectionKey(id))}
             </button>
           );
         })}
@@ -298,17 +329,35 @@ const initials = (name) => name.split(/\s+/).map((w) => w[0]).filter(Boolean).sl
 
 export default function About() {
   const t = useT();
-  const [svcFilter, setSvcFilter] = useState('all');
-  const liveCount = SERVICES.filter((s) => !s.stretch).length;
-  const roadmapCount = SERVICES.length - liveCount;
-  const visibleServices = SERVICES.filter((s) => (
-    svcFilter === 'all' ? true : svcFilter === 'live' ? !s.stretch : !!s.stretch
-  ));
-  const filterChips = [
-    { key: 'all', label: t('copilot.about.services.all', { n: SERVICES.length }) },
-    { key: 'live', label: t('copilot.about.services.live', { n: liveCount }) },
-    { key: 'roadmap', label: t('copilot.about.services.roadmap', { n: roadmapCount }) },
-  ];
+  const toast = useToast();
+
+  // Runtime introspection — five read-only endpoints, all retry:0 so an
+  // unreachable backend renders an honest panel instead of a hanging spinner.
+  const servicesQ = useServiceMatrix();
+  const modelsQ = useModelRegistry();
+  const healthQ = useProvenance();
+  const challengeQ = useChallengeCoverage();
+
+  // The search demo runs only on an explicit submit; 'theft' is pre-armed so
+  // the panel has something real on screen the moment the section is reached.
+  const [search, setSearch] = useState({ term: 'theft', scope: 'all' });
+  const searchQ = useCaseSearch({ q: search.term, scope: search.scope, limit: SEARCH_LIMIT });
+
+  const runSearch = useCallback((term, scope) => {
+    setSearch({ term: String(term || '').trim(), scope: scope || 'all' });
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    servicesQ.refetch();
+    modelsQ.refetch();
+    healthQ.refetch();
+    challengeQ.refetch();
+    if (search.term) searchQ.refetch();
+    toast.info(t('about.live.refreshing'));
+  }, [servicesQ, modelsQ, healthQ, challengeQ, searchQ, search.term, toast, t]);
+
+  const anyIntrospectionFailed = Boolean(servicesQ.error || modelsQ.error || healthQ.error);
+  const liveServices = servicesQ.data;
 
   // Keep `generate.py` in a mono span wherever the translation places it.
   const lineageNote = t('copilot.about.lineage.note').split('generate.py');
@@ -320,13 +369,44 @@ export default function About() {
           <h1 className="page-title">{t('copilot.about.page.title')}</h1>
           <p className="page-subtitle">{t('copilot.about.page.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div className="flex flex-wrap items-center gap-1.5 ml-auto">
           <Badge tone="amber">{t('copilot.about.badge.prototype')}</Badge>
           <Badge tone="teal">{t('copilot.about.badge.synthetic')}</Badge>
+          <Badge tone={anyIntrospectionFailed ? 'slate' : 'teal'} pulse={!anyIntrospectionFailed}>
+            {t(anyIntrospectionFailed ? 'about.live.offline' : 'about.live.online')}
+          </Badge>
         </div>
       </div>
 
       <AnchorNav />
+
+      <Card
+        title={t('about.live.title')}
+        subtitle={t('about.live.subtitle')}
+        actions={(
+          <button
+            type="button"
+            onClick={refreshAll}
+            className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg border border-grid bg-base/50 px-2.5 text-[11px] text-muted hover:text-ink hover:border-primary/60 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6" />
+            </svg>
+            {t('about.live.refresh')}
+          </button>
+        )}
+      >
+        <EvidenceStrip
+          services={liveServices}
+          models={modelsQ.data}
+          health={healthQ.data}
+          onJump={scrollToSection}
+        />
+        <p className="mt-2.5 text-[11px] leading-relaxed text-muted">
+          {anyIntrospectionFailed ? t('about.live.offlineNote') : t('about.live.note')}
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">{t('about.live.englishNote')}</p>
+      </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div id="about-story" className="scroll-mt-32 xl:col-span-2">
@@ -351,7 +431,10 @@ export default function About() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                 <Stat value="14" label={t('copilot.about.stat.routes')} />
                 <Stat value="24 + 8" label={t('copilot.about.stat.tables')} />
-                <Stat value={String(liveCount)} label={t('copilot.about.stat.services')} />
+                <Stat
+                  value={liveServices ? `${liveServices.byStatus.live} / ${liveServices.total}` : '—'}
+                  label={t('copilot.about.stat.services')}
+                />
                 <Stat value="0" label={t('copilot.about.stat.external')} />
               </div>
             </div>
@@ -386,43 +469,38 @@ export default function About() {
       </div>
 
       <div id="about-challenge" className="scroll-mt-32">
-        <Card
-          title={t('copilot.about.challenge.title')}
-          subtitle={t('copilot.about.challenge.subtitle')}
-          actions={<Badge tone="teal">{t('copilot.about.challenge.badge')}</Badge>}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {CHALLENGE.map((c) => (
-              <div key={c.n} className="rounded-lg border border-grid bg-base/40 p-3">
-                <div className="flex items-start gap-2.5">
-                  <span className="num shrink-0 grid place-items-center h-6 w-6 rounded-full border border-amber/40 text-amber text-[11px] font-bold">{c.n}</span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="text-xs font-semibold text-ink">{t(`copilot.about.challenge.c${c.n}.name`)}</p>
-                      <Badge tone="teal" className="!text-[10px]">{t('copilot.about.challenge.live')}</Badge>
-                    </div>
-                    <p className="text-[11px] text-muted mt-1 leading-relaxed">{t(`copilot.about.challenge.c${c.n}.desc`)}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {c.areas.map(([navKey, to]) => (
-                        <Link
-                          key={`${c.n}-${to}-${navKey}`}
-                          to={to}
-                          className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-2.5 min-h-[32px] text-[11px] text-primary hover:border-primary hover:bg-primary/10 transition-colors"
-                        >
-                          {t(`common.nav.${navKey}`)}
-                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" /></svg>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-[11px] text-muted mt-3 leading-relaxed">
-            {t('copilot.about.challenge.note')}
-          </p>
-        </Card>
+        <ChallengeCoverage items={CHALLENGE} query={challengeQ} />
+      </div>
+
+      <div id="about-services" className="scroll-mt-32">
+        <ServiceMatrix query={servicesQ} searchSource={searchQ.data ? searchQ.data.source : ''} />
+      </div>
+
+      <div id="about-models" className="scroll-mt-32">
+        <ModelRegistry query={modelsQ} />
+      </div>
+
+      <div id="about-search" className="scroll-mt-32">
+        <CaseSearchDemo
+          term={search.term}
+          scope={search.scope}
+          limit={SEARCH_LIMIT}
+          onSearch={runSearch}
+          query={searchQ}
+        />
+      </div>
+
+      <div id="about-provenance" className="scroll-mt-32">
+        <ProvenancePanel query={healthQ} />
+      </div>
+
+      <div id="about-honesty" className="scroll-mt-32">
+        <HonestyLedger
+          services={servicesQ.data}
+          models={modelsQ.data}
+          health={healthQ.data}
+          search={searchQ.data}
+        />
       </div>
 
       <div id="about-architecture" className="scroll-mt-32">
@@ -509,43 +587,6 @@ export default function About() {
           <p className="text-[11px] text-muted mt-3 leading-relaxed">
             {t('copilot.about.ai.note')}
           </p>
-        </Card>
-      </div>
-
-      <div id="about-services" className="scroll-mt-32">
-        <Card
-          title={t('copilot.about.services.title')}
-          subtitle={t('copilot.about.services.subtitle', { live: liveCount, total: SERVICES.length, roadmap: roadmapCount })}
-        >
-          <div className="flex flex-wrap items-center gap-1.5 mb-3" role="group" aria-label={t('copilot.about.services.filterAria')}>
-            {filterChips.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                aria-pressed={svcFilter === c.key}
-                onClick={() => setSvcFilter(c.key)}
-                className={`min-h-[40px] rounded-full border px-3.5 text-[11px] transition-colors ${
-                  svcFilter === c.key
-                    ? 'border-amber/60 bg-amber/10 text-amber'
-                    : 'border-grid text-muted hover:text-ink hover:border-primary/50'
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
-            {visibleServices.map((s) => (
-              <div key={s.n} className={`rounded-lg border p-3 ${s.stretch ? 'border-grid/60 opacity-70' : 'border-grid'} bg-base/40`}>
-                <div className="flex items-center gap-2">
-                  <span className="num text-[10px] text-muted w-5 shrink-0">{String(s.n).padStart(2, '0')}</span>
-                  <span className="text-xs font-semibold text-ink">{s.name}</span>
-                  {s.stretch && <Badge tone="slate" className="ml-auto">{t('copilot.about.services.roadmapTag')}</Badge>}
-                </div>
-                <p className="text-[11px] text-muted mt-1 ml-7">{t(`copilot.about.services.s${s.n}`)}</p>
-              </div>
-            ))}
-          </div>
         </Card>
       </div>
 

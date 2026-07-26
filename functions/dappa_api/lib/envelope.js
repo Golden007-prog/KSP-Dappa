@@ -92,7 +92,14 @@ const ROUTE_TTL = {
   '/insight/emerging': 600,
   '/alerts/summary': 120,
   '/offenders/mo-patterns': 900,
-  '/network/communities': 900
+  '/network/communities': 900,
+  // Link-analysis + behavioural aggregates: each one pages thousands of rows,
+  // so they get the long end of the TTL range. The per-offender routes carry a
+  // param and cannot be keyed here — they pass their default to ttlFor().
+  '/network/victim-links': 600,
+  '/network/locations': 900,
+  '/network/communities/score': 900,
+  '/offenders/mo-evolution': 900
 };
 
 function ttlFor(req, dflt) {
