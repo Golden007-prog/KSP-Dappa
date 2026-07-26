@@ -126,7 +126,7 @@ function servicesFactory(req) {
       },
       // Stratus static copy written by the analytics pass.
       stratus: async () => {
-        const bucket = capp.stratus().bucket('dappa');
+        const bucket = stratusBucket();
         const obj = await bucket.getObject('network_graph.json');
         const text = typeof obj === 'string' ? obj : obj && obj.toString ? obj.toString() : null;
         return text ? JSON.parse(text) : null;
@@ -134,13 +134,32 @@ function servicesFactory(req) {
     },
     smartbrowz: {
       renderBrief: async (window) => {
-        const base = process.env.APP_BASE_URL || '';
-        const pdf = await capp.smartbrowz().convertToPdf(`${base}/print/brief?window=${encodeURIComponent(window)}`);
-        const bucket = capp.stratus().bucket('dappa');
+        // The client is a HashRouter SPA served from /app/index.html, so the
+        // print route only exists behind the hash — '/app/print/brief' is a
+        // hard 404 (verified against the live deployment) and SmartBrowz would
+        // faithfully render Catalyst's 404 page into a PDF.
+        const base = (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
+        const target = `${base}/index.html#/print/brief?window=${encodeURIComponent(window)}`;
+        // No extra options: the SDK merges them at the TOP level of the
+        // request body (alongside url/output_options), so an unrecognised key
+        // makes SmartBrowz reject the whole call with "either the request body
+        // or parameters is in wrong format".
+        const pdf = await capp.smartbrowz().convertToPdf(target);
+        const bucket = stratusBucket();
         const key = `briefs/weekly-brief-${Date.now()}.pdf`;
         await bucket.putObject(key, pdf);
-        const signed = await bucket.generatePreSignedUrl(key, 'GET');
-        return { pdfUrl: (signed && (signed.signature || signed.url)) || null };
+        // A pre-signed URL needs a user context that an admin/anonymous call
+        // does not have ("No such User with the given id exists"), so a signing
+        // failure must NOT discard a PDF that rendered and stored fine — report
+        // the stored key and let the artifact endpoints serve it.
+        let pdfUrl = null;
+        try {
+          const signed = await bucket.generatePreSignedUrl(key, 'GET');
+          pdfUrl = (signed && (signed.signature || signed.url)) || null;
+        } catch (e) {
+          pdfUrl = null;
+        }
+        return { pdfUrl, key, stored: true };
       }
     },
     mailer: {

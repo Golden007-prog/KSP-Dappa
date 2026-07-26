@@ -185,17 +185,35 @@ function register(router) {
   router.post('/reports/weekly-brief', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const window = String((req.body || {}).window || req.query.window || 'last7');
+    let fellBackBecause = null;
     if (ctx.flags.smartbrowz && ctx.services.smartbrowz) {
       try {
         // SmartBrowz renders a headless-browser PDF — allow longer than an AI
         // hop, but still bounded so a stuck render cannot hang the request.
         const out = await withTimeout(ctx.services.smartbrowz.renderBrief(window), AI_TIMEOUT_MS * 4, 'smartbrowz');
-        if (out && out.pdfUrl) return ok(res, { mode: 'pdf', pdfUrl: out.pdfUrl, window }, { source: 'smartbrowz' });
+        // A rendered-and-stored PDF counts as success even when the signed URL
+        // could not be minted — the bytes exist and the key locates them.
+        if (out && (out.pdfUrl || out.stored)) {
+          return ok(res, {
+            mode: 'pdf', pdfUrl: out.pdfUrl || null, storedKey: out.key || null, window
+          }, { source: 'smartbrowz' });
+        }
+        fellBackBecause = 'smartbrowz returned no pdf';
       } catch (e) {
-        // fall through to print-css fallback
+        // Surface WHY we fell back. A silent catch here cost real debugging
+        // time: the render was failing on a 404 URL and the response looked
+        // identical to the flag simply being off.
+        fellBackBecause = String((e && e.message) || e).slice(0, 200);
       }
+    } else if (!ctx.flags.smartbrowz) {
+      fellBackBecause = 'FEATURE_SMARTBROWZ off';
+    } else {
+      fellBackBecause = 'smartbrowz service unavailable (not running on Catalyst)';
     }
-    ok(res, { mode: 'print-css', printUrl: `/print/brief?window=${encodeURIComponent(window)}`, window }, { source: 'fallback-local' });
+    ok(res, {
+      mode: 'print-css', printUrl: `/print/brief?window=${encodeURIComponent(window)}`, window,
+      fallbackReason: fellBackBecause
+    }, { source: 'fallback-local' });
   }));
 
   // Legacy digest endpoint — same behaviour, now sharing lib/mail.js with
