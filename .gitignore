@@ -40,3 +40,8 @@ pipeline/.import_batch/
 # shell artefacts: stray files whose names are code fragments (see e16b03b)
 *.swp
 *.swo
+
+# Shell artefacts: agent runs occasionally leave files whose names are
+# fragments of code ("(r.Actual", "{const", "$t"). No real source file in this
+# repo has a character outside [A-Za-z0-9._/-], so ignore anything that does.
+*[(){}$`'"!?,+|<>=*]*
