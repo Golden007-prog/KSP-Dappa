@@ -248,12 +248,12 @@ function buildServiceMap(ctx) {
     key: 'quickml-pipelines',
     name: 'QuickML (no-code ML pipelines)',
     category: 'ai',
-    invocation: 'lib/quickml.js — quickML().predict(QUICKML_ENDPOINT_KEY, features), else the deployment URL',
-    fallback: 'the embedded logistic outcome model',
+    invocation: 'lib/quickml.js — quickML().predict(QUICKML_STATUS_ENDPOINT_KEY, CaseMaster columns) for case status; QUICKML_ENDPOINT_KEY / deployment URL for the A-vs-C outcome model',
+    fallback: 'the embedded logistic outcome model (A vs C only — case status has no local twin)',
     flag: 'FEATURE_QUICKML',
-    requires: ['QUICKML_ENDPOINT_KEY'],
-    endpoints: ['/predict/outcome', '/ml/models']
-  }, gated(f.quickml, ['QUICKML_ENDPOINT_KEY'])));
+    requires: ['QUICKML_STATUS_ENDPOINT_KEY'],
+    endpoints: ['/predict/case-status', '/predict/outcome', '/ml/models']
+  }, gated(f.quickml, ['QUICKML_STATUS_ENDPOINT_KEY'])));
 
   add(Object.assign({
     key: 'quickml-llm-rag',

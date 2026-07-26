@@ -610,17 +610,34 @@ explainer on `/about`.
 
 ### The honest caveat on "AI"
 
-**In the currently deployed configuration every Catalyst AI flag is `off`**
-(`FEATURE_QUICKML`, `FEATURE_QUICKML_LLM`, `FEATURE_ZIA`, `FEATURE_ZIA_OCR`,
-`FEATURE_ZIA_TRANSLATE`, `FEATURE_ZIA_AUTOML`, `FEATURE_SMARTBROWZ` — see
-`functions/dappa_api/catalyst-config.json`). **What runs today is the
-deterministic fallback for each one**: the embedded logistic model, the 15-intent
-parser, the local MO extractor. Those are real, tested implementations and the
-features above genuinely work — but a judge should be told that the QuickML and
-Zia paths are wired, contract-tested and *not currently serving*. Each needs a
-console step documented in `docs/CONSOLE_SETUP.md` and a flag flip.
-`GET /ml/models` reports exactly this, per model, which is the right way for the
-app to answer the question about itself.
+Every Catalyst AI flag is now `on` (see `functions/dappa_api/catalyst-config.json`),
+and two of the remote paths genuinely serve live traffic: **Zia Text Analytics**
+answers `POST /ai/narrative` with real NER, keyword and sentiment output
+(`meta.source:"zia"`, ~1.4 s), and a **QuickML Random-Forest deployment** answers
+`POST /predict/case-status` (`meta.source:"quickml-sdk"`). The rest still run
+their deterministic fallbacks, and `GET /ml/models` reports which is which per
+model — the right way for the app to answer the question about itself.
+
+**The QuickML model has no predictive power, and the app says so.** It was
+trained in the console on all 45,000 live `CaseMaster` rows against
+`CaseStatusID`, using the eight numeric features Random Forest can consume
+(`CaseCategoryID`, `GravityOffenceID`, `CrimeMajorHeadID`, `CrimeMinorHeadID`,
+`PoliceStationID`, `CourtID`, `latitude`, `longitude`). QuickML measured
+**AUC 0.500, accuracy 0.7494, F1 0.2623** on the held-out split — an accuracy
+that is just the majority-class rate across four classes. That is a property of
+the data, not a training mistake: the generator derives case status from
+registration recency (whether a case is old enough for a final report) and the
+detection draw, and neither survives as a feature the pipeline can use.
+`CrimeRegisteredDate` is a `Date`, QuickML's Type Conversion offers only Text or
+Timestamp for it, Custom Expression is arithmetic-only (`+ - * / ^` and
+comparisons — no `year()`, no floor, no modulo), and the Custom Code (Python)
+operations are gated behind a Zoho support request on this plan. So the
+`modelMetrics` block and the `caveat` field in `GET /ml/models` carry the real
+numbers rather than a flattering summary, and `POST /predict/case-status`
+returns **503 `MODEL_UNAVAILABLE`** when the endpoint is unreachable instead of
+silently substituting the chargesheet A-vs-C model, which answers a different
+question. `POST /predict/outcome` deliberately stays on the calibrated embedded
+logistic model for the same reason.
 
 ### Where a judge sees it working
 

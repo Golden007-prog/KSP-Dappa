@@ -131,7 +131,7 @@ number can be re-derived rather than taken on trust.
 | 6 | NoSQL | Network graph snapshots; copilot RAG context |
 | 7 | Stratus | Raw datasets, GeoJSON, generated PDF briefs |
 | 8 | Cache | KPI/choropleth aggregates (ms-level dashboard) |
-| 9 | QuickML (tabular) | Case-outcome classifier endpoint |
+| 9 | QuickML (tabular) | Random-Forest case-status classifier, trained on all 45,000 live `CaseMaster` rows and published as an endpoint (**live**; measured AUC 0.500 — see the caveat in `CAPABILITIES.md`) |
 | 10 | QuickML LLM Serving + RAG | "Ask DAPPA" natural-language copilot |
 | 11 | Zia Text Analytics | NER/keywords/sentiment → MO tags from `BriefFacts` |
 | 12 | SmartBrowz | Weekly Intelligence Brief PDF |
@@ -202,8 +202,10 @@ the app is fully functional on fallbacks.
 |---|---|
 | `PUBLIC_DEMO` | `true` (default) = read-only anonymous access for judges; admin actions gated |
 | `FEATURE_QUICKML` | `on` = score `POST /predict/outcome` via the deployed QuickML endpoint; off = embedded logistic-regression coefficients (`meta.source:"fallback-local"`) |
+| `QUICKML_STATUS_ENDPOINT_KEY` | Published QuickML endpoint key for the case-status Random Forest; serves `POST /predict/case-status` |
+| `ORG_ID` | Catalyst org id, mirrored into `X_ZOHO_CATALYST_ORG_ID` at boot because the SDK needs it to send `CATALYST-ORG` to QuickML (that name is a reserved deployment key) |
 | `QUICKML_OUTCOME_URL` | QuickML tabular model endpoint URL |
-| `CATALYST_QUICKML_KEY` | API key for QuickML endpoints |
+| `QUICKML_API_KEY` | API key for QuickML endpoints |
 | `FEATURE_QUICKML_LLM` | `on` = copilot uses QuickML LLM Serving + RAG; off = deterministic NL→ZCQL parser |
 | `QUICKML_LLM_URL` | QuickML LLM Serving endpoint URL |
 | `FEATURE_ZIA` | `on` = Zia Text Analytics on FIR narratives; off = local regex/TF-IDF extractor |
@@ -235,7 +237,8 @@ Base path: `/server/dappa_api/api/v1`. Envelope: `{"ok":true,"data":…,"meta":�
 | `GET /forecast` | History + 3-month forecast with 80% CI + backtest MAPE |
 | `GET /risk/stations` | Next-30-day station risk scores with drivers |
 | `GET /cases` · `/cases/:id` | Case explorer + full-ER FIR detail |
-| `POST /predict/outcome` | Case-outcome probability (QuickML or local fallback) |
+| `POST /predict/outcome` | Chargesheet A-vs-C probability (calibrated embedded logistic model) |
+| `POST /predict/case-status` | Case status via the published QuickML Random Forest; `503` if the deployment is unreachable — never a substituted answer |
 | `POST /ai/narrative` | Zia NER/keywords/sentiment on `BriefFacts` |
 | `POST /copilot/query` | Ask-DAPPA natural-language analytics |
 | `POST /reports/weekly-brief` | SmartBrowz PDF of the weekly intelligence brief |

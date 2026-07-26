@@ -174,6 +174,105 @@ async function predictOutcome(body, deps) {
   return { result: predictLocal(body), source: 'fallback-local' };
 }
 
+// Trained in the QuickML console on the live CaseMaster table. The deployment
+// replays the pipeline's Select/Drop stage at inference time, so the request
+// body must carry the SOURCE table's columns, not the eight the model actually
+// splits on. Anything absent is filled from these neutral defaults.
+const CASE_STATUS_TEMPLATE = {
+  CaseMasterID: 0,
+  CrimeNo: 0,
+  CaseNo: 0,
+  CrimeRegisteredDate: '2025-01-01',
+  PolicePersonID: 0,
+  PoliceStationID: 0,
+  CaseCategoryID: 1,
+  GravityOffenceID: 2,
+  CrimeMajorHeadID: 3,
+  CrimeMinorHeadID: 306,
+  CourtID: 1,
+  IncidentFromDate: '2025-01-01 00:00:00',
+  IncidentToDate: '2025-01-01 00:00:00',
+  InfoReceivedPSDate: '2025-01-01 00:00:00',
+  latitude: 12.9716,
+  longitude: 77.5946,
+  BriefFacts: '',
+  ROWID: 0,
+  CREATORID: 0,
+  CREATEDTIME: '2025-01-01 00:00:00',
+  MODIFIEDTIME: '2025-01-01 00:00:00'
+};
+
+/** Our request vocabulary -> the CaseMaster column the model was trained on. */
+const CASE_STATUS_ALIASES = {
+  crimeSubHeadId: 'CrimeMinorHeadID',
+  crimeHeadId: 'CrimeMajorHeadID',
+  stationId: 'PoliceStationID',
+  unitId: 'PoliceStationID',
+  courtId: 'CourtID',
+  categoryId: 'CaseCategoryID',
+  lat: 'latitude',
+  lng: 'longitude',
+  registeredOn: 'CrimeRegisteredDate'
+};
+
+const CASE_STATUS_NAMES = {
+  1: 'Under Investigation',
+  2: 'Chargesheeted',
+  3: 'Closed',
+  4: 'Trial'
+};
+
+function caseStatusFeatures(body) {
+  const out = Object.assign({}, CASE_STATUS_TEMPLATE);
+  const b = body || {};
+  // `gravity` arrives as a label on the predict page; the column is 1/2.
+  if (b.gravity !== undefined) {
+    out.GravityOffenceID = String(b.gravity).toLowerCase().startsWith('heinous') ? 1 : 2;
+  }
+  for (const [k, v] of Object.entries(b)) {
+    if (v === undefined || v === null || v === '') continue;
+    const col = CASE_STATUS_ALIASES[k] || k;
+    if (col in out) out[col] = v;
+  }
+  return out;
+}
+
+/**
+ * Case-status prediction served by the published QuickML endpoint. There is no
+ * local twin: without the endpoint key this reports unavailable rather than
+ * inventing a number, because the deterministic models answer a DIFFERENT
+ * question (chargesheet A vs C) and must not be passed off as this one.
+ */
+async function predictCaseStatus(body, deps) {
+  const d = deps || {};
+  const endpointKey = String(process.env.QUICKML_STATUS_ENDPOINT_KEY || '').trim();
+  if (!d.flags || !d.flags.quickml) return { result: null, source: 'disabled' };
+  if (!d.quickmlClient || !endpointKey) return { result: null, source: 'console-pending' };
+  const features = caseStatusFeatures(body);
+  const resp = await withTimeout(
+    d.quickmlClient.predict(endpointKey, stringifyInputs(features)),
+    AI_TIMEOUT_MS, 'quickml case-status'
+  );
+  const first = (v) => (Array.isArray(v) ? v[0] : v);
+  const statusId = toNum(first(resp && resp.result), null);
+  if (statusId === null) return { result: null, source: 'console-pending' };
+  const likelihood = toNum(first(resp && resp.likelihood_score), null);
+  return {
+    result: {
+      caseStatusId: statusId,
+      caseStatusName: CASE_STATUS_NAMES[statusId] || `Status ${statusId}`,
+      likelihood: likelihood === null ? null : round(likelihood, 4),
+      classes: Object.entries(CASE_STATUS_NAMES).map(([id, name]) => ({ caseStatusId: Number(id), caseStatusName: name })),
+      featuresUsed: features,
+      // Measured on the held-out split by QuickML, not asserted. A macro AUC of
+      // 0.5 means this model has no discriminative power on these features --
+      // surfaced so the UI can say so instead of implying confidence.
+      modelMetrics: { auc: 0.5, accuracy: 0.7494, f1: 0.2623, note: 'no-signal: case status is near-independent of case metadata in this dataset' }
+    },
+    source: 'quickml-sdk'
+  };
+}
+
 /**
  * Serving/training status for every model the platform can reach, so the AI
  * page can show what is live vs what needs a console step. `deps` mirrors
@@ -211,6 +310,21 @@ function modelRegistry(deps) {
       requires: ['QUICKML_ENDPOINT_KEY or QUICKML_OUTCOME_URL', 'QUICKML_API_KEY'],
       endpoint: 'POST /predict/outcome',
       fallbackFor: 'outcome-logistic-local'
+    },
+    {
+      key: 'quickml-case-status',
+      name: 'QuickML case-status classifier (Random Forest)',
+      task: 'multiclass-classification',
+      target: 'CaseStatusID (Under Investigation / Chargesheeted / Closed / Trial)',
+      status: state(flags.quickml, has(process.env.QUICKML_STATUS_ENDPOINT_KEY)),
+      service: 'QuickML (no-code pipelines)',
+      flag: 'FEATURE_QUICKML',
+      requires: ['QUICKML_STATUS_ENDPOINT_KEY'],
+      trainedOn: 'CaseMaster, 45,000 rows, 8 numeric features',
+      metrics: { auc: 0.5, accuracy: 0.7494, precision: 0.2757, recall: 0.2501, f1: 0.2623 },
+      caveat: 'AUC 0.5 - no discriminative power. Case status is driven by registration recency and the detection draw, neither of which survives as a numeric feature QuickML can consume.',
+      endpoint: 'POST /predict/case-status',
+      fallbackFor: null
     },
     {
       key: 'zia-automl-outcome',
@@ -301,4 +415,7 @@ function modelRegistry(deps) {
   ];
 }
 
-module.exports = { predictOutcome, predictLocal, loadLocalModel, modelRegistry, mapSdk, stringifyInputs };
+module.exports = {
+  predictOutcome, predictLocal, loadLocalModel, modelRegistry, mapSdk, stringifyInputs,
+  predictCaseStatus, caseStatusFeatures
+};

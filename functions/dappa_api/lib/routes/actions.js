@@ -44,6 +44,29 @@ function register(router) {
     ok(res, result, { source });
   }));
 
+  router.post('/predict/case-status', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    // Served only by the published QuickML deployment. A miss returns 503 with
+    // the reason rather than a substitute answer: the other models predict
+    // chargesheet A vs C, which is not this question.
+    let out;
+    try {
+      out = await quickml.predictCaseStatus(req.body || {}, {
+        flags: ctx.flags,
+        quickmlClient: ctx.services.quickmlClient
+      });
+    } catch (e) {
+      return fail(res, 503, 'MODEL_UNAVAILABLE', `QuickML case-status endpoint did not answer: ${e.message}`);
+    }
+    if (!out.result) {
+      return fail(res, 503, 'MODEL_UNAVAILABLE',
+        out.source === 'disabled'
+          ? 'FEATURE_QUICKML is off.'
+          : 'QUICKML_STATUS_ENDPOINT_KEY is not set — publish the QuickML endpoint first.');
+    }
+    ok(res, out.result, { source: out.source });
+  }));
+
   router.post('/ai/narrative', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const body = req.body || {};

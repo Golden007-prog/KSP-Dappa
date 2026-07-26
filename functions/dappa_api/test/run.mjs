@@ -962,6 +962,13 @@ for (const utterance of CANNED_UTTERANCES) {
   check('predict meta.source fallback-local', json.meta.source === 'fallback-local');
   const empty = await post('/predict/outcome', {});
   check('predict empty body still sane', empty.status === 200 && empty.json.data.probability >= 0 && empty.json.data.probability <= 1);
+
+  // With QuickML off there is no local twin for case status, so this must
+  // refuse rather than answer with the A-vs-C model under a different name.
+  const status503 = await post('/predict/case-status', body);
+  check('case-status without QuickML -> 503, not a substituted answer',
+    status503.status === 503 && status503.json.ok === false
+    && status503.json.error.code === 'MODEL_UNAVAILABLE');
 }
 
 // --- ai/narrative fallback --------------------------------------------------
@@ -1142,6 +1149,7 @@ for (const utterance of CANNED_UTTERANCES) {
   setEnv('CONNECTION_LINK_NAME', 'zoho_desk_link');
   setEnv('CONNECTION_TARGET_URL', 'https://desk.zoho.com/api/v1/tickets');
   setEnv('QUICKML_ENDPOINT_KEY', 'endpoint-key-1');
+  setEnv('QUICKML_STATUS_ENDPOINT_KEY', 'status-key-1');
   setEnv('ZIA_AUTOML_MODEL_ID', 'automl-1');
   setEnv('ZIA_TRANSLATE_URL', 'https://zia.example.invalid/translate');
 
@@ -1191,7 +1199,15 @@ for (const utterance of CANNED_UTTERANCES) {
         getKeywordExtraction: async () => [{ keywords: ['chain', 'snatch'] }],
         getSentimentAnalysis: async () => [{ sentiment: 'Negative' }]
       },
-      quickmlClient: { predict: async (key, data) => { note('quickml', key, data); return { status: 'success', result: ['0.77'] }; } },
+      quickmlClient: {
+        predict: async (key, data) => {
+          note('quickml', key, data);
+          // The published case-status deployment answers with a class id plus a
+          // likelihood; the A-vs-C deployment answers with a probability.
+          if (key === 'status-key-1') return { result: [3], likelihood_score: [0.4631] };
+          return { status: 'success', result: ['0.77'] };
+        }
+      },
       fetchImpl: async (url, init) => {
         note('fetch', url, init && init.method);
         return { ok: true, status: 200, json: async () => ({ data: [{ translated_text: 'ಪರೀಕ್ಷೆ' }] }), text: async () => '{"data":[]}' };
@@ -1302,6 +1318,23 @@ for (const utterance of CANNED_UTTERANCES) {
     const d = seen('quickml')[0][2];
     return seen('quickml')[0][1] === 'endpoint-key-1' && d.districtId === '0101' && d.hour === '23';
   })());
+  // Case status is a DIFFERENT question from chargesheet A-vs-C, so it gets its
+  // own deployment key and never falls back onto the A/C models.
+  const wStatus = await post('/predict/case-status', { crimeSubHeadId: 306, gravity: 'Heinous', PoliceStationID: 3011 }, null, W);
+  check('WIRED case-status is served by QuickML', wStatus.status === 200
+    && wStatus.json.meta.source === 'quickml-sdk' && wStatus.json.data.caseStatusId === 3
+    && wStatus.json.data.caseStatusName === 'Closed' && wStatus.json.data.likelihood === 0.4631);
+  check('WIRED case-status reports its real (weak) metrics', wStatus.json.data.modelMetrics.auc === 0.5
+    && /no-signal/.test(wStatus.json.data.modelMetrics.note));
+  check('WIRED case-status maps our vocabulary onto CaseMaster columns', (() => {
+    const call = seen('quickml').find((c) => c[1] === 'status-key-1');
+    if (!call) return false;
+    const d = call[2];
+    // gravity 'Heinous' -> 1, alias crimeSubHeadId -> CrimeMinorHeadID, and a
+    // column passed by its real name survives untouched.
+    return d.GravityOffenceID === '1' && d.CrimeMinorHeadID === '306' && d.PoliceStationID === '3011'
+      && d.BriefFacts !== undefined && d.crimeSubHeadId === undefined;
+  })());
   const wNarrative = await post('/ai/narrative', { caseId: 1 }, null, W);
   check('WIRED narrative uses Zia text analytics', wNarrative.json.meta.source === 'zia'
     && wNarrative.json.data.sentiment === 'negative' && wNarrative.json.data.entities.length > 0);
@@ -1319,6 +1352,10 @@ for (const utterance of CANNED_UTTERANCES) {
   check('WIRED model registry shows the remote models serving',
     wModels.json.data.models.find((m) => m.key === 'quickml-outcome').status === 'serving'
     && wModels.json.data.models.find((m) => m.key === 'zia-automl-outcome').status === 'serving');
+  check('WIRED registry lists the case-status model with its caveat', (() => {
+    const m = wModels.json.data.models.find((x) => x.key === 'quickml-case-status');
+    return Boolean(m) && m.status === 'serving' && m.metrics.auc === 0.5 && /no discriminative power/.test(m.caveat);
+  })());
 
   // Zia AutoML is reached when QuickML is unavailable — proving the chain order.
   const autoApp = createApp({

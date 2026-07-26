@@ -4,6 +4,16 @@
 // is wrapped so local `node` runs and tests degrade to fallbacks, never crash.
 
 const fs = require('fs');
+
+// The SDK only attaches the CATALYST-ORG header when X_ZOHO_CATALYST_ORG_ID is
+// in the environment, and the QuickML deployment API rejects requests without
+// it (ORGID_HEADER_UNAVAILABLE). That name is a reserved deployment key, so it
+// cannot be declared in catalyst-config — it is mirrored from ORG_ID here,
+// before the SDK is required and reads it.
+if (process.env.ORG_ID && !process.env.X_ZOHO_CATALYST_ORG_ID) {
+  process.env.X_ZOHO_CATALYST_ORG_ID = process.env.ORG_ID;
+}
+
 const catalyst = require('zcatalyst-sdk-node');
 const { createApp } = require('./lib/app');
 const { logJson } = require('./lib/util');
