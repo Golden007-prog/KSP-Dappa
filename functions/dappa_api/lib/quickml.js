@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { toNum, round } = require('./util');
+const { toNum, round, withTimeout, AI_TIMEOUT_MS } = require('./util');
 
 let localModel = null;
 
@@ -133,7 +133,10 @@ async function predictOutcome(body, deps) {
   const endpointKey = String(process.env.QUICKML_ENDPOINT_KEY || '').trim();
   if (d.flags && d.flags.quickml && d.quickmlClient && endpointKey) {
     try {
-      const resp = await d.quickmlClient.predict(endpointKey, stringifyInputs(body));
+      const resp = await withTimeout(
+        d.quickmlClient.predict(endpointKey, stringifyInputs(body)),
+        AI_TIMEOUT_MS, 'quickml sdk'
+      );
       const mapped = mapSdk(resp, body);
       if (mapped) return { result: mapped, source: 'quickml-sdk' };
     } catch (e) {
@@ -144,7 +147,7 @@ async function predictOutcome(body, deps) {
   if (d.flags && d.flags.quickml && url) {
     try {
       const doFetch = d.fetchImpl || fetch;
-      const resp = await doFetch(url, {
+      const resp = await withTimeout(doFetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -152,7 +155,7 @@ async function predictOutcome(body, deps) {
           'X-QuickML-Key': process.env.QUICKML_API_KEY || ''
         },
         body: JSON.stringify({ data: body })
-      });
+      }), AI_TIMEOUT_MS, 'quickml url');
       if (!resp.ok) throw new Error(`quickml http ${resp.status}`);
       const json = await resp.json();
       return { result: mapRemote(json, body), source: 'quickml' };

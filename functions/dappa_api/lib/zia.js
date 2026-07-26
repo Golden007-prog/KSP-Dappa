@@ -22,6 +22,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { DISTRICTS } = require('./constants');
+const { withTimeout, AI_TIMEOUT_MS } = require('./util');
 
 const MO_VOCAB = {
   weapon: ['country-made pistol', 'country made pistol', 'machete', 'knife', 'pistol', 'firearm', 'iron rod', 'longs'],
@@ -87,16 +88,26 @@ async function analyzeNarrative(text, deps) {
   const d = deps || {};
   if (d.flags && d.flags.zia && d.ziaClient) {
     try {
-      const [ner, kw, sent] = await Promise.all([
+      const [ner, kw, sent] = await withTimeout(Promise.all([
         d.ziaClient.getNERPrediction([text]),
         d.ziaClient.getKeywordExtraction([text]),
         d.ziaClient.getSentimentAnalysis([text])
-      ]);
+      ]), AI_TIMEOUT_MS, 'zia text analytics');
       const entities = ((ner && ner[0] && ner[0].entities) || []).map((e) => ({ text: e.token || e.text, type: e.ner_tag || e.type }));
       const keywords = (kw && kw[0] && (kw[0].keywords || kw[0].keyphrases)) || [];
       const sentiment = (sent && sent[0] && (sent[0].sentiment || (sent[0].document_sentiment || {}).sentiment)) || 'neutral';
       const moTags = extractLocal(text).moTags; // MO vocabulary is domain-specific either way
-      return { result: { entities, keywords, sentiment: String(sentiment).toLowerCase(), moTags }, source: 'zia' };
+      // A Zia call can SUCCEED and still yield nothing usable — the service
+      // returns an empty envelope when Text Analytics is not enabled for the
+      // project, and the shape it returns then does not match this mapping.
+      // Reporting source:'zia' there would claim live AI while handing back
+      // LESS than the deterministic extractor produces. Only keep the Zia
+      // result if it actually carries content.
+      if (entities.length || keywords.length) {
+        return { result: { entities, keywords, sentiment: String(sentiment).toLowerCase(), moTags }, source: 'zia' };
+      }
+      const local = extractLocal(text);
+      return { result: local, source: 'fallback-local', note: 'zia returned no entities or keywords — Text Analytics likely not enabled for this project' };
     } catch (e) {
       // fall through to local extractor
     }
@@ -144,7 +155,10 @@ async function ocrScan(body, deps) {
     try {
       fs.writeFileSync(tmp, buf);
       const opts = modelType ? { language, modelType } : { language };
-      const resp = await d.ziaClient.extractOpticalCharacters(fs.createReadStream(tmp), opts);
+      const resp = await withTimeout(
+        d.ziaClient.extractOpticalCharacters(fs.createReadStream(tmp), opts),
+        AI_TIMEOUT_MS, 'zia ocr'
+      );
       const text = String((resp && resp.text) || '');
       const analysis = extractLocal(text);
       return {
@@ -332,7 +346,7 @@ async function automlPredict(body, deps) {
   const modelId = String(process.env.ZIA_AUTOML_MODEL_ID || '').trim();
   if (!(d.flags && d.flags.ziaAutoml) || !d.ziaClient || !d.ziaClient.automl || !modelId) return null;
   try {
-    const out = await d.ziaClient.automl(modelId, body || {});
+    const out = await withTimeout(d.ziaClient.automl(modelId, body || {}), AI_TIMEOUT_MS, 'zia automl');
     const cls = (out && out.classification_result) || null;
     if (cls && typeof cls === 'object') {
       const pA = Number(cls.A !== undefined ? cls.A : cls['1'] !== undefined ? cls['1'] : NaN);

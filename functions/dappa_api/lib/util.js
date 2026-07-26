@@ -124,4 +124,28 @@ function toCsv(rows, columns) {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-module.exports = { pad2, ymOf, ymAdd, ymRange, toNum, round, pctDelta, fmtInt, hash32, pearson, parseJsonSafe, logJson, toCsv };
+/**
+ * Bound a live AI/service call so a hung remote can never stall a request.
+ * The fallbacks in zia/quickml/smartbrowz live in catch blocks, which fire on
+ * ERROR but not on a call that simply never returns — with an AI flag on and
+ * its service unconfigured or slow, that is the difference between a fast
+ * deterministic answer and a request that hangs until the platform kills it.
+ * Rejects with a tagged error so the caller's existing catch takes the
+ * fallback path unchanged.
+ */
+function withTimeout(promise, ms, label) {
+  let timer = null;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label || 'remote call'} timed out after ${ms}ms`);
+      err.code = 'SERVICE_TIMEOUT';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, limit]).finally(() => { if (timer) clearTimeout(timer); });
+}
+
+/** Default budget for a live AI hop before we fall back (ms). */
+const AI_TIMEOUT_MS = Math.max(1000, Number(process.env.AI_TIMEOUT_MS) || 4000);
+
+module.exports = { pad2, ymOf, ymAdd, ymRange, toNum, round, pctDelta, fmtInt, hash32, pearson, parseJsonSafe, logJson, toCsv, withTimeout, AI_TIMEOUT_MS };

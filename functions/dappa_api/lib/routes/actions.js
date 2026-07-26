@@ -10,7 +10,7 @@ const quickml = require('../quickml');
 const zia = require('../zia');
 const mail = require('../mail');
 const { getFallbackState, fixtureNetworkGraph } = require('../fixture');
-const { toNum, round, ymAdd, pctDelta, parseJsonSafe } = require('../util');
+const { toNum, round, ymAdd, pctDelta, parseJsonSafe, withTimeout, AI_TIMEOUT_MS } = require('../util');
 
 // COUNT() column per completeness-tracked table (COUNT(*) is not portable ZCQL).
 const COMPLETENESS_COUNT_COLS = {
@@ -71,14 +71,14 @@ function register(router) {
     if (ctx.flags.quickmlLlm && process.env.QUICKML_LLM_URL) {
       try {
         const doFetch = ctx.services.fetchImpl || fetch;
-        const resp = await doFetch(process.env.QUICKML_LLM_URL, {
+        const resp = await withTimeout(doFetch(process.env.QUICKML_LLM_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Zoho-oauthtoken ${process.env.QUICKML_API_KEY || ''}`
           },
           body: JSON.stringify({ question: q })
-        });
+        }), AI_TIMEOUT_MS, 'quickml llm');
         if (resp.ok) {
           const json = await resp.json();
           const inner = json.data || json;
@@ -187,7 +187,9 @@ function register(router) {
     const window = String((req.body || {}).window || req.query.window || 'last7');
     if (ctx.flags.smartbrowz && ctx.services.smartbrowz) {
       try {
-        const out = await ctx.services.smartbrowz.renderBrief(window);
+        // SmartBrowz renders a headless-browser PDF — allow longer than an AI
+        // hop, but still bounded so a stuck render cannot hang the request.
+        const out = await withTimeout(ctx.services.smartbrowz.renderBrief(window), AI_TIMEOUT_MS * 4, 'smartbrowz');
         if (out && out.pdfUrl) return ok(res, { mode: 'pdf', pdfUrl: out.pdfUrl, window }, { source: 'smartbrowz' });
       } catch (e) {
         // fall through to print-css fallback
