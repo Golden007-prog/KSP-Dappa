@@ -93,9 +93,31 @@ async function analyzeNarrative(text, deps) {
         d.ziaClient.getKeywordExtraction([text]),
         d.ziaClient.getSentimentAnalysis([text])
       ]), AI_TIMEOUT_MS, 'zia text analytics');
-      const entities = ((ner && ner[0] && ner[0].entities) || []).map((e) => ({ text: e.token || e.text, type: e.ner_tag || e.type }));
-      const keywords = (kw && kw[0] && (kw[0].keywords || kw[0].keyphrases)) || [];
-      const sentiment = (sent && sent[0] && (sent[0].sentiment || (sent[0].document_sentiment || {}).sentiment)) || 'neutral';
+      // Real Zia Text Analytics shape, captured from the console's own
+      // "View Response" against this project (all three SDK calls return the
+      // same combined envelope):
+      //   [{ ner: { general_entities: [{token, ner_tag, confidence_score}] },
+      //      keyword_extractor: { keywords: [], keyphrases: [] },
+      //      sentiment_prediction: [{ document_sentiment: 'Negative' }] }]
+      // The previous mapping read ner[0].entities / kw[0].keywords /
+      // sent[0].sentiment, none of which exist — which is why live Zia came
+      // back empty while still reporting success.
+      const first = (r) => (Array.isArray(r) ? r[0] : (r && Array.isArray(r.data) ? r.data[0] : r)) || {};
+      const nerBody = first(ner);
+      const kwBody = first(kw);
+      const sentBody = first(sent);
+      const rawEntities = (nerBody.ner && nerBody.ner.general_entities)
+        || nerBody.general_entities || nerBody.entities || [];
+      const entities = rawEntities.map((e) => ({
+        text: e.token || e.text,
+        type: e.ner_tag || e.type,
+        confidence: e.confidence_score === undefined ? undefined : Number(e.confidence_score)
+      })).filter((e) => e.text);
+      const kwBox = kwBody.keyword_extractor || kwBody;
+      const keywords = [...(kwBox.keywords || []), ...(kwBox.keyphrases || [])];
+      const sp = sentBody.sentiment_prediction;
+      const sentiment = (Array.isArray(sp) && sp[0] && sp[0].document_sentiment)
+        || sentBody.document_sentiment || sentBody.sentiment || 'neutral';
       const moTags = extractLocal(text).moTags; // MO vocabulary is domain-specific either way
       // A Zia call can SUCCEED and still yield nothing usable — the service
       // returns an empty envelope when Text Analytics is not enabled for the
