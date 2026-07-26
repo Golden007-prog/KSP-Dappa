@@ -77,7 +77,13 @@ function coerce(table, header, parts) {
     const v = parts[i];
     if (v === '' || v === undefined) continue; // nullable
     const t = types[header[i]];
-    if (t === 'i' || t === 'd') { const n = Number(v); obj[header[i]] = Number.isFinite(n) ? n : v; }
+    // Doubles go as STRINGS. Catalyst rejects small JSON numbers outright —
+    // {"DegreeCentrality":0.0005} => "Please give a correct double value",
+    // while "0.0005" is accepted (verified against the live table; 0.005 is
+    // fine, so the cutoff is where its stack switches to exponent notation).
+    // The raw CSV text is already a clean decimal, so pass it through.
+    if (t === 'd') { obj[header[i]] = Number.isFinite(Number(v)) ? v : v; }
+    else if (t === 'i') { const n = Number(v); obj[header[i]] = Number.isFinite(n) ? n : v; }
     else if (t === 'b') obj[header[i]] = v === '1' || v === 'true';
     else obj[header[i]] = v;
   }
