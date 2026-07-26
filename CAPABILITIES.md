@@ -4,61 +4,128 @@
 the KSP Datathon 2026 challenge, _"AI-Driven Crime Analytics & Visualization
 Platform."_**
 
-This document is written to be *checked*, not believed. Every claim is a
-numbered pointer into [`FEATURES.md`](FEATURES.md) (808 cataloged features) and a
-route or endpoint a judge can open. Three of the six capabilities currently
-clear the 100-feature bar and three do not; the shortfalls are stated in
-[§ Shortfalls](#shortfalls) with exact gap sizes rather than smoothed over.
+This document is written to be *checked*, not believed. Every claim points at a
+route a judge can open or an endpoint they can `curl`. **Five of the six
+capabilities now clear the 100-feature bar; C5 does not, and the gap is stated
+in [§ Shortfall](#shortfall) rather than smoothed over.**
+
+*Audited against the repository state of 26 July 2026 — a full re-count after a
+wave of feature work added ~230 capability-bearing features and 53 new client
+components on top of the previously audited build.*
 
 ---
 
 ## Scorecard
 
-| # | Capability | Features | Bar | Status | Gap |
+| # | Capability | Features | Bar | Verdict | Margin |
 |---|---|---:|---:|---|---:|
-| **C1** | Advanced Visualization | **186** | 100 | ✅ clears | +86 |
-| **C2** | Criminological Network & Link Analysis | **62** | 100 | ❌ **short** | **−38** |
-| **C3** | Sociological & AI-Driven Predictive Dashboards | **119** | 100 | ✅ clears | +19 |
-| **C4** | Pattern & Trend Discovery | **106** | 100 | ✅ clears | +6 |
-| **C5** | Network & Behavioural Analysis | **45** | 100 | ❌ **short** | **−55** |
-| **C6** | AI/ML-Driven Intelligence | **85** | 100 | ❌ **short** | **−15** |
+| **C1** | Advanced Visualization | **240** | 100 | ✅ **PASS** | +140 |
+| **C2** | Criminological Network & Link Analysis | **105** | 100 | ✅ **PASS** (marginal) | +5 |
+| **C3** | Sociological & AI-Driven Predictive Dashboards | **167** | 100 | ✅ **PASS** | +67 |
+| **C4** | Pattern & Trend Discovery | **173** | 100 | ✅ **PASS** | +73 |
+| **C5** | Network & Behavioural Analysis | **85** | 100 | ❌ **SHORT BY 15** | −15 |
+| **C6** | AI/ML-Driven Intelligence | **125** | 100 | ✅ **PASS** | +25 |
 
-Of the 808 cataloged features, **398 back at least one scored capability** and
-**410 do not** — those 410 are enabling infrastructure (app shell, command
-palette, toasts, error boundaries, PWA, print plumbing, i18n machinery, loading
-and empty states, CSV/clipboard utilities, accessibility scaffolding). They make
-DAPPA a real product rather than a demo, but they are not evidence for a scored
-capability and are **deliberately excluded from every count above**. Inflating
-the six numbers with them would produce 808 across six capabilities and mean
-nothing.
+Two entries deserve a caveat before anything else. **C2 clears the bar by five
+features, which is inside the noise of any classification exercise** — and one
+third of its capability statement (victim nodes, recurring-location nodes) is
+still not implemented at all; see [§ C2](#c2). **C5 is genuinely short.** The
+previous audit put C5 at 45 against a −55 gap; the recent work closed roughly
+40 of those 55, which is real progress and still not enough.
+
+### What changed since the last audit
+
+| Capability | Previous | Now | Δ |
+|---|---:|---:|---:|
+| C1 | 186 | 240 | +54 |
+| C2 | 62 | 105 | +43 |
+| C3 | 119 | 167 | +48 |
+| C4 | 106 | 173 | +67 |
+| C5 | 45 | 85 | +40 |
+| C6 | 85 | 125 | +40 |
+
+The previous audit flagged shortfalls in C5 (−55), C2 (−38) and C6 (−15). **C2
+and C6 are closed. C5 is not.** The reason is structural rather than accidental:
+the largest new clusters landed on the Case Explorer and the Alerts console,
+which serve C4 and C3 heavily and C5 almost not at all. Only the
+`/network` + `/offenders` work moves C5, and that was one of six workstreams.
 
 ### Counting rules
 
-1. **A feature counts for a capability only if it delivers analytic or
-   visual substance the challenge text actually asks for.** A hotspot hour-band
-   filter counts for C1 and C4. A loading skeleton on the panel that shows it
-   does not count for anything.
-2. **Multi-capability features are declared, never hidden.** 184 of the 398
-   classified features genuinely serve more than one capability — a red-pulsing
-   choropleth is simultaneously visualization (C1) and anomaly call-out (C3).
-   Each is counted in every capability it serves, and the full overlap matrix is
+1. **A feature counts only if it delivers analytic or visual substance the
+   challenge text asks for.** A Getis-Ord Gi\* hot-cell test counts for C4. The
+   loading skeleton on the panel that renders it counts for nothing. Search
+   facets, query builders, kanban triage boards, SLA chrome, CSV writers,
+   clipboard helpers, saved views, i18n machinery and export serializers are
+   **infrastructure and are excluded from every number above** — they make DAPPA
+   a product rather than a demo, but they are not evidence for a scored
+   capability.
+2. **Multi-capability features are declared, never hidden.** A red-pulsing
+   choropleth is simultaneously visualization (C1) and anomaly call-out (C3);
+   a Getis-Ord grid is both a map layer (C1) and a spatial statistic (C4). Each
+   is counted in every capability it genuinely serves, and the overlap matrix is
    published in [§ Overlap](#overlap) so a judge can subtract if they disagree.
-   The six numbers therefore sum to 603 attributions across 398 distinct
-   features — they are not a partition of 808 and are not presented as one.
-3. **Backend-only features are flagged.** 14 catalog entries are endpoints that
-   are implemented, contract-tested and curl-verifiable but that **no client
-   file calls**. They are counted, and every one is named in
-   [§ Backend-only](#backend-only) so the count can be read either way. Excluding
-   them entirely moves C1→184, C2→59, C3→114, C4→103, C5→43, C6→83 — it changes
-   no pass/fail verdict.
-
-**Where to look.** Client routes are under the SPA root (HashRouter); API paths
-are relative to `/server/dappa_api`. The contract suite backing the endpoint
-claims is `functions/dappa_api/test/run.mjs`.
+   The six numbers are **895 attributions across ~628 distinct features** — they
+   are not a partition and are not presented as one.
+3. **Backend-only features are named, not buried.** Endpoints that are
+   implemented and contract-tested but that no client file calls are listed in
+   [§ Backend-only](#backend-only) so the count can be read either way.
+4. **The baseline is inherited; the delta is freshly counted.** The 186/62/119/
+   106/45/85 baseline came from classifying all 808 entries of
+   [`FEATURES.md`](FEATURES.md) against the challenge text. That classification
+   is carried forward unchanged. Everything added since was counted first-hand
+   for this audit by reading each new file and verifying it is actually rendered.
+   **`FEATURES.md` itself is stale** — its 808 entries predate the new work by a
+   day and do not include any of it. Fixing that catalog is a separate job.
 
 ---
 
-## C1 — Advanced Visualization · 186 features ✅
+## Data foundation
+
+**The app runs on real Zoho Catalyst Data Store data with no fixture in the
+serving path.** Every number on every screen is a live ZCQL/NoSQL read:
+
+| Table | Rows | What it drives |
+|---|---:|---|
+| `CaseMaster` | 45,000 | FIR corpus behind `/cases`, deep scan, series detection |
+| `AggMonthly` | 34,021 | every trend, KPI, choropleth and forecast input |
+| `NetworkEdge` | 23,833 | the co-accusal graph and every link-analysis algorithm |
+| `OffenderProfile` | 2,048 | registry, Offender-360, MO matching |
+| `AnomalyAlert` | 665 | the alerts console and the z-score corpus analytics |
+
+`FORCE_FIXTURE_TABLES` is empty in `functions/dappa_api/catalyst-config.json`,
+so no table is served from the bundled fixture. The fixture module still exists
+as an **error-path** safety net (a failed ZCQL call is answered from it rather
+than 500-ing a live demo) and `GET /healthz` reports `datastore.mode:
+"fixture-demo"` if that ever fires — the fallback is instrumented, not silent.
+
+**The one honest exception is `ChargesheetDetails`: 12,600 of 31,655 rows
+(39.8%), capped by a Catalyst plan ceiling on bulk inserts.** That table is the
+*denominator* of the detection-rate KPI, and a partial load returns real-but-wrong
+numbers with no error anywhere. Rather than publish a confident wrong figure,
+`functions/dappa_api/lib/routes/read.js:128` returns `detectionRate: null` when
+the window has no chargesheet rows to divide, and the client renders it as `—`:
+
+```js
+// null (unknown) is NOT 0 (measured zero). With no chargesheet rows in the
+// window there is nothing to divide, and reporting 0.0% would assert that
+// not one case was chargesheeted — a claim the data cannot support.
+const csDenom = (cs.A || 0) + (cs.C || 0);
+const detectionRate = csDenom > 0 ? round(((cs.A || 0) / csDenom) * 100, 1) : null;
+```
+
+`GET /healthz` publishes `datastore.completeness` — actual vs expected rows per
+table — so an operator can tell a load gap from a genuine one. **Detection rate
+is reported as unknown, never as a false 0%.**
+
+**Where to look.** Client routes are under the SPA root (HashRouter); API paths
+are relative to `/server/dappa_api/api/v1`. The backend now exposes **66
+endpoints** (46 GET, 20 POST); the client calls **35** of them — 33 through the
+API helper plus `/alerts.csv` and `/cases.csv` as direct download links.
+
+---
+
+## C1 — Advanced Visualization · 240 features ✅ PASS (+140)
 
 ### What the challenge asks for
 
@@ -69,86 +136,73 @@ claims is `functions/dappa_api/test/run.mjs`.
 
 ### How DAPPA delivers it
 
-The Command Dashboard and the GeoIntel map are the two anchors. The dashboard is
-a pinnable, collapsible, maximizable panel grid over a Karnataka choropleth with
-five shading modes (cases, per-lakh, MoM change, population, predicted risk),
-a 12-month crime-head trend with forecast extension and confidence band, five
-KPI tiles including a next-month projection, a live intelligence ticker, and a
-per-district drill sheet that opens on polygon click.
+The Command Dashboard is a pinnable, collapsible, maximizable panel grid over a
+Karnataka choropleth with five shading modes, a 12-month crime-head trend with
+forecast extension, five KPI tiles, a live intelligence ticker and a per-district
+drill sheet. The recent work added five analytic panels to it: a **multi-district
+compare board** (up to four districts on one axis, absolute *and* rebased-to-100
+modes so a 400-case district growing twice as fast as a 3,000-case one is
+visible), a **year × month heat calendar** with a per-cell z-score against the
+full series, a **shift-wise split** folding the day × hour matrix into Karnataka
+Police's three eight-hour shifts, an **emerging/cooling mover board**, and a
+**three-level district → station → station-detail explorer with breadcrumbs**.
 
 GeoIntel is the full-bleed map: six toggleable layers over seven ordered Leaflet
-panes, district polygons that drill into a station list with per-station risk
-bars (**the district → station drill-down the challenge names explicitly**), a
-month time-scrubber with play/pause animation, an A/B month swipe-compare with a
-draggable divider, and a radius probe.
+panes, a month time-scrubber with play/pause, an A/B month swipe-compare and a
+radius probe. It gained a docked, tabbed **analysis workbench** (`AnalysisDock`)
+carrying four statistical views that need more room than a map chip — the
+hotspot ranking table, the Gi\* grid statistics, station catchment allocation and
+a weekday × hour explorer — with the same nodes reused in the 360px mobile sheet.
 
-The challenge's two most specific asks are met literally and are the easiest
+The challenge's three most specific asks are met literally and are the easiest
 things for a judge to verify:
 
-- **Time of day layered over location** — the hour-of-day lens (`?h=`) is a 0–23
-  scrubber that filters hotspot clusters by wrap-aware `HourBandStart/End`
-  coverage, with a 24-hour play sweep, a day/night basemap auto-dim, and a
-  sun/moon day-part indicator showing live active-vs-total cluster counts
-  (features 437–441, 443–445). The hotspot cluster panel adds a 24-hour district
-  activity histogram with the cluster's peak band highlighted.
+- **District → station drill-down** now exists on *both* anchors. On `/map`,
+  clicking a census polygon lists its police units with per-station risk bars and
+  drills into a station dossier. On `/`, `StationExplorer` does the same as a
+  three-level breadcrumbed list — level 2 issues a scoped
+  `/geo/stations?districtId=` request rather than paging the 282-row statewide
+  table.
+- **Time of day layered over location** is the hour-of-day lens (`?h=`, keyboard
+  `H`): a 0–23 scrubber filtering hotspot clusters by wrap-aware
+  `HourBandStart/End` coverage, with a 24-hour play sweep, day/night basemap
+  auto-dim and a day-part indicator. `SpaceTimePanel` completes the loop — its
+  7 × 24 matrix is filter-aware, and clicking a cell *drives the map*, setting
+  both the hour lens and the weekday lens so "Friday 22:00" goes from a number in
+  a grid to a picture on the map.
 - **Red-zone pulsing on a category spike** — districts whose live alert z-score
-  reaches 2 (union server anomaly flags) get an animated red pulse stroke and a
-  red-zone count in the legend on the dashboard choropleth (feature 59); the map
-  carries the same as a dedicated non-interactive alert-pulse pane (381) plus a
-  red-zone tour that flies through flagged districts (465); alert cards escalate
-  to a pulsing red glow border at critical/high severity (195).
+  reaches the threshold get an animated red pulse stroke and a red-zone count in
+  the legend; **the threshold is now a live control** (default 2σ, tunable for a
+  quiet week or a flood). The map carries the same as a dedicated
+  non-interactive alert-pulse pane plus a red-zone tour; `EmergingBoard` and the
+  Trends `EmergingPanel` carry pulsing EMERGING badges on movers at ≥15% growth,
+  fed by the same server scoring.
 
-### Feature list (186)
-
-**Command Dashboard — 63 · route `/`**
-1, 2, 3, 4, 9, 11, 14, 15, 16, 17, 18, 19, 20, 23, 24, 25, 28, 29, 31, 32, 33,
-35, 36, 37, 38, 39, 40, 41, 44, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
-60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 74, 76, 77, 79, 80, 81, 82,
-83, 84
-
-**GeoIntel map — 61 · route `/map`**
-367, 368, 369, 372, 374, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384, 385,
-386, 387, 388, 389, 391, 392, 395, 400, 402, 403, 412, 413, 414, 415, 416, 418,
-425, 426, 428, 435, 437, 438, 439, 441, 443, 444, 445, 448, 449, 450, 455, 456,
-457, 459, 460, 461, 462, 464, 465, 467, 468, 469, 470, 474, 475
-
-**Trends + Predict — 22 · routes `/trends`, `/predict`**
-275, 276, 277, 280, 281, 285, 286, 288, 291, 292, 299, 309, 313, 317, 322, 331,
-334, 336, 340, 344, 345, 356
-
-**Alerts + Reports — 11 · routes `/alerts`, `/reports`**
-191, 192, 193, 195, 196, 197, 199, 229, 244, 245, 251
-
-**Catalyst backend — 10**
-738, 739, 740, 741, 743, 744, 745, 746, 788, 789
-
-**Case Explorer + FIR detail — 8 · routes `/cases`, `/cases/:id`**
-109, 126, 128, 151, 152, 167, 168, 169
-
-**Design-system visualization primitives — 6**
-679, 680, 681, 682, 690, 695
-
-**Network + Offenders — 4 · routes `/network`, `/offenders`**
-476, 515, 535, 556
-
-**Copilot — 1 · route `/copilot`** · 585
+A bivariate choropleth (crime rate × urbanisation, 3 × 3 palette with a matching
+legend) was added to the map — a visual form the previous build did not have.
 
 ### Where a judge sees it working
 
 | What | Where |
 |---|---|
 | Dashboard grid, choropleth, 5 shading modes, forecast KPI | `/` |
-| District drill sheet with unit switcher, peak-window badge | `/` → click any polygon |
+| **Multi-district compare (absolute ⇄ indexed to 100)** | `/` → Compare board |
+| **Year × month heat calendar with z-scored cells** | `/` → Heat calendar → click a cell to re-scope the page |
+| **Shift-wise split (3 × 8h shifts × weekday)** | `/` → Shift split |
+| **District → station → station drill-down** | `/` → Station explorer · `/map` → click a polygon → station list |
 | Full map, six layers, layer presets | `/map` |
-| District → station drill-down | `/map` → click a district polygon → station list → click a station |
+| **Analysis workbench (4 tabs, mobile-parity)** | `/map` → Analysis dock |
+| **Weekday × hour explorer driving the map** | `/map` → Analysis dock → Space-time → click a cell |
 | **Hour-of-day lens over hotspots** | `/map?h=23&layers=hotspots` — press `H` |
-| **Red-zone pulsing** | `/` (choropleth legend shows red-zone count) · `/map` alert-pulse layer · `/alerts` critical cards |
+| **Red-zone pulsing with adjustable z threshold** | `/` (legend shows red-zone count + threshold) · `/map` alert-pulse layer · `/alerts` critical cards |
+| Bivariate rate × urbanisation choropleth | `/map` → choropleth mode → Bivariate (legend bottom-left) |
 | Month animation / A/B compare | `/map` — `Space` to play, `C` to compare |
-| API | `GET /summary/kpis` · `/geo/districts` · `/geo/stations` · `/geo/incidents` · `/geo/hotspots` · `/trends/monthly` |
+| API | `GET /summary/kpis` · `/geo/districts` · `/geo/stations` · `/geo/incidents` · `/geo/hotspots` · `/trends/monthly` · `/trends/seasonality` |
 
 ---
 
-## C2 — Criminological Network & Link Analysis · 62 features ❌ short by 38
+<a id="c2"></a>
+## C2 — Criminological Network & Link Analysis · 105 features ✅ PASS (marginal, +5)
 
 ### What the challenge asks for
 
@@ -158,58 +212,82 @@ things for a judge to verify:
 
 ### How DAPPA delivers it
 
-A Cytoscape co-accusal graph where node colour is community, node size is degree
-and edge width is shared-FIR weight, served by `GET /network/graph` over a
-NoSQL → Stratus → `NetworkEdge` fallback chain. On top of it sit the link-analysis
-tools: ego-focus at 1/2/3 hops, a two-endpoint shortest-path finder with a
-clickable breadcrumb and an evidence-strength badge summing shared FIRs across
-hops, articulation-point ("removal splits the group") detection, bridge/broker
-highlighting, and mutual-associate chips on the edge drawer — the last three are
-the app's answer to *hidden* links, since they surface structure no single FIR
-record shows.
+A Cytoscape co-accusal graph over 23,833 `NetworkEdge` rows and 2,048 persons,
+where node colour is community, node size is degree and edge width is shared-FIR
+weight. On top of it sits a link-analysis engine
+(`client/src/routes/network/analysis.js`, 522 lines, 14 externally-consumed
+algorithms, no dead exports) that is the substance of this capability:
 
-Cross-jurisdiction tracking is real and is the strongest part of this capability:
-the Accused table has no person ID (faithful to the official ER schema), so DAPPA
+- **Hidden-association prediction** — `predictLinks` scores every *unlinked*
+  pair by **Adamic–Adar** (Σ 1/ln(degree) over common associates), so two people
+  bridged by four low-profile associates outrank two bridged by one hub. Hubs
+  above degree 80 are excluded outright and the scan reports `truncated` rather
+  than blocking the render. This is the challenge's "hidden criminal links" ask,
+  and it did not exist in the previous build.
+- **Two different shortest paths, for two different questions** — the BFS
+  fewest-hops path in `graphUtils.js`, and `strongestPath`, a Dijkstra over
+  cost `1/weight` that prefers repeat co-offending over a chain of one-off FIRs
+  even at the cost of an extra hop.
+- **Structural corroboration targets** — `bridgeEdges` (iterative Tarjan
+  low-link) finds the single shared FIRs holding two otherwise separate crews
+  together; articulation points find the people whose removal splits a group.
+- **Pair analysis** — `pairOverlap` reports direct-link weight, **Jaccard**
+  overlap of the two associate circles, the people in both, and how many each
+  keeps to themselves; `secondDegree` returns everyone reachable in exactly two
+  hops *with the intermediaries who connect them*.
+- **Structural position of one person** — `NetworkPosition` on Offender-360
+  computes true partner count and Σ shared FIRs (the API's `degree` field is a
+  normalized 0–1 centrality, useless as a count), k-core depth, local cohesion,
+  triangle count, repeat-partner census, strongest partner, cross-community
+  reach, and league rank + percentile among all 2,002 linked persons.
+
+**Cross-jurisdiction tracking is the strongest part of this capability.** The
+`Accused` table has no person ID (faithful to the official ER schema), so DAPPA
 resolves identity heuristically from name and alias similarity, exposes the
-confidence percentage on each alias chip, and then shows the offender's
-chronological district-hop sequence and a "spans N districts" badge. The
-offender registry has a dedicated cross-jurisdiction filter (2+ districts).
+confidence percentage on each alias chip, and shows the offender's chronological
+district-hop sequence with a mobility ratio. `AliasQueue` surfaces every
+weak-scoring alias, weakest first, for a human to confirm or reject — and is
+honest that it is a client-side triage worklist, not a write path. `SimilarMo`
+answers "same hands, different jurisdiction" directly: cosine similarity over MO
+tag sets, with shared-district count reported alongside, so **a high MO match
+with zero shared districts is the flagged case**.
 
-**Why it is short.** The graph itself is deep but narrow: 62 features. The
-victim and *recurring-location* halves of "suspects, victims and recurring
-locations" are the thinnest — victims appear only as a case-detail party panel
-(129), and location linking exists as case-similarity geo-proximity (165) rather
-than as first-class location nodes in the graph.
+### Why the verdict is qualified
 
-### Feature list (62)
-
-**Network + Offenders + Offender-360 — 49 · routes `/network`, `/offenders`, `/offenders/:personKey`**
-476, 478, 479, 480, 481, 482, 483, 484, 495, 496, 497, 498, 499, 500, 501, 504,
-506, 512, 513, 514, 515, 517, 523, 524, 527, 532, 534, 535, 536, 538, 539, 540,
-545, 546, 548, 549, 553, 554, 555, 556, 558, 560, 563, 564, 568, 569, 573, 575,
-578
-
-**Catalyst backend — 8** · 752, 753, 755, 790, 791, 792, 794, 795
-
-**Case Explorer + FIR detail — 4** · 127, 129, 165, 177
-
-**App shell — 1** · 712 (command-palette live offender lookup)
+The count clears 100, but it clears it by five, and **the victim and
+recurring-location thirds of "suspects, victims and recurring locations" are
+still not implemented.** Verified by grep across `client/src`: victims appear
+only as a case-detail party panel, a record-completeness check and a model input
+— there are no victim nodes in the graph and no victim–suspect bipartite view.
+There are no location nodes either. The nearest things are case-similarity
+geo-proximity, hotspot co-location, and `StationContext`'s registration
+neighbourhood (the FIRs numbered immediately before and after a case plus
+anything registered the same day — which is how a riot or a multi-victim assault
+surfaces as several connected CrimeNos). Those are useful and they are counted,
+but they are not first-class location linking. **A judge scoring C2 on
+capability-statement coverage rather than feature count would mark this down,
+and they would be right to.**
 
 ### Where a judge sees it working
 
 | What | Where |
 |---|---|
 | Co-accusal graph, communities, layouts | `/network` |
-| Shortest association path + evidence strength | `/network` → pick person A and B in the path tool |
-| Hidden-link tooling: bridges, cut-vertices, mutual associates | `/network` → Bridges toggle; open any node/edge drawer |
+| **Hidden-link suggestions (Adamic–Adar), with the bridging associates** | `/network` → Link suggestions → select a row |
+| **Pair analyzer: direct link, Jaccard overlap, common associates** | `/network` → pick person A and B → Pair analysis |
+| Fewest-hops path *and* strongest-evidence path | `/network` → path tool |
+| Bridges, cut-vertices, mutual associates | `/network` → Bridges toggle; open any node/edge drawer |
+| **Structural position: k-core, cohesion, rank, 2nd-degree ring** | `/offenders/:personKey` → Network position |
+| **Cross-jurisdiction MO match ("same hands, different district")** | `/offenders/:personKey` → Similar MO |
+| **Alias-resolution review queue** | `/offenders` → Alias queue |
+| Repeat co-offending pairs | `/offenders` → Co-offending pairs |
 | Repeat-offender registry, cross-jurisdiction filter | `/offenders?span=multi&repeat=1` |
-| Identity resolution + alias confidence + district hops | `/offenders/:personKey` |
-| Accused → registry pivot from a live FIR | `/cases/:id` → accused row → `/offenders?q=` |
-| API | `GET /network/graph` · `/network/path` · `/offenders` · `/offenders/:personKey` · `POST /offenders/watch` |
+| Accused → registry pivot from a live FIR | `/cases/:id` → accused row |
+| API | `GET /network/graph` · `/offenders` · `/offenders/:personKey` · `/cases/:id/similar` |
 
 ---
 
-## C3 — Sociological & AI-Driven Predictive Dashboards · 119 features ✅
+## C3 — Sociological & AI-Driven Predictive Dashboards · 167 features ✅ PASS (+67)
 
 ### What the challenge asks for
 
@@ -219,72 +297,66 @@ than as first-class location nodes in the graph.
 
 ### How DAPPA delivers it
 
-All three legs are present and each has a dedicated surface.
+All three legs are present, and the "why behind the where" now has **four**
+distinct surfaces rather than one.
 
-**The "why" behind the "where"** is the socio-economic scatter on `/trends`:
-crime rate per lakh against a switchable district indicator (urbanisation %,
-literacy %, density, per-capita income index), bubble area encoding population,
-with an OLS fit line, a live Pearson-r badge, median-split quadrant lines with
-corner captions, and an auto-insight naming the district furthest above the
-fitted line. A correlation-is-not-causation note sits on the card. The dashboard
-carries the compact version — a cases-versus-population Pearson readout under the
-choropleth (61) plus population and risk shading modes (57, 58).
+**Socio-economic correlation.** The `/trends` scatter plots crime rate per lakh
+against a switchable indicator with an OLS fit, a live Pearson-r badge and
+median-split quadrants. New alongside it is a **correlation matrix**: all eight
+crime heads re-aggregated per district, converted to a rate per lakh against the
+`SocioEconomic` population, and correlated with each of four indicators —
+**every cell carrying an exact two-tailed significance test** (`pearsonTest`
+computes `t = r√(df/(1−r²))` and the p-value through an incomplete beta), so an
+eye-catching r on five districts is labelled as what it is rather than sold as a
+finding. The dashboard's `SocioBoard` adds the part an SP acts on: districts
+ranked by **residual** — how far each sits above or below the crime level its own
+socio-economic profile predicts, because a district can top the raw leaderboard
+purely because 1.1 crore people live there. The map spatialises the same idea as
+a bivariate rate × urbanisation choropleth.
 
 **Predictive risk scoring** is the `/predict` league: 30-day station risk with
-percentile tier badges, a risk-score distribution histogram binned by tier,
-per-station 6-month sparklines, filterable driver chips, a station dossier
-drawer with rank-ordered driver-importance bars (honestly labelled "ranking, not
-coefficients"), and a risk choropleth. Risk also surfaces as station bubble
-colour and pulsing halos on `/map` and as a highest-risk-station callout in the
-dashboard drill sheet.
+percentile tier badges, a distribution histogram, per-station 6-month sparklines,
+a station dossier with rank-ordered driver-importance bars, and a risk
+choropleth. `DriverLift` is new and aggregates the league: how common each driver
+signal is, and how much higher mean risk runs on stations carrying it. **It says
+in its own header that this is "a measured association on the current league,
+never a fitted coefficient"** — the risk model publishes a ranked driver list,
+not weights, and the card refuses to imply otherwise.
 
-**Anomaly call-outs linking complex cases** is the `/alerts` surface: a robust
-z-score feed with severity ranking, a kanban triage board, SLA countdown badges
-that escalate to a breached state, a z-score gauge with threshold bands,
-expected-versus-observed compare bars, similar-alert lists, and an alert→case
-drill that opens the explorer pre-filtered to the alert's district, crime head
-and period. Case-level anomaly flags carry a reason callout on the FIR detail.
-
-### Feature list (119)
-
-**Alerts + Reports — 37 · routes `/alerts`, `/reports`**
-178, 179, 180, 182, 184, 188, 189, 190, 191, 192, 193, 195, 196, 197, 201, 205,
-206, 208, 209, 229, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 249, 250,
-251, 252, 253, 255, 258
-
-**Trends + Predict — 30 · routes `/trends`, `/predict`**
-282, 283, 287, 292, 302, 303, 305, 306, 311, 313, 315, 322, 328, 336, 337, 338,
-339, 340, 341, 342, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362
-
-**Command Dashboard — 18 · route `/`**
-18, 31, 32, 53, 54, 55, 57, 58, 59, 61, 63, 68, 72, 73, 77, 78, 84, 86
-
-**Catalyst backend — 16**
-744, 747, 748, 749, 750, 756, 757, 771, 779, 780, 784, 785, 786, 787, 796, 797
-
-**GeoIntel map — 8 · route `/map`** · 375, 381, 386, 413, 416, 418, 464, 465
-
-**Case Explorer + FIR detail — 6** · 111, 119, 122, 133, 149, 164
-
-**Network + Offenders — 2** · 514, 532 · **App shell — 2** · 666, 733
+**Anomaly call-outs** are the `/alerts` surface, substantially deepened. Beyond
+the robust z-score feed, severity ranking and alert→case drill, there is now a
+per-alert **decomposition** (`explain.js`): σ is recovered as
+`|observed − expected| / |z|` — exact for the detector's own scale — and the
+tail rarity is computed from Abramowitz & Stegun 7.1.26. The panel states both
+caveats out loud, including that weekly counts are not normal so the rarity is
+"an order-of-magnitude cue, not a p-value to quote in court". `SocioContext`
+puts one alert in its district's socio-economic frame: observed count normalised
+to cases per lakh, each indicator placed as a percentile across every reporting
+district, so the reader sees not just the value but whether it is high *for
+Karnataka*. Corpus-level views (`ZDistribution`, `SeverityMatrix`,
+`CorpusSummary`) run over the **whole** `AnomalyAlert` table via a paging loader
+that reports honestly how much it actually pulled — the previous build analysed
+the first 200-row page and called it the corpus.
 
 ### Where a judge sees it working
 
 | What | Where |
 |---|---|
-| **Socio-economic correlation scatter, 4 indicators, Pearson r** | `/trends` → Socio-economic correlation card |
-| Cases-vs-population correlation readout | `/` → under the choropleth |
-| Population / risk choropleth shading | `/` → choropleth mode switcher |
+| **Correlation matrix: 8 heads × 4 indicators, per-cell p-value + stars** | `/trends` → Correlation matrix |
+| Socio-economic scatter, OLS fit, Pearson r | `/trends` → Socio-economic correlation card |
+| **Residual ranking — outliers vs their own socio-economic profile** | `/` → Socio-economic board → Residual view |
+| Bivariate rate × urbanisation choropleth | `/map` → choropleth mode → Bivariate |
 | **Station risk league, tiers, drivers, dossier drawer** | `/predict` |
-| Risk choropleth + risk halos on the map | `/predict` risk map · `/map` risk-halo layer |
-| **Anomaly feed, triage board, SLA, z-gauge** | `/alerts` · `/alerts?view=board` · `/alerts?breached=1` |
+| **Driver lift across the league (+ honesty caveat)** | `/predict` → Driver lift |
+| **Anomaly decomposition: σ recovery, excess, tail rarity** | `/alerts` → open any alert → Explain |
+| **Socio-economic context for one alert (per-lakh + percentiles)** | `/alerts` → open any alert → Context |
+| Corpus deviation profile / district × severity pressure | `/alerts` → Intel panel → Deviation · Pressure |
 | Alert → case drill | `/alerts` → any card → "Cases →" |
-| Case-level anomaly callout | `/cases?anomaly=1` → open a flagged FIR |
-| API | `GET /meta/socio` · `/insight/socio-correlation` · `/risk/stations` · `/alerts` · `/alerts/:id` · `/forecast` |
+| API | `GET /meta/socio` · `/insight/socio-correlation` · `/risk/stations` · `/alerts` · `/alerts/:id` · `/alerts/summary` · `/forecast` |
 
 ---
 
-## C4 — Pattern & Trend Discovery · 106 features ✅
+## C4 — Pattern & Trend Discovery · 173 features ✅ PASS (+73)
 
 ### What the challenge asks for
 
@@ -293,135 +365,175 @@ and period. Case-level anomaly flags carry a reason callout on the FIR detail.
 
 ### How DAPPA delivers it
 
-Temporal discovery lives on `/trends` and is genuinely statistical rather than
-decorative: an STL-style decomposition (client-side 2×12 moving average plus
-calendar-month indices) rendered as observed/trend/seasonal/residual small
-multiples with a linked axis cursor, Hyndman trend-strength and season-strength
-F-statistics with plain-language tooltips, level-shift changepoints found by
-binary segmentation on SSE and drawn as signed-percent step markers, residual
-outlier dots at |z| ≥ 2 *after* removing trend and season, a YoY-percent calendar
-on a diverging ramp, festival-window shading on real 2021–2026 Ugadi/Dasara/
-Deepavali dates, a crime-mix radar against the state baseline, and a district
-similarity finder using cosine distance over per-head profiles.
+This is the capability the recent work moved furthest, and the reason is that
+"statistical" is now literally true rather than a claim.
 
-Spatial discovery is the hotspot cluster layer on `/map` — centroid, radius,
-intensity band and hour band per cluster, ranked top-10 chips, numbered rank
-badges at the top-3 centroids, a nearest-station haversine readout, an
-incidents-within-radius statistic with dominant crime head, and a click-to-place
-radius probe reporting live density per km².
+**Spatial.** `client/src/routes/geointel/stats.js` bins incidents into an
+equal-area square lattice (2/5/10/25 km, origin snapped to a global grid so the
+same cell size always produces the same cells) and scores every occupied cell
+with **Getis-Ord Gi\*** — 3 × 3 queen weights including self, z-scores against
+the whole-lattice mean and sd with zeros included, banded at the 95% and 99%
+two-tailed cut-offs. A cell is called hot only when its local sum is
+significantly above what the state-wide mean predicts. Concentration is reported
+two ways (top-10-cell share and a **Gini index**) to answer "is this crime
+clustered or spread thin" in one number. The study area is capped at 400,000
+cells and the panel says `giSkipped` rather than melting the main thread.
+Alongside it: **nearest-station catchment allocation** (the load a station really
+absorbs regardless of where the jurisdiction boundary sits) with
+**coverage-gap detection** at a chosen response radius — the argument for a new
+outpost — and **co-located clusters**, pairs of hotspots whose footprints touch,
+i.e. one patrol can cover both.
 
-**Resource deployment** — the clause that distinguishes C4 from C1 — is the
-patrol-route suggestion: a nearest-neighbour-ordered dashed polyline over the
-top-3 visible hotspots, numbered stop markers with per-leg distance tooltips, a
-summary pill with total km and a drive-time estimate at 30 km/h, and a
-copy-as-text action for shift briefings. Critically, **the route respects the
-hour-band and hour-lens filters**, so a night band yields a night patrol route
-(features 449–453).
+**Temporal.** The existing STL-style decomposition, Hyndman trend/season strength
+statistics, binary-segmentation changepoints, residual outliers at |z| ≥ 2, YoY
+calendar and festival-window shading are joined by: a **day-level 53 × 7
+registration heat grid** (weekday columns make market days, weekend spikes and
+festival clusters visible, and a click drills to that single day), a **crime
+series detector** that chains cases by *gap* rather than binning by calendar
+month — three burglaries on the 29th, 31st and 2nd are one run across two months,
+and a month histogram splits them — and an **emerging-watch scored on the Poisson
+deviate** `(obs − exp)/√exp`, which is the right yardstick for counts: +8 on an
+expected 4 is a spike, +8 on an expected 400 is noise.
 
-### Feature list (106)
-
-**Trends + Predict — 33 · routes `/trends`, `/predict`**
-275, 276, 277, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292,
-325, 326, 327, 328, 330, 331, 332, 333, 334, 335, 344, 345, 346, 348, 349, 357,
-359
-
-**GeoIntel map — 30 · route `/map`**
-375, 376, 377, 384, 385, 389, 391, 392, 414, 415, 437, 438, 441, 443, 444, 445,
-446, 448, 449, 450, 451, 452, 453, 455, 457, 461, 467, 468, 469, 470
-
-**Command Dashboard — 18 · route `/`**
-2, 15, 23, 28, 29, 35, 36, 38, 50, 52, 62, 69, 70, 71, 79, 81, 82, 83
-
-**Case Explorer + FIR detail — 13 · routes `/cases`, `/cases/:id`**
-109, 125, 126, 133, 149, 151, 152, 155, 164, 165, 167, 168, 171
-
-**Catalyst backend — 11** · 739, 740, 741, 742, 743, 746, 761, 788, 789, 799, 800
-
-**Alerts — 1** · 253
+**Resource deployment** — the clause that distinguishes C4 from C1 — has two
+implementations. The patrol route (nearest-neighbour ordering over the top-3
+visible hotspots, per-leg distances, drive-time estimate, and critically it
+*respects the hour lens* so a night band yields a night route) is joined by a
+**deployment planner** that converts the same live numbers into a duty roster:
+60% of the declared patrol budget allocated in proportion to spatiotemporal
+cluster intensity and 40% in proportion to predicted 30-day station risk, with
+per-cluster beat counts, hour bands and night flags. **The 60/40 split is stated
+in a footnote rather than hidden, because it is a planning assumption a DySP
+should be able to argue with.** `StationLoad` answers the same question from the
+case corpus: station volume *and* median pendency, with a **Pareto line** showing
+how few stations carry 80% of the load — i.e. how concentrated a surge deployment
+can be before it stops buying anything.
 
 ### Where a judge sees it working
 
 | What | Where |
 |---|---|
-| **STL decomposition + strength stats + changepoints** | `/trends` → Decomposition panel |
-| Seasonality heat-map / weekday-vs-weekend profile | `/trends` → Seasonality card, Heatmap ⇄ Profile toggle |
-| Festival-window shading, YoY calendar, level shifts | `/trends` → monthly chart view switcher |
-| Crime-mix radar + district similarity finder | `/trends` → Crime-mix card |
-| **Spatial hotspot clusters, ranked chips, rank badges** | `/map?layers=hotspots` |
-| **Patrol route for resource deployment** | `/map` → press `P` (combine with `H` for a night route) |
-| Radius probe, density per km² | `/map` → probe tool |
-| Case-similarity pattern engine with why-matched reasons | `/cases/:id` → Similar cases panel |
-| API | `GET /trends/seasonality` · `/geo/hotspots` · `/trends/category-share` · `/insight/emerging` · `/cases/:id/similar` |
+| **Getis-Ord Gi\* hot/cold cells, 95%/99% bands, cell-size control** | `/map` → Analysis dock → Grid & statistics |
+| **Concentration: top-10-cell share + Gini** | same panel |
+| **Station catchment allocation + coverage gaps** | `/map` → Analysis dock → Catchment |
+| **Co-located compound zones (one patrol, two clusters)** | `/map` → Analysis dock → Hotspots (below the table) |
+| Spatial hotspot clusters, ranked chips, rank badges | `/map?layers=hotspots` |
+| **Deployment planner (60/40 beat allocation)** | `/` → Deployment panel |
+| Patrol route respecting the hour lens | `/map` → press `P` (combine with `H` for a night route) |
+| **Crime-series detector (gap-chained runs)** | `/cases` → Series detector → adjust window / min size |
+| **Station load board with Pareto 80% line** | `/cases` → Station load |
+| **Pendency distribution: buckets, p50/p75/p90, split by status** | `/cases` → Pendency |
+| **Day-level registration heat grid (53 × 7)** | `/cases` → Registration calendar |
+| **Emerging watch scored on the Poisson deviate** | `/cases` → Emerging watch |
+| CrimeNo serial-continuity integrity check | `/cases` → Serial gaps |
+| STL decomposition + strength stats + changepoints | `/trends` → Decomposition |
+| A/B comparator: levels ⇄ index 100 ⇄ ratio | `/trends` → A/B compare |
+| Severity mix: heinous share, rolling mean, share outliers | `/trends` → Severity mix |
+| API | `GET /geo/hotspots` · `/geo/incidents` · `/trends/seasonality` · `/trends/compare` · `/insight/emerging` · `/cases/:id/similar` |
 
 ---
 
-## C5 — Network & Behavioural Analysis · 45 features ❌ short by 55
+## C5 — Network & Behavioural Analysis · 85 features ❌ SHORT BY 15
 
 ### What the challenge asks for
 
 > Connections between suspects and **organised crime networks**. **Recurring
 > modus operandi** detection.
 
-### How DAPPA delivers it
+### How DAPPA delivers what it does deliver
 
-Organised-crime structure is community-first: Louvain communities precomputed
-into the graph, a community picker with per-group member/case/district stats, a
-chip strip with click-to-isolate, an isolated-community summary reporting edge
-density, districts spanned, top-5 member MO tags and a fly-to "key connector"
-(the member with the most cross-community links), and a hierarchical tree layout
-rooted at each component's highest-degree connector — the closest thing to an
-org chart the data supports.
+**Organised-crime structure** is now read three ways rather than one. Louvain
+communities are precomputed into the graph and drive a community picker, a
+click-to-isolate chip strip and an isolated-community summary reporting edge
+density, districts spanned, top-5 member MO tags and a fly-to "key connector".
+New on top: a **inter-group contact matrix** (`communityMatrix`) where the
+diagonal is a crew's internal cohesion and every off-diagonal cell is a contact
+surface between two crews — clicking the diagonal isolates that group, clicking
+off-diagonal highlights exactly the links that cross. And a **broker board**
+ranking people by **sampled Brandes betweenness** (the share of shortest
+association paths running *through* a person, sources sampled deterministically
+and the result flagged approximate), cross-referenced with **k-core depth**
+(Batagelj–Zaveršnik peeling: coreness *k* means you sit inside a subgraph where
+everyone has ≥ *k* co-accused links) and cross-community reach. The board names
+the pattern it is looking for: **high betweenness with low core depth is the
+classic courier/fixer signature — structurally indispensable, socially
+peripheral.**
 
-Recurring MO detection runs on both ends. Server-side, `POST /ai/narrative`
-extracts weapon / vehicle / entry / approach vocabulary from `BriefFacts` via a
-Zia flag path with a deterministic local extractor behind it, and
+**Recurring MO detection** runs at three levels. Server-side, `POST /ai/narrative`
+extracts weapon / vehicle / entry / approach vocabulary from `BriefFacts`, and
 `GET /offenders/mo-patterns` mines MO signatures with cross-jurisdiction
-detection. Client-side, the offender registry carries an MO co-occurrence matrix
-whose cell intensity is the number of offenders carrying both tags and whose
-cells apply the pair as an AND filter, plus AND-semantics MO tag chips with
-per-tag counts, and the compare drawer highlights MO tags shared by 2+ compared
-offenders.
+detection. Client-side, the offender registry carries an **MO co-occurrence
+matrix** whose cell intensity is the number of offenders carrying both tags and
+whose cells apply the pair as an AND filter. New: **`SimilarMo`** scores cosine
+similarity between MO tag sets across the whole loaded registry and reports
+shared districts alongside, so the interesting case — same method, jurisdiction
+that has not linked the two people — is the one that stands out. The
+`SeriesDetector` on `/cases` catches the same recurrence from the case side:
+same offence type, same station, no gap larger than the chosen window.
 
-Behavioural profiling is the Offender-360 depth: a behavioural-tempo card (days
+**Behavioural profiling** is the Offender-360 depth: behavioural tempo (days
 since last case, median inter-case gap, active span, last-12-months-versus-prior
-escalation delta), a case-mix distribution, a cases-per-year activity sparkline,
-dormancy markers flagging 12+ month gaps in the timeline, and a watchlist that
-renders starred people as diamond nodes on the graph with a dedicated sidebar.
+escalation delta), case-mix distribution, cases-per-year sparkline, dormancy
+markers at 12+ month gaps, and now the full structural position described under
+C2 — local cohesion (a coefficient near 1 says closed cell, near 0 says a hub who
+introduces otherwise-unconnected people), repeat-partner census, and the
+second-degree ring with its intermediaries, which is "where a co-offending
+network stops being a contact list and starts being an organisation".
 
-**Why it is short.** 45 features is the thinnest capability in the app and the
-one furthest from the bar. Almost everything lives on two routes; there is no
-behavioural *cohort* analysis, no MO-evolution-over-time view, no
-organised-crime scoring of a community as a whole, and the MO vocabulary is
-extraction-based rather than learned.
+### Why it is still short
 
-### Feature list (45)
+**85 against a bar of 100.** The previous audit put C5 at 45 and named five
+missing things: cohort behavioural analysis, MO-evolution-over-time,
+whole-community organised-crime scoring, MO-vs-outcome analysis, and behavioural
+change detection. **The recent work closed roughly 40 features and none of those
+five items.** What it added was structural depth on the existing two routes —
+better algorithms over the same graph — which is real and is counted, but the
+capability is still confined to `/network`, `/offenders` and `/offenders/:key`
+with two small footholds on `/cases` and `/reports`.
 
-**Network + Offenders + Offender-360 — 35 · routes `/network`, `/offenders`, `/offenders/:personKey`**
-476, 482, 483, 484, 485, 499, 506, 513, 516, 524, 527, 532, 533, 536, 537, 540,
-545, 546, 548, 550, 551, 552, 559, 560, 561, 562, 566, 567, 570, 571, 576, 577,
-578, 579, 580
+Concretely, still missing:
 
-**Catalyst backend — 8** · 752, 755, 763, 792, 793, 794, 795, 796
+- **No organised-crime score for a community as a whole.** `communityMatrix`
+  reports contact volume between groups; nothing ranks the groups themselves by
+  how organised they are (cohesion × persistence × MO consistency ×
+  geographic reach).
+- **No MO evolution over time.** MO tags are treated as a static set per person.
+  There is no view of a person's or a crew's MO drifting — the escalation signal
+  that matters operationally.
+- **No behavioural change detection.** The tempo card computes a
+  last-12-months-versus-prior delta but nothing alerts on it; there is no
+  escalation/de-escalation watchlist.
+- **No cohort/peer-group behavioural analysis.** `PeerCohortPanel` does this for
+  *cases* (C4/C3); there is no equivalent for *offenders* — "how does this
+  person's tempo compare with others of the same MO profile and case count".
+- **MO vocabulary is extraction-based, not learned.** The ~2,500-phrase tag
+  vocabulary is mined by a deterministic extractor; no clustering or embedding
+  discovers MO families that the vocabulary does not already name.
 
-**Case detail — 1** · 127 (narrative MO extraction) · **Reports — 1** · 229 (co-offending communities in the brief)
+Any two of those five, built out properly, would close the gap. The list is not
+an excuse — it is the build order.
 
 ### Where a judge sees it working
 
 | What | Where |
 |---|---|
-| Community picker, isolate, density, key connector | `/network` → community chip strip |
+| **Inter-group contact matrix (cohesion diagonal, cross-crew cells)** | `/network` → Group matrix → click a diagonal or off-diagonal cell |
+| **Broker board: Brandes betweenness × k-core × cross-group reach** | `/network` → Broker board → switch sort mode |
+| Community picker, isolate, density, key connector | `/network` → community chip strip → Community summary |
 | Organised-crime tree layout | `/network` → layout switcher → Tree |
-| **MO co-occurrence matrix** | `/offenders` → MO co-occurrence card → click a cell |
+| **MO co-occurrence matrix** | `/offenders` → MO co-occurrence → click a cell (applies both tags as AND) |
+| **Cosine MO fingerprint match with shared-district count** | `/offenders/:personKey` → Similar MO |
+| **Repeat co-offending pairs (the crews that keep recurring)** | `/offenders` → Co-offending pairs |
+| **k-core depth, local cohesion, 2nd-degree ring** | `/offenders/:personKey` → Network position |
+| Behavioural tempo, case-mix, dormancy markers | `/offenders/:personKey` |
+| **Recurring series at one station (gap-chained)** | `/cases` → Series detector |
 | MO tag filters with AND semantics | `/offenders?mo=vehicle-theft,night-entry` |
-| **Behavioural tempo, case-mix, dormancy markers** | `/offenders/:personKey` |
-| Watchlist (diamond nodes + sidebar) | `/network` → star a node → Watchlist panel |
-| Narrative MO extraction from FIR text | `/cases/:id` → Narrative insights panel |
-| Co-offending communities in the printed brief | `/reports` → `/print/brief` |
-| API | `GET /network/communities` · `/offenders/mo-patterns` · `POST /ai/narrative` · `POST /offenders/watch` |
+| Narrative MO extraction from FIR text | `/cases/:id` → Narrative insights |
+| API | `GET /network/communities` · `/offenders/mo-patterns` · `POST /ai/narrative` |
 
 ---
 
-## C6 — AI/ML-Driven Intelligence · 85 features ❌ short by 15
+## C6 — AI/ML-Driven Intelligence · 125 features ✅ PASS (+25)
 
 ### What the challenge asks for
 
@@ -430,192 +542,228 @@ extraction-based rather than learned.
 
 ### How DAPPA delivers it
 
-Five distinct model families ship, each with a flag-gated live path and an
+Five model families ship, each with a flag-gated Catalyst path and an
 identical-shape deterministic fallback, and each is *explained* in the UI rather
-than presented as an oracle:
+than presented as an oracle: robust median/MAD anomaly detection refreshed
+nightly (plus a live path where an FIR insert triggers an incremental
+`AggMonthly` upsert, a z-check and a deduplicated `AnomalyAlert` insert — the
+register-FIR-see-alert demo storyline); Holt-Winters forecasting with 80%
+confidence bands and backtest MAPE; outcome classification via
+`POST /predict/outcome` with an embedded logistic fallback, ROC-AUC, a what-if
+delta and a counterfactual sensitivity tornado; weighted station risk scoring
+with named drivers; and a natural-language copilot exposing its generated ZCQL,
+cited Data Store tables, intent chip and confidence badge.
 
-- **Anomaly detection** — robust median/MAD z-scores refreshed nightly by
-  `dappa_nightly`, plus a live path in `dappa_event` where an FIR insert triggers
-  an incremental `AggMonthly` upsert, a z-check and a deduplicated
-  `AnomalyAlert` insert (the register-FIR-see-alert demo storyline). Surfaced
-  with observed-vs-expected sparklines carrying an expected ±2σ band.
-- **Forecasting** — Holt-Winters monthly forecasts with 80% confidence bands and
-  a backtest MAPE, plus a *client-side* 6-month holdout backtest that races
-  seasonal-naive, drift and 3-month-mean challengers against actuals and scores
-  them on MAPE / MAE / signed bias, with an honesty footnote that this is a
-  single holdout and not cross-validation.
-- **Outcome classification** — `POST /predict/outcome` via QuickML with an
-  embedded logistic fallback, reporting predicted class, ROC-AUC, a what-if
-  delta versus the previous run, and a six-point counterfactual sensitivity
-  sweep rendered as a tornado with a biggest-lever insight sentence.
-- **Risk scoring** — weighted station risk recomputed nightly with named drivers.
-- **NL copilot** — `POST /copilot/query` with a QuickML LLM+RAG flag path falling
-  through to a deterministic 15-intent parser, exposing the generated ZCQL, the
-  cited Data Store tables, an "Understood as" intent chip, a confidence badge
-  (Exact aggregate / Modelled estimate / Unmatched) and a parse→intent→query→
-  template pipeline reveal.
+The previous audit's C6 gap was **model evaluation** — "no model-comparison UI
+beyond the forecast backtest, no drift monitoring, no confidence calibration
+view". That is largely closed:
 
-Hidden-correlation surfacing is the OLS/Pearson fit on the socio scatter, the
-`GET /insight/socio-correlation` endpoint scoring five indicators with
-plain-language interpretation, the district cosine-similarity finder, and the
-copilot's *"why is X rising"* diagnostic which returns a trend verdict plus a
-contributing sub-pattern, a matching open alert and the strongest hotspot as
-cited causes.
+- **`AccuracyBoard`** replays an identical 6-month holdout for *every crime head*
+  over the live monthly aggregates, races three transparent challengers
+  (seasonal-naive, drift, 3-month mean) on each, and puts the winner's MAPE
+  beside the deployed model's own backtest MAPE from `ForecastMonthly`. MAPE is
+  banded into quality tiers on the usual forecasting rules of thumb. **Heads with
+  too little history are listed as such rather than hidden** — the silence that
+  usually flatters a model board is refused explicitly.
+- **`HorizonPanel`** unpacks the 80% band the model returned: width at each step
+  ahead, how that width grows relative to the point forecast, and the whole
+  horizon as a planning range. "The widening rate is the number that tells an
+  officer how far out the projection is still worth staging resources against."
+- **`DriverLift`** aggregates what the risk model is reacting to league-wide —
+  driver prevalence, mean-risk lift on stations carrying each signal, and
+  co-occurring driver pairs, because signals that always travel together explain
+  less than two independent ones.
 
-Model governance is a first-class surface: a model-cards sheet giving purpose,
-inputs, method, metrics, caveats and a fairness note per model; a methodology
-annex in the brief; and an AI degradation-design explainer on `/about` naming
-the live path and the fallback for each feature.
+**Hidden-correlation surfacing** is now statistically defensible rather than
+visual: the correlation matrix's per-cell two-tailed t-test with significance
+stars, the OLS/Pearson fit on the socio scatter, `GET /insight/socio-correlation`
+scoring five indicators with plain-language interpretation, the district
+cosine-similarity finder, and the copilot's *"why is X rising"* diagnostic.
+**Anomaly detection** gained the alert decomposition described under C3 plus the
+Poisson-deviate emerging-watch and the Gi\* spatial significance test — anomaly
+detection in space as well as in time. **Emerging-risk prediction** is
+`/insight/emerging` (last-3-month average against the prior 9-month baseline per
+sub-head, so a category that quietly doubled inside a flat statewide total still
+surfaces) now wired into three surfaces.
 
-**Why it is short.** 85 is close, and the gap is 15. The models are real but the
-count is limited by there being five of them — much of the ML surface area is
-concentrated in `/predict` and `/copilot`, and the copilot's contribution is
-mostly transparency chrome rather than distinct inference capabilities.
+Model governance is a first-class surface: model cards giving purpose, inputs,
+method, metrics, caveats and a fairness note per model; a new
+`GET /ml/models` registry reporting every model's live status across QuickML,
+Zia AutoML and the in-function models (`serving` / `console-pending` /
+`disabled`); a methodology annex in the brief; and an AI degradation-design
+explainer on `/about`.
 
-### Feature list (85)
+### The honest caveat on "AI"
 
-**Trends + Predict — 32 · routes `/trends`, `/predict`**
-282, 289, 290, 302, 305, 306, 313, 315, 317, 318, 319, 322, 323, 325, 326, 327,
-328, 330, 338, 341, 348, 350, 351, 352, 353, 354, 355, 360, 363, 364, 365, 366
-
-**Catalyst backend — 18**
-747, 748, 756, 757, 761, 762, 763, 764, 765, 766, 779, 780, 784, 788, 798, 799,
-800, 801
-
-**Copilot — 16 · route `/copilot`**
-585, 589, 590, 593, 595, 625, 626, 627, 628, 629, 630, 631, 636, 637, 644, 648
-
-**Alerts + Reports — 8** · 178, 193, 197, 229, 244, 245, 255, 258
-
-**Command Dashboard — 6** · 7, 8, 59, 62, 63, 68
-
-**Case detail — 4** · 111, 122, 127, 164 · **Offender-360 — 1** · 575
+**In the currently deployed configuration every Catalyst AI flag is `off`**
+(`FEATURE_QUICKML`, `FEATURE_QUICKML_LLM`, `FEATURE_ZIA`, `FEATURE_ZIA_OCR`,
+`FEATURE_ZIA_TRANSLATE`, `FEATURE_ZIA_AUTOML`, `FEATURE_SMARTBROWZ` — see
+`functions/dappa_api/catalyst-config.json`). **What runs today is the
+deterministic fallback for each one**: the embedded logistic model, the 15-intent
+parser, the local MO extractor. Those are real, tested implementations and the
+features above genuinely work — but a judge should be told that the QuickML and
+Zia paths are wired, contract-tested and *not currently serving*. Each needs a
+console step documented in `docs/CONSOLE_SETUP.md` and a flag flip.
+`GET /ml/models` reports exactly this, per model, which is the right way for the
+app to answer the question about itself.
 
 ### Where a judge sees it working
 
 | What | Where |
 |---|---|
-| **Model cards — purpose, method, metrics, caveats, fairness** | `/predict` → Model cards sheet |
+| **Per-head forecast accuracy board, 3 challengers, MAPE tiers** | `/predict` → Accuracy board |
+| **Horizon reliability: band width, widening rate, planning range** | `/predict` → Horizon panel |
+| **Driver lift across the risk league** | `/predict` → Driver lift |
+| Model cards — purpose, method, metrics, caveats, fairness | `/predict` → Model cards |
 | Outcome classifier + AUC + what-if delta | `/predict` → outcome form → Score |
-| **Counterfactual sensitivity tornado** | `/predict` → after a scoring run |
-| **Holdout backtest scoreboard (MAPE/MAE/bias)** | `/predict` → Backtest panel |
+| Counterfactual sensitivity tornado | `/predict` → after a scoring run |
+| Holdout backtest scoreboard (MAPE/MAE/bias) | `/predict` → Backtest panel |
 | Forecast with 80% CI + model + MAPE | `/predict` → Forecast explorer · `/` → 5th KPI tile |
-| Scenario planner (±30% uplift over the forecast) | `/predict` → Scenario panel |
-| **NL copilot with ZCQL reveal, intent, confidence** | `/copilot` |
-| "Why is X rising" causal diagnostic | `/copilot` → ask *"why is theft rising in Bengaluru"* |
+| **Hidden correlations with significance testing** | `/trends` → Correlation matrix |
+| **Anomaly decomposition (σ recovery, tail rarity)** | `/alerts` → open an alert → Explain |
+| **Statistical spatial anomaly (Gi\* 95%/99%)** | `/map` → Analysis dock → Grid & statistics |
+| Emerging-risk scoring | `/` → Emerging board · `/trends` → Emerging panel · `/cases` → Emerging watch |
+| NL copilot with ZCQL reveal, intent, confidence | `/copilot` |
 | Live anomaly pipeline (event function) | register an FIR → alert appears at `/alerts` |
+| **Model registry: what is serving vs console-pending** | `GET /ml/models` |
 | AI degradation design (live path vs fallback) | `/about` → AI degradation card |
-| API | `POST /predict/outcome` · `/copilot/query` · `/ai/narrative` · `GET /forecast` · `/risk/stations` · `/insight/socio-correlation` |
+| API | `POST /predict/outcome` · `/copilot/query` · `/ai/narrative` · `/zia/ocr` · `GET /forecast` · `/risk/stations` · `/insight/socio-correlation` · `/insight/emerging` · `/ml/models` |
 
 ---
 
-## Shortfalls
+<a id="shortfall"></a>
+## Shortfall
 
-**Three capabilities do not clear 100 working features.** This is the list the
-frontend agents build against; the numbers are gaps, not targets to argue down.
+**One capability does not clear 100 working features.**
 
 | Capability | Now | Bar | **Gap** | Where the thin ground is |
 |---|---:|---:|---:|---|
-| **C5 Network & Behavioural** | 45 | 100 | **−55** | Everything lives on `/network` + `/offenders`. No cohort/peer-group behavioural analysis, no MO-evolution-over-time, no whole-community organised-crime scoring, no MO-vs-outcome analysis, no behavioural change detection (escalation/de-escalation alerts). The MO co-occurrence matrix is the only true MO-mining UI. |
-| **C2 Network & Link Analysis** | 62 | 100 | **−38** | Victims and *recurring locations* are barely in the graph — victims are a case-detail party panel only, locations only appear as case-similarity geo-proximity. No location nodes, no victim-suspect bipartite view, no temporal link evolution, no link-prediction ("who is likely connected but not yet co-accused"), no multi-hop path ranking beyond a single shortest path. |
-| **C6 AI/ML Intelligence** | 85 | 100 | **−15** | Closest to the bar. Five model families, but inference surface is concentrated; no model-comparison UI beyond the forecast backtest, no drift monitoring, no per-prediction explanation beyond driver ranking, no batch scoring, no confidence calibration view. |
+| **C5 Network & Behavioural** | 85 | 100 | **−15** | No whole-community organised-crime scoring · no MO-evolution-over-time · no behavioural change detection (escalation alerts) · no offender peer-cohort analysis · MO vocabulary is extraction-based, not learned. Everything still lives on `/network` + `/offenders` + Offender-360. |
 
-Two structural notes that bear on how the shortfalls get closed:
+**C2 at 105 should be treated as provisional, not comfortable.** Five features
+over the bar is inside the margin of any hand classification, and the victim /
+recurring-location third of C2's capability statement is unimplemented. If a
+judge reads C2 on statement coverage rather than count, it reads as partial. The
+cheapest genuine fix is victim nodes in the graph (the `Victim` table has 53,836
+rows already loaded) — that is one data join away and would add a bipartite view
+plus victim-recurrence detection.
 
-**C2 and C5 overlap by 23 features and their union is 84.** The challenge scores
-them separately but the two capability statements genuinely overlap. If a judge
-merged them into one network capability, the honest merged number is **84, still
-short of 100** — closing them separately is the safer plan, and features that
-serve both (community isolation, node drawers, the offender registry) are the
-efficient place to build.
+**C2 and C5 overlap by 31 features and their union is 159.** If a judge merged
+them into one network capability, the honest merged number is 159 — comfortably
+past 100. They are scored separately, so C5 has to be closed separately, and
+features serving both (the community machinery, the analysis engine, the
+Offender-360 network panel) remain the efficient place to build.
+
+---
+
+## Honesty flags
 
 <a id="backend-only"></a>
-**14 features are backend-only.** These endpoints are implemented, contract-tested
-in `functions/dappa_api/test/run.mjs`, and answer correctly to `curl` — but no
-client file calls them, verified by grepping `client/src` for each path:
+**Backend-only endpoints.** The previous audit listed 14 endpoints implemented,
+contract-tested and `curl`-verifiable that no client file called. **Four of those
+groups are now wired** — `/insight/socio-correlation`, `/insight/emerging`,
+`/alerts/summary` and `/trends/compare` all have client consumers today. What
+remains unwired, verified by grepping `client/src` for every path:
 
-| Feature(s) | Endpoint | Status in the UI |
-|---|---|---|
-| 790, 791 | `GET /network/path` | Capability **is** visible — the client runs its own BFS in `client/src/routes/network/graphUtils.js` (features 497–498). Endpoint unused. |
-| 792 | `GET /network/communities` | Visible — client derives communities from graph node fields (483–485). Endpoint unused. |
-| 784–787 | `GET /insight/socio-correlation` | Visible — `SocioScatter.jsx` computes Pearson client-side from `/meta/socio` + `/geo/districts` (336–343). Endpoint unused. |
-| 788, 789 | `GET /insight/emerging` | Visible — dashboard rising chips derive from KPI `topRisingSubhead` + category share (feature 29). Endpoint unused. |
-| 793 | `GET /offenders/mo-patterns` | Visible — MO co-occurrence matrix is computed client-side in `Offenders.jsx` (566). Endpoint unused. |
-| 797 | `GET /alerts/summary` | Visible — counts derived from `/alerts` (190). Endpoint unused. |
-| 782, 783 | `GET /meta/challenge` | About page renders a **hardcoded client constant**, not the endpoint (645–646). |
-| 742 | `GET /trends/compare` | No UI consumer at all; compare views issue two `/trends/monthly` calls. |
+| Endpoint | Status in the UI |
+|---|---|
+| `GET /network/path` | Capability **is** visible — the client runs its own BFS in `network/graphUtils.js` plus a Dijkstra in `network/analysis.js`. Endpoint unused. |
+| `GET /network/communities` | Visible — the client derives communities from graph node fields. Endpoint unused. |
+| `GET /offenders/mo-patterns` | Visible — the MO co-occurrence matrix and `SimilarMo` compute client-side. Endpoint unused. |
+| `POST /offenders/watch` | **Not used at all.** The watchlist is `localStorage` only (`offenders/watchlistStore.js`), synced across tabs by a `storage` event. It works; it does not persist server-side. |
+| `GET /meta/challenge` | `/about` renders a hardcoded client constant, not the endpoint. |
+| `GET /meta/services`, `/search/cases`, `/zia/ocr`, `/zia/translate`, `/ml/models` | **New this wave, and none has a client consumer yet.** They are contract-tested and answer correctly, but the Catalyst service-coverage story they tell is not on screen. |
 
-None of these is a missing capability — in every case but `/trends/compare` the
-capability is on screen. They are duplicated logic, and wiring the client to the
-server endpoints would move the computation onto Catalyst functions (stronger
-under the platform rule) and free the client of maths it should not be doing.
-This is a cleanup, not a gap, and it is worth doing before the demo.
+**The 22 new endpoints are mostly platform surface, not capability surface.**
+All 22 live in `functions/dappa_api/lib/routes/services.js`: `/meta/services`,
+`/search/cases`, four `/auth/*`, two `/admin/digest/*`, four `/notify/*`, three
+artefact routes (`/reports/archive`, `/reports/artifacts`,
+`/reports/artifacts/:id`), two `/admin/circuit/*`, two `/connections/*`,
+`/zia/ocr`, `/zia/translate` and `/ml/models`. Only `/zia/ocr` and `/ml/models`
+are counted toward a scored
+capability (C6). The rest demonstrate Catalyst-native service coverage —
+Authentication, Mail, Push, File Store/Stratus, Circuits, Connections, Search —
+which matters for the platform rule but is **not** evidence for C1–C6, and is
+excluded from every count in this document.
 
-### Two other honesty flags
+**Other flags carried forward.**
 
-- **Feature 268–271, the scheduled-delivery card on `/reports`, is explicitly
-  visual only.** The frequency, day, time and recipient pickers persist and
-  render a human-readable summary and a computed next-run timestamp, but nothing
-  schedules. The "Send test digest now" button is real (Catalyst Mail, flag-gated).
-  It is counted as infrastructure, not toward any capability.
-- **Feature 604, copilot voice input, uses the browser's
-  `webkitSpeechRecognition`, not Catalyst Zia speech-to-text.** The organiser's
-  platform rule says using a third-party alternative where a Catalyst service
-  exists invalidates the submission, and Zia speech-to-text is on the sanctioned
-  list. A browser API is arguably not a third-party *service*, but this is the
-  one place in the app where that argument has to be made rather than avoided.
-  It is counted as infrastructure, not toward C6.
+- **The scheduled-delivery card on `/reports` is visual only.** Frequency, day,
+  time and recipient pickers persist and render a next-run timestamp; nothing
+  schedules. The "Send test digest now" button is real (Catalyst Mail,
+  flag-gated). Counted as infrastructure.
+- **Copilot voice input uses the browser's `webkitSpeechRecognition`, not
+  Catalyst Zia speech-to-text.** The organiser's platform rule says using a
+  third-party alternative where a Catalyst service exists invalidates the
+  submission. A browser API is arguably not a third-party *service*, but this is
+  the one place in the app where that argument has to be made rather than
+  avoided. Counted as infrastructure, not toward C6.
+- **`FEATURES.md` is stale.** Its 808 entries were cataloged before this wave and
+  do not include any of the ~230 new capability-bearing features. The baseline
+  half of every number here traces to it; the delta half was counted directly
+  from source for this audit.
+
+---
 
 <a id="overlap"></a>
 ## Overlap
 
-184 of the 398 classified features serve more than one capability. The matrix
-below is the full disclosure — read a row as "of C*row*'s features, N are also
-counted under C*col*". The diagonal is each capability's total.
+Read a row as "of C*row*'s features, N are also counted under C*col*". The
+diagonal is each capability's total.
 
 |  | C1 | C2 | C3 | C4 | C5 | C6 |
 |---|---:|---:|---:|---:|---:|---:|
-| **C1** | **186** | 4 | 40 | 71 | 2 | 14 |
-| **C2** | 4 | **62** | 2 | 1 | 23 | 2 |
-| **C3** | 40 | 2 | **119** | 12 | 3 | 35 |
-| **C4** | 71 | 1 | 12 | **106** | 0 | 15 |
-| **C5** | 2 | 23 | 3 | 0 | **45** | 3 |
-| **C6** | 14 | 2 | 35 | 15 | 3 | **85** |
+| **C1** | **240** | 7 | 52 | 96 | 4 | 22 |
+| **C2** | 7 | **105** | 2 | 6 | 31 | 4 |
+| **C3** | 52 | 2 | **167** | 24 | 4 | 58 |
+| **C4** | 96 | 6 | 24 | **173** | 5 | 31 |
+| **C5** | 4 | 31 | 4 | 5 | **85** | 5 |
+| **C6** | 22 | 4 | 58 | 31 | 5 | **125** |
 
-The heavy pairs are unsurprising and defensible: **C1∩C4 = 71** (a hotspot
-cluster you can see *and* that was found statistically is both), **C3∩C6 = 35**
-(a risk score is both a predictive dashboard and an ML model), **C1∩C3 = 40**
-(anomaly call-outs are rendered visually), and **C2∩C5 = 23** (the graph serves
-link analysis and organised-crime roll-up alike).
+The heavy pairs are unsurprising and defensible: **C1∩C4 = 96** (a hotspot you
+can see *and* that was found by a Gi\* test is both), **C3∩C6 = 58** (a risk
+score is a predictive dashboard and an ML model; a significance-tested
+correlation is a socio-economic explanation and a hidden-correlation surface),
+**C1∩C3 = 52** (anomaly and socio call-outs are rendered visually), and
+**C2∩C5 = 31** (the graph engine serves link analysis and organised-crime
+roll-up alike).
 
-If a judge prefers a strict partition with no feature counted twice — attributing
-each feature to its single strongest capability — the numbers become **C1 186,
-C3 77, C2 58, C6 33, C4 24, C5 20**, summing to the 398 classified features.
-That view is defensible but misleading: it collapses C4 to 24 purely because
-most of its features are also visualization, which is a fact about how the app
-renders discovery rather than about whether discovery happens.
+If a judge prefers a strict partition with no feature counted twice, attributing
+each feature to its single strongest capability, the numbers become **C1 178,
+C3 88, C2 66, C4 66, C6 45, C5 45**. That view is defensible but misleading: it
+collapses C4 largely because most of its output is also rendered visually, which
+is a fact about how the app draws discovery rather than about whether discovery
+happens.
 
 ---
 
 ## Verification
 
-| Check | Command |
-|---|---|
-| Endpoint contracts (all 43 routes, fixture mode, auth, privacy guardrail) | `node functions/dappa_api/test/run.mjs` |
-| Trilingual key parity (3,356 English keys × kn + hi) | `node scripts/check_i18n.mjs` |
-| Live smoke test against a deployment | `node scripts/smoke_test.mjs <BASE_URL>` |
-| Data completeness per table vs expected counts | `GET /server/dappa_api/healthz` |
-| Caste/religion never reaches the UI or an export | contract suite — privacy guardrail case, enforced on `GET /cases/:id` |
+| Check | Command | Result on 26 Jul 2026 |
+|---|---|---|
+| Endpoint contracts (all 66 routes, auth, privacy guardrail) | `node functions/dappa_api/test/run.mjs` | **623 passed, 0 failed** |
+| Trilingual key parity | `node scripts/check_i18n.mjs` | **4,590 English keys × kn + hi, all present** |
+| Live smoke test against a deployment | `node scripts/smoke_test.mjs <BASE_URL>` | run before the demo |
+| Data completeness per table vs expected | `GET /server/dappa_api/api/v1/healthz?nocache=1` | `ChargesheetDetails` 39.8%, others full |
+| Caste/religion never reaches the UI or an export | contract suite — privacy guardrail case on `GET /cases/:id` | passing |
 
-**Audit method.** Classification was done by reading all 808 entries of
-[`FEATURES.md`](FEATURES.md) against the challenge text, then spot-verifying
-capability-critical claims in source: the hour-band spatiotemporal filtering
-(`client/src/routes/geointel/`), the BFS path finder
-(`client/src/routes/network/graphUtils.js`), the socio scatter
-(`client/src/routes/trends/SocioScatter.jsx`), the server capability map and
-correlation endpoint (`functions/dappa_api/lib/routes/extras.js`), and the client
-consumers of every second-pass endpoint. The app is 154 client components across
-~36,650 lines plus a 4,667-line Catalyst function set — the catalog is not
-inflated relative to the code.
+**Audit method.** The baseline classification of the 808 `FEATURES.md` entries
+was carried forward. Everything added since was audited first-hand for this
+document: each new file read in full or to its analytic core; **every new
+component's wiring verified** by grepping its parent route for the render (all
+are reachable — several alerts panels render indirectly through `IntelPanel` and
+`AlertDetailSheet`, and `PeerCohortPanel`/`CaseCompleteness` render on
+`/cases/:id` rather than `/cases`); **every export of every new analysis module
+checked for consumers** (`network/analysis.js`, `geointel/stats.js`,
+`dashboard/analytics.js`, `trends/analysis.js`, `cases/deepScan.js`,
+`alerts/explain.js` — no dead exports; `adjacency`, `moSimilarity`, `giBand`,
+`giniIndex`, `socioIndex`, `normalTail` have no *external* consumer because they
+are internal helpers of other exports in the same file); the contract suite run;
+the data volumes checked against `pipeline/out/*.csv`; and the deployed feature
+flags read from `catalyst-config.json`.
+
+The app is **207 client components across 52,200 lines** (excluding the ~14,000
+lines of trilingual locale data) plus a **7,046-line Catalyst function set**. The
+counts in this document are not inflated relative to the code.
 
 *Last audited against the repository state of 26 July 2026.*
