@@ -81,10 +81,12 @@ async function getRaw(path, base) {
 
 // --- pure-function pins ------------------------------------------------------
 
-// ZCQL LIMIT uses MySQL skip semantics ("LIMIT 1,3" starts at the SECOND
-// record) — the offset must be emitted verbatim, never off+1.
+// ZCQL's LIMIT first argument is a 1-BASED START ROW, not a rows-to-skip count.
+// Measured live: "LIMIT 10,10" returns rows 10..19. So a zero-based offset goes
+// out as offset+1, and page 1 omits it entirely.
 check('buildZCQL LIMIT page 1 omits offset', buildZCQL({ table: 'T', limit: { offset: 0, count: 50 } }).endsWith(' LIMIT 50'));
-check('buildZCQL LIMIT page 2 is skip-count', buildZCQL({ table: 'T', limit: { offset: 50, count: 50 } }).endsWith(' LIMIT 50,50'));
+check('buildZCQL LIMIT page 2 sends a 1-based start row', buildZCQL({ table: 'T', limit: { offset: 50, count: 50 } }).endsWith(' LIMIT 51,50'));
+check('buildZCQL LIMIT page 3 start row', buildZCQL({ table: 'T', limit: { offset: 100, count: 50 } }).endsWith(' LIMIT 101,50'));
 
 // ZCQL wildcards are * and ?, not SQL's % and _. Verified against the live
 // 45,000-row store: BriefFacts LIKE '%theft%' matches 0 rows while '*theft*'
@@ -1057,6 +1059,58 @@ for (const utterance of CANNED_UTTERANCES) {
   const offCsv = await getRaw('/offenders.csv');
   check('offenders.csv rows', offCsv.status === 200 && offCsv.contentType.startsWith('text/csv') && offCsv.text.trim().split(/\r?\n/).length === 7);
   check('offenders.csv joins arrays', offCsv.text.includes('two-wheeler|gold-chain|night'));
+
+  // Regression: the CSV exports used to ask the live store for 1,000 rows in a
+  // single SELECT. ZCQL truncates at 300 and an over-cap ask fell through to
+  // the fixture evaluator, so the download handed out stub rows while the JSON
+  // route beside it served real data. Assert the query is PAGED, not widened.
+  const sqlSeen = [];
+  const spy = { execute: async (sql, q) => { sqlSeen.push(sql); return stub.execute(sql, q); } };
+  const spyApp = createApp({ clientFactory: () => spy });
+  const spyServer = spyApp.listen(0);
+  const SPY = `http://127.0.0.1:${spyServer.address().port}/api/v1`;
+  await getRaw('/cases.csv', SPY);
+  const caseSelects = sqlSeen.filter((s) => /FROM CaseMaster/.test(s) && / LIMIT /.test(s));
+  check('cases.csv never asks for more than one ZCQL page at a time',
+    caseSelects.length > 0 && caseSelects.every((s) => {
+      const m = s.match(/ LIMIT (?:\d+,)?(\d+)$/);
+      return m && Number(m[1]) <= ZCQL_PAGE;
+    }), caseSelects.slice(0, 2).join(' | '));
+
+  sqlSeen.length = 0;
+  await getRaw('/alerts.csv?limit=600', SPY);
+  const alertSelects = sqlSeen.filter((s) => /FROM AnomalyAlert/.test(s) && / LIMIT /.test(s));
+  check('alerts.csv pages instead of over-asking',
+    alertSelects.length > 0 && alertSelects.every((s) => {
+      const m = s.match(/ LIMIT (?:\d+,)?(\d+)$/);
+      return m && Number(m[1]) <= ZCQL_PAGE;
+    }), alertSelects.slice(0, 2).join(' | '));
+  spyServer.close();
+}
+
+// --- paging stability --------------------------------------------------------
+
+{
+  // Regression: ORDER BY CrimeRegisteredDate alone is not a total order — 45,000
+  // cases sit on ~1,100 distinct dates — so offset windows repeated some rows
+  // and dropped others. A unique tiebreaker makes paging total.
+  const sql = buildZCQL({
+    table: 'CaseMaster', columns: ['CaseMasterID'],
+    orderBy: { col: 'CrimeRegisteredDate', desc: true, tieBreak: 'CaseMasterID' },
+    limit: { offset: 50, count: 50 }
+  });
+  check('buildZCQL emits the tiebreaker in the same direction',
+    sql.includes('ORDER BY CrimeRegisteredDate DESC, CaseMasterID DESC'), sql);
+
+  const seen = new Set();
+  let delivered = 0;
+  for (let page = 1; page <= 6; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await get(`/cases?page=${page}&perPage=5`);
+    for (const row of r.json.data) { seen.add(String(row.caseMasterId)); delivered += 1; }
+  }
+  check('paged /cases delivers no duplicate rows across pages',
+    delivered > 0 && seen.size === delivered, `${delivered} delivered, ${seen.size} unique`);
 }
 
 // --- HTTP hardening: ETag/304, request-id, rate-limit headers, TTL policy ----

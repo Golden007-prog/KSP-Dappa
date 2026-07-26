@@ -1,0 +1,7 @@
+personKey,canonicalName,aliases,caseCount,districts,moTags,riskScore,communityId
+P001,Ravi Kumar,Ravi Kumar B|R Kumar,6,0101|0103,two-wheeler|gold-chain|night,87.5,1
+P002,Manjunath Shetty,M Shetty,4,0101,lock-breaking|gas-cutter,72.3,1
+P004,Prakash Naik,P Naik,5,0109|0111,vehicle-theft,64.9,2
+P003,Nagaraj Gowda,,3,0103,otp-fraud,55,1
+P005,Shivakumar Hegde,,3,0109,vehicle-theft|country-made-pistol,51.2,2
+P006,Lakshman Rao,,1,0107,,12,

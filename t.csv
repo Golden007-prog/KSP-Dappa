@@ -1,0 +1,41 @@
+caseMasterId,crimeNo,caseNo,registeredDate,districtName,unitName,headName,subHeadName,statusName,gravityName,anomalyFlag
+24,101111111202600024,202600024,2026-07-25,,1111,Property Crimes,Vehicle Theft,Under Investigation,Non-Heinous,false
+21,101031031202600021,202600021,2026-07-22,,1031,Crimes Against Body,Murder,Charge Sheeted,Heinous,false
+18,101091091202600018,202600018,2026-07-19,,1091,Property Crimes,Chain Snatching,Closed,Non-Heinous,false
+15,101011011202600015,202600015,2026-07-16,,1011,Property Crimes,Robbery,Pending Trial,Non-Heinous,false
+12,101071071202600012,202600012,2026-07-13,,1071,Economic Offences,Cheating,Under Investigation,Non-Heinous,false
+39,101111111202600039,202600039,2026-07-13,,1111,Property Crimes,Chain Snatching,Pending Trial,Non-Heinous,false
+9,101111111202600009,202600009,2026-07-10,,1111,Property Crimes,HB Night,Charge Sheeted,Non-Heinous,false
+36,101031031202600036,202600036,2026-07-10,,1031,Property Crimes,Robbery,Under Investigation,Non-Heinous,false
+6,101031031202600006,202600006,2026-07-07,,1031,Cyber Crimes,Online Fraud,Closed,Non-Heinous,false
+33,101091091202600033,202600033,2026-07-07,,1091,Economic Offences,Cheating,Charge Sheeted,Non-Heinous,false
+3,101091091202600003,202600003,2026-07-04,,1091,Property Crimes,Vehicle Theft,Pending Trial,Non-Heinous,false
+30,101011011202600030,202600030,2026-07-04,,1011,Property Crimes,HB Night,Closed,Non-Heinous,false
+27,101071071202600027,202600027,2026-07-01,,1071,Cyber Crimes,Online Fraud,Pending Trial,Non-Heinous,false
+25,101011012202600025,202600025,2026-06-26,,1012,Property Crimes,Chain Snatching,Charge Sheeted,Non-Heinous,false
+22,101071072202600022,202600022,2026-06-23,,1072,Property Crimes,Robbery,Closed,Non-Heinous,false
+19,101111112202600019,202600019,2026-06-20,,1112,Economic Offences,Cheating,Pending Trial,Non-Heinous,false
+16,101031032202600016,202600016,2026-06-17,,1032,Property Crimes,HB Night,Under Investigation,Non-Heinous,false
+13,101091092202600013,202600013,2026-06-14,,1092,Cyber Crimes,Online Fraud,Charge Sheeted,Non-Heinous,false
+40,101011012202600040,202600040,2026-06-14,,1012,Economic Offences,Cheating,Under Investigation,Non-Heinous,false
+10,101011012202600010,202600010,2026-06-11,,1012,Property Crimes,Vehicle Theft,Closed,Non-Heinous,false
+37,101071072202600037,202600037,2026-06-11,,1072,Property Crimes,HB Night,Charge Sheeted,Non-Heinous,false
+7,101071072202600007,202600007,2026-06-08,,1072,Crimes Against Body,Murder,Pending Trial,Heinous,false
+34,101111112202600034,202600034,2026-06-08,,1112,Cyber Crimes,Online Fraud,Closed,Non-Heinous,false
+4,101111112202600004,202600004,2026-06-05,,1112,Property Crimes,Chain Snatching,Under Investigation,Non-Heinous,false
+31,101031032202600031,202600031,2026-06-05,,1032,Property Crimes,Vehicle Theft,Pending Trial,Non-Heinous,false
+1,101031032202600001,202600001,2026-06-02,,1032,Property Crimes,Robbery,Charge Sheeted,Non-Heinous,true
+28,101091092202600028,202600028,2026-06-02,,1092,Crimes Against Body,Murder,Under Investigation,Heinous,false
+26,101031033202600026,202600026,2026-05-27,,1033,Economic Offences,Cheating,Closed,Non-Heinous,false
+23,101091093202600023,202600023,2026-05-24,,1093,Property Crimes,HB Night,Pending Trial,Non-Heinous,false
+20,101011013202600020,202600020,2026-05-21,,1013,Cyber Crimes,Online Fraud,Under Investigation,Non-Heinous,false
+17,101071073202600017,202600017,2026-05-18,,1073,Property Crimes,Vehicle Theft,Charge Sheeted,Non-Heinous,false
+14,101111113202600014,202600014,2026-05-15,,1113,Crimes Against Body,Murder,Closed,Heinous,false
+11,101031033202600011,202600011,2026-05-12,,1033,Property Crimes,Chain Snatching,Pending Trial,Non-Heinous,false
+38,101091093202600038,202600038,2026-05-12,,1093,Property Crimes,Vehicle Theft,Closed,Non-Heinous,false
+8,101091093202600008,202600008,2026-05-09,,1093,Property Crimes,Robbery,Under Investigation,Non-Heinous,false
+35,101011013202600035,202600035,2026-05-09,,1013,Crimes Against Body,Murder,Pending Trial,Heinous,false
+5,101011013202600005,202600005,2026-05-06,,1013,Economic Offences,Cheating,Charge Sheeted,Non-Heinous,false
+32,101071073202600032,202600032,2026-05-06,,1073,Property Crimes,Chain Snatching,Under Investigation,Non-Heinous,false
+2,101071073202600002,202600002,2026-05-03,,1073,Property Crimes,HB Night,Closed,Non-Heinous,false
+29,101111113202600029,202600029,2026-05-03,,1113,Property Crimes,Robbery,Charge Sheeted,Non-Heinous,false

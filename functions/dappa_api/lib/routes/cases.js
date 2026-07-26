@@ -81,7 +81,8 @@ function register(router) {
       ctx.ds.query({ table: 'CaseMaster', columns: ['COUNT(CaseMasterID)'], where }),
       ctx.ds.query({
         table: 'CaseMaster', columns: LIST_COLUMNS, where,
-        orderBy: { col: 'CrimeRegisteredDate', desc: true }, limit: { offset, count: perPage }
+        orderBy: { col: 'CrimeRegisteredDate', desc: true, tieBreak: 'CaseMasterID' },
+        limit: { offset, count: perPage }
       })
     ]);
     const anomalous = await anomalyFlags(ctx, rows.map((r) => r.CaseMasterID));
@@ -98,10 +99,14 @@ function register(router) {
     const limit = Math.min(5000, Math.max(1, toNum(req.query.limit, 1000)));
     const lk = await getLookups(ctx);
     const where = await caseWhere(ctx, filters);
-    const rows = await ctx.ds.query({
+    // queryAll, not query: ZCQL truncates a single SELECT at 300 rows, and a
+    // over-cap request falls through to the fixture evaluator — which is how
+    // this export used to hand out 40 stub rows instead of real cases.
+    const rows = await ctx.ds.queryAll({
       table: 'CaseMaster', columns: LIST_COLUMNS, where,
-      orderBy: { col: 'CrimeRegisteredDate', desc: true }, limit: { count: limit }
-    });
+      orderBy: { col: 'CrimeRegisteredDate', desc: true, tieBreak: 'CaseMasterID' },
+      limit: { count: limit }
+    }, { maxRows: limit });
     const anomalous = await anomalyFlags(ctx, rows.map((r) => r.CaseMasterID));
     const data = rows.map((r) => listRow(r, lk, anomalous));
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

@@ -40,14 +40,25 @@ function buildZCQL(q) {
     sql += ` WHERE ${parts.join(' AND ')}`;
   }
   if (q.groupBy && q.groupBy.length) sql += ` GROUP BY ${q.groupBy.join(', ')}`;
-  if (q.orderBy && q.orderBy.col) sql += ` ORDER BY ${q.orderBy.col} ${q.orderBy.desc ? 'DESC' : 'ASC'}`;
+  if (q.orderBy && q.orderBy.col) {
+    // `tieBreak` must be a unique column. Without one, a sort key with many
+    // duplicate values (45,000 cases over ~1,100 registration dates) leaves the
+    // row order undefined BETWEEN offset windows, so paging silently repeats
+    // some rows and skips others. Naming the tiebreaker makes paging total.
+    const dir = q.orderBy.desc ? 'DESC' : 'ASC';
+    sql += ` ORDER BY ${q.orderBy.col} ${dir}`;
+    if (q.orderBy.tieBreak) sql += `, ${q.orderBy.tieBreak} ${dir}`;
+  }
   if (q.limit && q.limit.count) {
-    // ZCQL LIMIT [offset],value uses MySQL skip semantics: "LIMIT 1,3" returns
-    // three records starting at the SECOND record, i.e. offset = rows to skip
-    // (docs.catalyst.zoho.com/en/cloud-scale/help/zcql/limit). Omit the offset
-    // for the first page. Keep in sync with dappa_nightly/store_catalyst.py.
+    // ZCQL's LIMIT first argument is a 1-BASED START ROW, not a rows-to-skip
+    // count — despite the docs describing MySQL skip semantics. Measured
+    // against the live store on 45,000 CaseMaster rows: "LIMIT 10,10" returns
+    // rows 10..19, i.e. it starts ON row 10, so consecutive windows overlapped
+    // by exactly one row and every page after the first repeated a record.
+    // Convert our zero-based offset to that 1-based start.
+    // Keep in sync with dappa_nightly/store_catalyst.py.
     const off = Math.max(0, q.limit.offset || 0);
-    sql += off > 0 ? ` LIMIT ${off},${q.limit.count}` : ` LIMIT ${q.limit.count}`;
+    sql += off > 0 ? ` LIMIT ${off + 1},${q.limit.count}` : ` LIMIT ${q.limit.count}`;
   }
   return sql;
 }
@@ -225,12 +236,18 @@ function evalQuery(q, tables) {
   }
 
   if (q.orderBy && q.orderBy.col) {
-    const { col, desc } = q.orderBy;
-    rows.sort((a, b) => {
-      const av = a[col];
-      const bv = b[col];
+    const { col, desc, tieBreak } = q.orderBy;
+    const cmpCol = (a, b, c) => {
+      const av = a[c];
+      const bv = b[c];
       const bothNum = !isNaN(Number(av)) && !isNaN(Number(bv));
-      const r = bothNum ? Number(av) - Number(bv) : String(av).localeCompare(String(bv));
+      return bothNum ? Number(av) - Number(bv) : String(av).localeCompare(String(bv));
+    };
+    rows.sort((a, b) => {
+      let r = cmpCol(a, b, col);
+      // Same tiebreaker semantics as buildZCQL, so the stub can never pass a
+      // paging test that the live store would answer differently.
+      if (r === 0 && tieBreak) r = cmpCol(a, b, tieBreak);
       return desc ? -r : r;
     });
   }

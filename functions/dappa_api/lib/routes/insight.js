@@ -47,12 +47,20 @@ function alertRow(r, lk) {
 async function fetchAlerts(ctx, { status, offset, count }) {
   const lk = await getLookups(ctx);
   const where = status ? [{ col: 'Status', op: '=', val: status }] : [];
-  const [countRows, rows] = await Promise.all([
-    ctx.ds.query({ table: 'AnomalyAlert', columns: ['COUNT(AlertID)'], where }),
-    ctx.ds.query({
+  // A single ZCQL SELECT truncates at 300 rows and an over-cap ask falls back
+  // to fixtures, so anything above a page is read through queryAll.
+  const read = count > 300
+    ? ctx.ds.queryAll({
       table: 'AnomalyAlert', columns: ALERT_COLUMNS,
       where, orderBy: { col: 'ZScore', desc: true }, limit: { offset, count }
-    })
+    }, { maxRows: count })
+    : ctx.ds.query({
+      table: 'AnomalyAlert', columns: ALERT_COLUMNS,
+      where, orderBy: { col: 'ZScore', desc: true }, limit: { offset, count }
+    });
+  const [countRows, rows] = await Promise.all([
+    ctx.ds.query({ table: 'AnomalyAlert', columns: ['COUNT(AlertID)'], where }),
+    read
   ]);
   const data = rows.map((r) => alertRow(r, lk));
   return { data, total: toNum(countRows.length ? countRows[0]['COUNT(AlertID)'] : data.length) };
@@ -99,12 +107,18 @@ async function fetchOffenders(ctx, { q, repeatOnly, minCases, district, offset, 
     const all = [...seen.values()].sort((a, b) => toNum(b.RiskScore) - toNum(a.RiskScore));
     return { data: all.slice(offset, offset + count).map(offenderRow), total: all.length };
   }
-  const [countRows, rows] = await Promise.all([
-    ctx.ds.query({ table: 'OffenderProfile', columns: ['COUNT(PersonKey)'], where }),
-    ctx.ds.query({
+  const readOffenders = count > 300
+    ? ctx.ds.queryAll({
       table: 'OffenderProfile', columns: OFFENDER_COLUMNS,
       where, orderBy: { col: 'RiskScore', desc: true }, limit: { offset, count }
-    })
+    }, { maxRows: count })
+    : ctx.ds.query({
+      table: 'OffenderProfile', columns: OFFENDER_COLUMNS,
+      where, orderBy: { col: 'RiskScore', desc: true }, limit: { offset, count }
+    });
+  const [countRows, rows] = await Promise.all([
+    ctx.ds.query({ table: 'OffenderProfile', columns: ['COUNT(PersonKey)'], where }),
+    readOffenders
   ]);
   return {
     data: rows.map(offenderRow),
