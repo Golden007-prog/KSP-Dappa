@@ -36,3 +36,7 @@ scripts/.bulkload_state.json
 Import_*.zip
 pipeline/.bool_fixed/
 pipeline/.import_batch/
+
+# shell artefacts: stray files whose names are code fragments (see e16b03b)
+*.swp
+*.swo
