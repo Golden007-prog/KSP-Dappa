@@ -119,7 +119,13 @@ function register(router) {
       const prev = byYm[prevYm] || { cases: 0, heinous: 0 };
       const cs = {};
       for (const r of csRows) cs[String(r.cstype).toUpperCase()] = toNum(r['COUNT(CSID)']);
-      const detectionRate = (cs.A || 0) + (cs.C || 0) > 0 ? round(((cs.A || 0) / ((cs.A || 0) + (cs.C || 0))) * 100, 1) : 0;
+      // null (unknown) is NOT 0 (measured zero). With no chargesheet rows in the
+      // window there is nothing to divide, and reporting 0.0% would assert that
+      // not one case was chargesheeted — a claim the data cannot support. The
+      // client renders null as '—'; healthz.completeness.ChargesheetDetails
+      // tells an operator whether the gap is a load gap or a genuine one.
+      const csDenom = (cs.A || 0) + (cs.C || 0);
+      const detectionRate = csDenom > 0 ? round(((cs.A || 0) / csDenom) * 100, 1) : null;
       const perSub = new Map();
       for (const r of subRows) {
         const id = toNum(r.CrimeSubHeadID);

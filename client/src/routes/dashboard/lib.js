@@ -12,6 +12,10 @@ import { PALETTES } from '../../components/MiniChoropleth.jsx';
  * rate no longer displays as 100%.
  */
 export function detectionRatePct(v) {
+  // null/undefined mean UNKNOWN (no chargesheet rows in the window) and must
+  // stay null — Number(null) is 0 and would silently render an unknown rate as
+  // a measured 0%, which is a different and much stronger claim.
+  if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
   return Math.max(0, Math.min(100, n));
