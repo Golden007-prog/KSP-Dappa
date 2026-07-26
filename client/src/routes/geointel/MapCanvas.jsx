@@ -20,6 +20,7 @@ import {
   choroStroke, choroZeroFill, copyText, divergeColor, esc, haversineKm, hotspotName, hourBand,
   rampColor, risk01, riskColor,
 } from './utils.js';
+import { GI_COLORS } from './stats.js';
 import { useI18n } from '../../lib/i18n.jsx';
 
 const KARNATAKA_CENTER = [14.9, 76.1];
@@ -34,7 +35,9 @@ const INCIDENT_MARKER_CAP = 600;
 // opacity slider can drive the pane/canvas without touching other layers.
 const PANES = [
   ['geointel-choro', 390],
+  ['geointel-grid', 392],
   ['geointel-alert', 395],
+  ['geointel-links', 396],
   ['geointel-hotspots', 405],
   ['geointel-incidents', 406],
   ['geointel-measure', 407],
@@ -47,6 +50,8 @@ export default function MapCanvas({
   geojson,
   choroValues,
   choroMetric = null, // {key,label,diverging,fmtValue} — defaults to case counts
+  choroColors = null, // optional {polygon: '#hex'} — overrides the ramp (bivariate)
+  choroLabels = null, // optional {polygon: 'text'} — overrides the tooltip value
   choroOpacity = 0.55,
   heatOpacity = 1,
   alertPolygons,
@@ -67,6 +72,15 @@ export default function MapCanvas({
   compareHeatPoints = null, // month-A heat points for the compare swipe
   comparePct = null, // divider position 0–100 (null = compare off)
   nightDim = false, // hour lens night hours — dusk-filter the basemap tiles
+  gridCells = null, // binned density cells [{south,west,north,east,count,z,band}]
+  gridMax = 1,
+  giMode = false, // paint Gi* significance bands instead of raw density
+  onGridCellClick,
+  spiderLinks = null, // [[incLat,incLng,stLat,stLng]] catchment allocation lines
+  gapPoints = null, // [{lat,lng,km}] incidents beyond the coverage threshold
+  coLocatedPairs = null, // [{aLat,aLng,bLat,bLng,overlap}] compound hotspot zones
+  highlightHotspotId = null, // table-row hover → ring the matching cluster
+  onViewportChange,
   fly,
   light = false, // active theme (drives choropleth ramp + strokes)
   basemap = 'osm', // 'osm' | 'none'
@@ -100,6 +114,7 @@ export default function MapCanvas({
   const [zoomedIn, setZoomedIn] = useState(false);
   handlersRef.current = {
     onPolygonClick, onStationClick, onCityClick, onHotspotClick, onTileError, onMeasureEnd, onCoordCopy, onProbeSet,
+    onGridCellClick, onViewportChange,
   };
   measuringRef.current = measuring;
   probingRef.current = probing;
@@ -122,6 +137,16 @@ export default function MapCanvas({
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
     map.on('zoomend', () => setZoomedIn(map.getZoom() >= INCIDENT_MIN_ZOOM));
+    // Viewport reporting for the "in view" statistics + view-scoped exports.
+    // moveend only (never on every frame) — one report per settled camera.
+    const report = () => {
+      const b = map.getBounds();
+      handlersRef.current.onViewportChange?.({
+        north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest(), zoom: map.getZoom(),
+      });
+    };
+    map.on('moveend', report);
+    map.whenReady(report);
     map.on('popupopen', () => { popupOpenRef.current = true; });
     map.on('popupclose', () => { popupOpenRef.current = false; });
     map.on('mousemove', (e) => {
@@ -207,7 +232,9 @@ export default function MapCanvas({
         const v = Number(values[name]);
         const has = Number.isFinite(v);
         let fillColor = zeroFill;
-        if (has && diverging) fillColor = divergeColor(v / max, light);
+        // An explicit per-polygon colour (bivariate classing) wins over the ramp.
+        if (choroColors && choroColors[name]) fillColor = choroColors[name];
+        else if (has && diverging) fillColor = divergeColor(v / max, light);
         else if (has && v > 0) fillColor = rampColor(v / max, light);
         const selected = selSet.has(name);
         return {
@@ -220,7 +247,8 @@ export default function MapCanvas({
       onEachFeature: (feature, lyr) => {
         const name = feature?.properties?.district;
         const v = Number(values[name]);
-        const label = Number.isFinite(v) ? fmtValue(v) : t('geointel.popup.noData');
+        const label = (choroLabels && choroLabels[name])
+          || (Number.isFinite(v) ? fmtValue(v) : t('geointel.popup.noData'));
         const action = selectedPolygons ? t('geointel.popup.clickSelect') : t('geointel.popup.clickDrill');
         lyr.bindTooltip(
           `<div class="text-xs"><strong>${esc(name)}</strong><br/>${esc(label)} · ${esc(action)}</div>`,
@@ -237,7 +265,118 @@ export default function MapCanvas({
     return () => {
       if (mapRef.current) mapRef.current.removeLayer(layer);
     };
-  }, [geojson, choroValues, layers.choropleth, choroMetric, choroOpacity, light, selectedPolygons]);
+  }, [geojson, choroValues, layers.choropleth, choroMetric, choroColors, choroLabels, choroOpacity, light, selectedPolygons]);
+
+  // Statistical density grid — equal-size cells binned from the incident window.
+  // Painted on a canvas renderer: an 800-cell SVG layer would stutter on pan,
+  // while the same cells on canvas stay smooth. In Gi* mode only the cells that
+  // clear the 95% significance bar are drawn, so what remains on screen is the
+  // set a statistician would call a hotspot rather than "wherever there is a lot".
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !(gridCells || []).length) return undefined;
+    const renderer = L.canvas({ pane: 'geointel-grid', padding: 0.3 });
+    const group = L.layerGroup();
+    const max = Math.max(1, Number(gridMax) || 1);
+    for (const c of gridCells) {
+      const color = giMode ? (c.band ? GI_COLORS[c.band] : null) : rampColor(c.count / max, light);
+      if (!color) continue;
+      const rect = L.rectangle([[c.south, c.west], [c.north, c.east]], {
+        renderer,
+        pane: 'geointel-grid',
+        color,
+        weight: 0.6,
+        opacity: 0.55,
+        fillColor: color,
+        fillOpacity: giMode ? 0.5 : 0.38,
+      });
+      const zLine = Number.isFinite(c.z)
+        ? `<br/>${esc(t('geointel.grid.z', { z: fmtNum(c.z, 2) }))}${c.band ? ` · ${esc(t(`geointel.grid.band.${c.band}`))}` : ''}`
+        : '';
+      rect.bindTooltip(
+        `<div class="text-xs"><strong>${esc(t('geointel.grid.cellTitle', { n: fmtInt(c.count) }))}</strong>${zLine}</div>`,
+        { sticky: true, className: 'dappa-tooltip' },
+      );
+      rect.on('click', () => {
+        if (measuringRef.current || probingRef.current) return;
+        handlersRef.current.onGridCellClick?.(c);
+      });
+      group.addLayer(rect);
+    }
+    group.addTo(map);
+    return () => {
+      if (!mapRef.current) return;
+      mapRef.current.removeLayer(group);
+      if (mapRef.current.hasLayer(renderer)) mapRef.current.removeLayer(renderer);
+    };
+  }, [gridCells, gridMax, giMode, light]);
+
+  // Catchment spider — hairlines from each sampled incident to the station that
+  // would actually respond to it (nearest by straight line).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !(spiderLinks || []).length) return undefined;
+    const renderer = L.canvas({ pane: 'geointel-links', padding: 0.3 });
+    const group = L.layerGroup();
+    for (const [aLat, aLng, bLat, bLng] of spiderLinks) {
+      group.addLayer(L.polyline([[aLat, aLng], [bLat, bLng]], {
+        renderer, pane: 'geointel-links', color: '#5B9DFF', weight: 0.7, opacity: 0.4, interactive: false,
+      }));
+    }
+    group.addTo(map);
+    return () => {
+      if (!mapRef.current) return;
+      mapRef.current.removeLayer(group);
+      if (mapRef.current.hasLayer(renderer)) mapRef.current.removeLayer(renderer);
+    };
+  }, [spiderLinks]);
+
+  // Coverage gaps — incidents further from any station than the chosen response
+  // radius. Drawn as hollow signal-coloured rings so they read as "unserved"
+  // rather than as another incident dot.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !(gapPoints || []).length) return undefined;
+    const group = L.layerGroup();
+    for (const g of gapPoints) {
+      const lat = Number(g.lat);
+      const lng = Number(g.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const m = L.circleMarker([lat, lng], {
+        pane: 'geointel-incidents', radius: 5, color: '#E5484D', weight: 1.6, fill: false,
+      });
+      m.bindTooltip(
+        `<div class="text-xs">${esc(t('geointel.catch.gapTip', { km: fmtNum(g.km, 1), name: g.unitName || '' }))}</div>`,
+        { sticky: true, className: 'dappa-tooltip' },
+      );
+      group.addLayer(m);
+    }
+    group.addTo(map);
+    return () => {
+      if (mapRef.current) mapRef.current.removeLayer(group);
+    };
+  }, [gapPoints]);
+
+  // Compound zones — chords between hotspot pairs whose footprints touch.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layers.hotspots || !(coLocatedPairs || []).length) return undefined;
+    const group = L.layerGroup();
+    for (const p of coLocatedPairs) {
+      group.addLayer(L.polyline([[p.aLat, p.aLng], [p.bLat, p.bLng]], {
+        pane: 'geointel-links',
+        color: p.overlap ? '#E5484D' : '#F5A623',
+        weight: 2,
+        opacity: 0.75,
+        dashArray: '3 5',
+        interactive: false,
+      }));
+    }
+    group.addTo(map);
+    return () => {
+      if (mapRef.current) mapRef.current.removeLayer(group);
+    };
+  }, [coLocatedPairs, layers.hotspots]);
 
   // Alert pulse overlay — animated red stroke (.alert-poly) on alerted districts.
   useEffect(() => {
@@ -415,6 +554,24 @@ export default function MapCanvas({
       if (mapRef.current) mapRef.current.removeLayer(group);
     };
   }, [hotspots, layers.hotspots]);
+
+  // Ranking-table hover → ring the matching cluster on the map. Restores the
+  // circle's own style on cleanup, so a hover never leaves a sticky highlight.
+  useEffect(() => {
+    if (highlightHotspotId === null || highlightHotspotId === undefined) return undefined;
+    const circle = hotspotLayersRef.current[String(highlightHotspotId)];
+    if (!circle) return undefined;
+    const prev = { color: circle.options.color, weight: circle.options.weight, fillOpacity: circle.options.fillOpacity };
+    circle.setStyle({ color: '#5B9DFF', weight: 4, fillOpacity: 0.3 });
+    circle.bringToFront?.();
+    return () => {
+      try {
+        circle.setStyle(prev);
+      } catch {
+        /* layer torn down with its group — nothing to restore */
+      }
+    };
+  }, [highlightHotspotId, hotspots, layers.hotspots]);
 
   // Station bubbles — radius by caseCount, color by risk band.
   useEffect(() => {
@@ -701,6 +858,19 @@ export default function MapCanvas({
           );
         } catch {
           /* degenerate geometry — keep current view */
+        }
+      }
+    } else if (fly.type === 'bounds') {
+      // Fit-to-data: the bounding box of whatever is currently plotted.
+      executedFlySeq.current = fly.seq;
+      const b = fly.bounds || {};
+      if ([b.south, b.west, b.north, b.east].every((v) => Number.isFinite(Number(v)))) {
+        try {
+          map.flyToBounds(L.latLngBounds([b.south, b.west], [b.north, b.east]), {
+            padding: [50, 50], duration: 0.8, maxZoom: fly.maxZoom || 13,
+          });
+        } catch {
+          /* degenerate box (a single point) — keep the current view */
         }
       }
     } else if (fly.type === 'reset') {

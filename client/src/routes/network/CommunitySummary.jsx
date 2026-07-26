@@ -14,18 +14,21 @@ const MO_CAP = 5;
 
 export default function CommunitySummary({
   communityId, community, nodes = [], edges = [], onPick, onClear,
-  profilesByKey = new Map(), brokers = new Map(),
+  profilesByKey = new Map(), brokers = new Map(), degrees = new Map(),
 }) {
   const t = useT();
+  const linksOf = (n) => degrees.get(String(n.id))?.links ?? (Number(n.degree) || 0);
   const stats = useMemo(() => {
     const n = nodes.length;
     const e = edges.length;
     const density = n > 1 ? (2 * e) / (n * (n - 1)) : 0;
     const members = [...nodes].sort(
-      (a, b) => (Number(b.degree) || 0) - (Number(a.degree) || 0) || (Number(b.caseCount) || 0) - (Number(a.caseCount) || 0),
+      (a, b) => (degrees.get(String(b.id))?.links ?? (Number(b.degree) || 0))
+        - (degrees.get(String(a.id))?.links ?? (Number(a.degree) || 0))
+        || (Number(b.caseCount) || 0) - (Number(a.caseCount) || 0),
     );
     return { n, e, density, members };
-  }, [nodes, edges]);
+  }, [nodes, edges, degrees]);
 
   const topMo = useMemo(() => {
     const freq = new Map();
@@ -122,7 +125,7 @@ export default function CommunitySummary({
                 >
                   <span className="text-xs text-ink truncate flex-1 min-w-0">{m.label || String(m.id)}</span>
                   <span className="num text-[11px] text-muted shrink-0">
-                    {t('network.community.memberStats', { links: fmtInt(m.degree), cases: fmtInt(m.caseCount) })}
+                    {t('network.community.memberStats', { links: fmtInt(linksOf(m)), cases: fmtInt(m.caseCount) })}
                   </span>
                 </button>
               </li>

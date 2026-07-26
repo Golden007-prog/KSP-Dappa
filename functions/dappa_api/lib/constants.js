@@ -118,7 +118,15 @@ const EXPECTED_ROW_COUNTS = {
   NetworkEdge: 23833,
   ForecastMonthly: 8892,
   OffenderProfile: 2048,
-  District: 38
+  District: 38,
+  // Tracked because it is the DENOMINATOR of the detection-rate KPI: a partial
+  // load silently understates detection with no error anywhere. healthz
+  // reports its true percentage so the UI can mark the KPI provisional.
+  ChargesheetDetails: 31655,
+  ComplainantDetails: 53187,
+  ActSectionAssociation: 60948,
+  ArrestSurrender: 17268,
+  AnomalyAlert: 665
 };
 
 module.exports = {

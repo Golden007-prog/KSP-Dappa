@@ -24,6 +24,9 @@ import MiniEgoGraph from './offenders/MiniEgoGraph.jsx';
 import YearSparkline from './offenders/YearSparkline.jsx';
 import OffenderTimeline from './offenders/Timeline.jsx';
 import { TempoCard, CaseMixCard } from './offenders/BehaviorCards.jsx';
+import NetworkPosition from './offenders/NetworkPosition.jsx';
+import SimilarMo from './offenders/SimilarMo.jsx';
+import { jurisdictionSpan } from './network/analysis.js';
 import { RiskBadge, useDistrictName } from './offenders/common.jsx';
 import { aliasConfidence, confidenceBand } from './offenders/identity.js';
 import { addToCompare, COMPARE_MAX } from './offenders/compareStore.js';
@@ -150,6 +153,12 @@ export default function Offender360() {
     }
     return out;
   }, [timeline]);
+
+  // Cross-jurisdiction span — how far this person's offending actually travels.
+  // Live profiles average 8.5 districts and reach all 38, so the mobility index
+  // (share of consecutive cases that changed district) separates a person who
+  // works one town from one who moves after every job.
+  const span = useMemo(() => jurisdictionSpan(p.districts || [], hops), [p.districts, hops]);
 
   const hasCommunity = p.communityId !== null && p.communityId !== undefined && p.communityId !== '';
 
@@ -356,6 +365,29 @@ export default function Offender360() {
         <div className="space-y-4">
           <Card title={t('network.o360.operatingArea')} subtitle={t('network.o360.operatingAreaSub')}>
             <MiniChoropleth values={choroValues} markers={markers} height={260} />
+            <div className="grid grid-cols-3 gap-2 mt-2.5">
+              <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.districtsHint')}>
+                <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.span.districts')}</p>
+                <p className="text-sm text-ink num">{fmtInt(span.districts)}</p>
+              </div>
+              <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.movesHint')}>
+                <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.span.moves')}</p>
+                <p className="text-sm text-ink num">{fmtInt(span.moves)}</p>
+              </div>
+              <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.mobilityHint')}>
+                <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.span.mobility')}</p>
+                <p className="text-sm text-ink num">
+                  {span.hops > 1 ? fmtPct(span.mobility * 100, { digits: 0 }) : '—'}
+                </p>
+              </div>
+            </div>
+            {span.districts >= 2 && (
+              <p className="text-[11px] text-muted mt-1.5">
+                {t(span.mobility >= 0.6 ? 'network.span.roamer' : 'network.span.anchored', {
+                  n: fmtInt(span.districts),
+                })}
+              </p>
+            )}
             {hops.length > 1 && (
               <div className="mt-2.5">
                 <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.o360.districtHops')}</p>
@@ -427,6 +459,22 @@ export default function Offender360() {
               <EmptyState compact title={t('network.o360.noAssociatesTitle')} message={t('network.o360.noAssociatesMsg')} />
             )}
           </Card>
+
+          <NetworkPosition
+            personKey={p.personKey || personKey}
+            communityId={p.communityId}
+            nameByKey={nameByKey}
+          />
+
+          <SimilarMo
+            subject={{
+              personKey: p.personKey || personKey,
+              moTags: p.moTags || [],
+              districts: p.districts || [],
+            }}
+            rows={registry.data?.rows || []}
+            loading={registry.isLoading}
+          />
         </div>
 
         <Card

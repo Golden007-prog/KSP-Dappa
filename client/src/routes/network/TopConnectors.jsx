@@ -7,13 +7,19 @@ import { fmtInt } from '../../lib/format.js';
 import { useT } from '../../lib/i18n.jsx';
 import { communityColor } from './graphUtils.js';
 
-export default function TopConnectors({ nodes = [], onPick }) {
+export default function TopConnectors({ nodes = [], degrees = new Map(), onPick }) {
   const t = useT();
+  // `degrees` carries the TRUE partner count read off the edges — the node's
+  // own `degree` field is a normalized 0–1 centrality on live data, which used
+  // to render every connector as "0 links".
+  const linksOf = (n) => degrees.get(String(n.id))?.links ?? (Number(n.degree) || 0);
   const top = useMemo(
     () => [...nodes]
-      .sort((a, b) => (Number(b.degree) || 0) - (Number(a.degree) || 0) || (Number(b.caseCount) || 0) - (Number(a.caseCount) || 0))
+      .sort((a, b) => (degrees.get(String(b.id))?.links ?? (Number(b.degree) || 0))
+        - (degrees.get(String(a.id))?.links ?? (Number(a.degree) || 0))
+        || (Number(b.caseCount) || 0) - (Number(a.caseCount) || 0))
       .slice(0, 10),
-    [nodes],
+    [nodes, degrees],
   );
 
   if (!top.length) return null;
@@ -32,7 +38,7 @@ export default function TopConnectors({ nodes = [], onPick }) {
               <span className="num text-[10px] text-muted w-4 shrink-0">{i + 1}</span>
               <span className="h-2 w-2 rounded-full shrink-0" style={{ background: communityColor(n.communityId) }} aria-hidden="true" />
               <span className="text-xs text-ink truncate flex-1 min-w-0">{n.label || String(n.id)}</span>
-              <span className="num text-[11px] text-muted shrink-0">{t('network.stat.links', { n: fmtInt(n.degree) })}</span>
+              <span className="num text-[11px] text-muted shrink-0">{t('network.stat.links', { n: fmtInt(linksOf(n)) })}</span>
             </button>
           </li>
         ))}

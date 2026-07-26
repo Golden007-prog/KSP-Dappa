@@ -7,14 +7,13 @@ import Badge from '../../components/Badge.jsx';
 import SlaBadge from './SlaBadge.jsx';
 import { fmtNum } from '../../lib/format.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
-
-const SEV_TONE = { critical: 'red', high: 'red', medium: 'amber', low: 'neutral' };
+import { sevKey, SEV_TONE } from './severity.js';
 
 const laneBreakdown = (items) => {
   let crit = 0;
   let high = 0;
   for (const a of items) {
-    const sev = String(a.severity || '').toLowerCase();
+    const sev = sevKey(a.severity);
     if (sev === 'critical') crit += 1;
     else if (sev === 'high') high += 1;
   }
@@ -24,7 +23,7 @@ const laneBreakdown = (items) => {
 function BoardCard({ alert: a, lane, unread, sla, onOpen, onRead, onAck, ackPending, onSnooze, onUnsnooze }) {
   const t = useT();
   const tName = useNames();
-  const sev = String(a.severity || 'medium').toLowerCase();
+  const sev = sevKey(a.severity) || 'medium';
   const head = tName('crimeHeads', a.crimeHeadId, a.headName) || t('alerts.anomaly');
   const district = tName('districts', a.districtId, a.districtName || a.districtId)
     || t('alerts.unknownDistrict');

@@ -9,6 +9,9 @@
 //   u            toggle the unread-only filter
 //   v            toggle feed ⇄ triage-board view
 //   o            open the focused alert's detail sheet
+//   d            dismiss the focused alert as a false positive
+//   x            toggle the focused alert in the bulk selection
+//   g            open the digest composer on the current selection
 //   /            focus the search box
 //   1–4          set the severity filter (critical…low) · 0 clears it
 import { useEffect, useRef } from 'react';
@@ -32,6 +35,7 @@ export default function useAlertShortcuts(handlers) {
       const simple = {
         j: h.next, k: h.prev, a: h.ack, m: h.read, c: h.copy, s: h.snooze,
         e: h.export, u: h.unread, v: h.view, o: h.open, '/': h.search,
+        d: h.dismiss, x: h.select, g: h.digest,
       }[k];
       if (simple) { e.preventDefault(); simple(); return; }
       if (k in SEV_BY_DIGIT && h.sev) { e.preventDefault(); h.sev(SEV_BY_DIGIT[k]); }

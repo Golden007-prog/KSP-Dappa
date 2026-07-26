@@ -14,7 +14,7 @@ import Tooltip from '../../components/Tooltip.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
 import ChartBody from './ChartBody.jsx';
 import InsightLine from './InsightLine.jsx';
-import { olsFit } from './analysis.js';
+import { districtKey, olsFit } from './analysis.js';
 import { socioInsight } from './insights.js';
 import { downloadCsv } from './csv.js';
 import { fmtCompact, fmtNum } from '../../lib/format.js';
@@ -65,20 +65,32 @@ export default function SocioScatter({
   });
 
   const points = useMemo(() => {
-    const byId = new Map((socio.data || []).map((s) => [String(s.districtId), s]));
+    // /geo/districts pads the police code ('0101'); /meta/socio does not
+    // ('101'). Joining on the raw strings matched nothing and left this chart
+    // permanently empty, so both sides go through the normalised key — which
+    // is also what lets the rate be recomputed when the server sends a null
+    // ratePerLakh (it resolves population from a differently-keyed lookup).
+    const byId = new Map((socio.data || []).map((s) => [districtKey(s.districtId), s]));
     return (geoRows || []).map((r) => {
-      const s = byId.get(String(r.districtId));
+      const s = byId.get(districtKey(r.districtId));
       const x = Number(s?.[metricKey]);
-      const y = Number(r.ratePerLakh);
+      const pop = Number(s?.population) || 0;
+      const count = Number(r.caseCount) || 0;
+      // Number(null) is 0, not NaN — testing the coerced value would have read
+      // a missing rate as a real zero and flattened the y-axis to a constant.
+      const raw = r.ratePerLakh;
+      const serverRate = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+      const y = Number.isFinite(serverRate) ? serverRate : (pop > 0 ? (count / pop) * 100000 : NaN);
       if (!s || !Number.isFinite(x) || !Number.isFinite(y)) return null;
       return {
-        districtId: String(r.districtId),
+        districtId: districtKey(r.districtId),
         name: tName('districts', r.districtId, r.districtName),
         x,
         y,
-        pop: Number(s.population) || 0,
+        pop,
         socio: s,
-        caseCount: Number(r.caseCount) || 0,
+        caseCount: count,
+        rateDerived: !Number.isFinite(serverRate),
       };
     }).filter(Boolean);
   }, [geoRows, socio.data, metricKey, tName]);

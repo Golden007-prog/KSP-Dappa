@@ -1,12 +1,19 @@
 // Weekly Brief data selection shared by BriefContent (render), summary.js
 // (share text), markdown.js (.md export) and exports.js (CSV) — one place so
 // the four never disagree on ordering or cutoffs.
+//
+// Severity and status semantics come from ../alerts/severity.js: the Data Store
+// holds Severity as an integer band and Status as OPEN / REVIEWED / ACK /
+// DISMISSED, so "not ACK" is not the same as "still open".
+import { sevRank as sevRankOf, isOpenAlert as isOpen, sevKey } from '../alerts/severity.js';
 
 /** critical > high > medium > low > unrated (low outranks unknown). */
-export const sevRank = (s) =>
-  ({ critical: 4, high: 3, medium: 2, low: 1 }[String(s || '').toLowerCase()] ?? 0);
+export const sevRank = sevRankOf;
 
-export const isOpenAlert = (a) => !/ack/i.test(String(a?.status || ''));
+/** Re-exported so brief renderers can print the band as a word. */
+export { sevKey };
+
+export const isOpenAlert = isOpen;
 
 /** Open alerts, most severe first (|z| breaks ties). */
 export function selectOpenAlerts(brief, n = 8) {

@@ -56,12 +56,23 @@ import HourScrubber from './geointel/HourScrubber.jsx';
 import CompareStrip from './geointel/CompareStrip.jsx';
 import SelectionBar from './geointel/SelectionBar.jsx';
 import PatrolRoutePill from './geointel/PatrolRoutePill.jsx';
-import { useIncidentsLayer } from './geointel/hooks.js';
+import { useIncidentsLayer, useSeasonalityGrid, useSocioMeta } from './geointel/hooks.js';
 import {
   bandBucket, copyText, haversineKm, hotspotName, hourBand, hourInBand, monthWindow, risk01,
 } from './geointel/utils.js';
-import { nearestNeighborRoute } from './geointel/geo.js';
+import { downloadGeoJson, nearestNeighborRoute, PATROL_STOP_COUNTS } from './geointel/geo.js';
 import { loadPrefs, savePrefs } from './geointel/prefs.js';
+import AnalysisDock from './geointel/AnalysisDock.jsx';
+import ViewportChip from './geointel/ViewportChip.jsx';
+import HotspotTable, { sortHotspotRows } from './geointel/HotspotTable.jsx';
+import GridPanel from './geointel/GridPanel.jsx';
+import CatchmentPanel from './geointel/CatchmentPanel.jsx';
+import SpaceTimePanel, { dayShort } from './geointel/SpaceTimePanel.jsx';
+import {
+  GAP_KMS, GRID_SIZES, boundsOf, buildCatchment, buildGrid, bivariateColor, coLocatedClusters,
+  gridFeatureCollection, inBounds, nearestStation, tercileClass, terciles, weekdayOf,
+} from './geointel/stats.js';
+import { downloadCsv, exportName } from './geointel/csv.js';
 import { useI18n, useT } from '../lib/i18n.jsx';
 
 const MAX_SCRUB_MONTHS = 24;
@@ -80,7 +91,33 @@ const METRIC_PROPS = {
   rate: { key: 'rate', diverging: false, valueKey: 'geointel.metric.valueRate', fmt: (v) => fmtNum(v, 1) },
   mom: { key: 'mom', diverging: true, valueKey: 'geointel.metric.valueMom', fmt: (v) => `${v > 0 ? '+' : ''}${fmtNum(v, 1)}` },
   risk: { key: 'risk', diverging: false, valueKey: 'geointel.metric.valueRisk', fmt: (v) => fmtInt(v) },
+  // Socio-economic context metrics (/meta/socio) — the "why" layer under the
+  // "where": population pressure and urbanisation next to the crime surface.
+  density: { key: 'density', diverging: false, valueKey: 'geointel.metric.valueDensity', fmt: (v) => fmtInt(v) },
+  urban: { key: 'urban', diverging: false, valueKey: 'geointel.metric.valueUrban', fmt: (v) => fmtNum(v, 1) },
+  // Bivariate: the numeric channel stays the crime rate (tooltip + legend),
+  // while the fill comes from the 3x3 rate × urbanisation class.
+  bivar: { key: 'bivar', diverging: false, valueKey: 'geointel.metric.valueRate', fmt: (v) => fmtNum(v, 1) },
 };
+
+const DOCK_TABS = ['hotspots', 'grid', 'catchment', 'spacetime'];
+const CATCHMENT_COLS = [
+  { key: 'unitId', label: 'unitId' },
+  { key: 'unitName', label: 'unitName' },
+  { key: 'districtId', label: 'districtId' },
+  { key: 'catchmentIncidents', label: 'catchmentIncidents' },
+  { key: 'sharePct', label: 'sharePct' },
+  { key: 'meanKm', label: 'meanDistanceKm' },
+  { key: 'maxKm', label: 'maxDistanceKm' },
+  { key: 'caseCount', label: 'stationCaseCount' },
+  { key: 'riskScore', label: 'riskScore' },
+  { key: 'lat', label: 'lat' },
+  { key: 'lng', label: 'lng' },
+];
+// Grid cells drawn on the canvas layer. Above this the render cost stops being
+// worth the marginal cell, so the tail (always the low-count cells — the array
+// arrives count-sorted) is dropped from the map but still counted in the stats.
+const GRID_RENDER_CAP = 900;
 
 // Shared date-range presets carry English labels; map them onto the common
 // namespace so the print/brief scope line follows the active language.
@@ -183,6 +220,22 @@ const ProbeIcon = (
     <path d="M12 2v3m0 14v3M2 12h3m14 0h3" />
   </svg>
 );
+const AnalysisIcon = (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 3v18h18" />
+    <rect x="7" y="12" width="3" height="6" rx="0.5" />
+    <rect x="12" y="8" width="3" height="10" rx="0.5" />
+    <rect x="17" y="5" width="3" height="13" rx="0.5" />
+  </svg>
+);
+const FitIcon = (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
+    <circle cx="12" cy="12" r="2.5" />
+  </svg>
+);
 const BriefIcon = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -220,6 +273,7 @@ export default function GeoIntel() {
   const hotspots = useHotspots(apiParams);
   const trends = useTrendsMonthly(apiParams); // months list for the scrubber
   const lookups = useLookups(); // crime-head names for incident popup cards
+  const socio = useSocioMeta(); // population / urbanisation context metrics
 
   const [scrubIndex, setScrubIndex] = useState(0); // 0 = whole window
   const [playing, setPlaying] = useState(false);
@@ -259,6 +313,23 @@ export default function GeoIntel() {
   const [probeKm, setProbeKm] = useState(2);
   const [patrolOn, setPatrolOn] = useState(false); // patrol-route suggestion
   const [tourIdx, setTourIdx] = useState(0); // red-zone tour position
+  // ---- analysis workbench ---------------------------------------------------
+  const [dockOpen, setDockOpen] = useState(false); // persisted
+  const [dockTab, setDockTab] = useState('hotspots'); // persisted
+  const [tableSort, setTableSort] = useState('cases'); // persisted
+  const [hoverHotspotId, setHoverHotspotId] = useState(null); // table row → map ring
+  const [coLocateOn, setCoLocateOn] = useState(true); // compound-zone chords
+  const [gridOn, setGridOn] = useState(false); // statistical density grid (persisted)
+  const [gridKm, setGridKm] = useState(5); // grid cell edge (persisted)
+  const [giMode, setGiMode] = useState(false); // paint Gi* significance (persisted)
+  const [spiderOn, setSpiderOn] = useState(false); // catchment allocation lines
+  const [gapsOn, setGapsOn] = useState(false); // coverage-gap markers
+  const [gapKm, setGapKm] = useState(5); // coverage threshold (persisted)
+  const [weekday, setWeekday] = useState(null); // 0=Sun..6=Sat lens, null = all days
+  const [patrolStopCount, setPatrolStopCount] = useState(3); // persisted
+  const [patrolOptimize, setPatrolOptimize] = useState(true); // 2-opt (persisted)
+  const [patrolRoundTrip, setPatrolRoundTrip] = useState(false); // persisted
+  const [viewport, setViewport] = useState(null); // {north,south,east,west,zoom}
   const flySeq = useRef(0);
   const mapApiRef = useRef(null);
   const shellRef = useRef(null); // compare divider drag needs the shell box
@@ -289,6 +360,17 @@ export default function GeoIntel() {
     if (METRIC_PROPS[p.choroMetric]) setMetric(p.choroMetric);
     if (typeof p.halos === 'boolean') setHalos(p.halos);
     if (BAND_KEYS.includes(p.hotspotBand)) setHotspotBand(p.hotspotBand);
+    if (typeof p.dockOpen === 'boolean') setDockOpen(p.dockOpen);
+    if (DOCK_TABS.includes(p.dockTab)) setDockTab(p.dockTab);
+    if (typeof p.tableSort === 'string' && p.tableSort) setTableSort(p.tableSort);
+    if (typeof p.gridOn === 'boolean') setGridOn(p.gridOn);
+    if (GRID_SIZES.includes(p.gridKm)) setGridKm(p.gridKm);
+    if (typeof p.giMode === 'boolean') setGiMode(p.giMode);
+    if (GAP_KMS.includes(p.gapKm)) setGapKm(p.gapKm);
+    if (PATROL_STOP_COUNTS.includes(p.patrolStopCount)) setPatrolStopCount(p.patrolStopCount);
+    if (typeof p.patrolOptimize === 'boolean') setPatrolOptimize(p.patrolOptimize);
+    if (typeof p.patrolRoundTrip === 'boolean') setPatrolRoundTrip(p.patrolRoundTrip);
+    if (typeof p.coLocateOn === 'boolean') setCoLocateOn(p.coLocateOn);
     // URL beats prefs: a pasted ?layers= link reproduces the exact composition.
     const lp = searchParams.get('layers');
     if (lp !== null) {
@@ -303,9 +385,12 @@ export default function GeoIntel() {
     if (firstPersist.current) { firstPersist.current = false; return; }
     savePrefs({
       mapLayers, scrubSpeed: speed, loop, basemap, choroOpacity, heatOpacity, legendOpen, choroMetric: metric,
-      halos, hotspotBand,
+      halos, hotspotBand, dockOpen, dockTab, tableSort, gridOn, gridKm, giMode, gapKm,
+      patrolStopCount, patrolOptimize, patrolRoundTrip, coLocateOn,
     });
-  }, [mapLayers, speed, loop, basemap, choroOpacity, heatOpacity, legendOpen, metric, halos, hotspotBand]);
+  }, [mapLayers, speed, loop, basemap, choroOpacity, heatOpacity, legendOpen, metric, halos, hotspotBand,
+    dockOpen, dockTab, tableSort, gridOn, gridKm, giMode, gapKm,
+    patrolStopCount, patrolOptimize, patrolRoundTrip, coLocateOn]);
   // Hour lens mirrored to ?h= — a pasted link reproduces the exact hour view.
   useEffect(() => {
     setSearchParams((prev) => {
@@ -423,6 +508,7 @@ export default function GeoIntel() {
         if (probing || probe) { setProbing(false); setProbe(null); return; }
         if (mapApiRef.current?.closePopup?.()) return;
         if (drill) { setDrill(null); return; }
+        if (dockOpen) { setDockOpen(false); return; }
         if (selectMode) { setSelectMode(false); setSelectedPolygons([]); return; }
         if (compareOn) { setCompareOn(false); return; }
         setFullscreen(false);
@@ -435,6 +521,10 @@ export default function GeoIntel() {
       if (e.key === 'h' || e.key === 'H') { toggleHourLens(); return; }
       if (e.key === 'c' || e.key === 'C') { toggleCompare(); return; }
       if (e.key === 'p' || e.key === 'P') { setPatrolOn((v) => !v); return; }
+      if (e.key === 'a' || e.key === 'A') { setDockOpen((v) => !v); return; }
+      if (e.key === 'g' || e.key === 'G') { setGridOn((v) => !v); return; }
+      if (e.key === 'w' || e.key === 'W') { cycleWeekday(); return; }
+      if (e.key === 'z' || e.key === 'Z') { fitToData(); return; }
       if (e.key === '/') {
         e.preventDefault();
         const el = document.getElementById('gi-locate');
@@ -468,10 +558,46 @@ export default function GeoIntel() {
     const m = METRIC_PROPS[metric] || METRIC_PROPS.cases;
     return { key: m.key, diverging: m.diverging, fmtValue: (v) => t(m.valueKey, { v: m.fmt(v) }) };
   }, [metric, t]);
+  // Population per census polygon (socio rows carry 3-digit unit codes; the
+  // polygon mapper normalises them). Powers the locally derived per-lakh rate
+  // and the bivariate classing.
+  const polygonPopulation = useMemo(() => {
+    const acc = {};
+    for (const r of socio.data || []) {
+      const poly = polygonForUnit(r.districtId);
+      const pop = Number(r.population);
+      if (!poly || !Number.isFinite(pop)) continue;
+      acc[poly] = (acc[poly] || 0) + pop;
+    }
+    return acc;
+  }, [socio.data]);
+  const polygonCasesRaw = useMemo(
+    () => aggregateCountsPerPolygon(districts.data || []),
+    [districts.data],
+  );
+  const polygonUrban = useMemo(
+    () => meanPerPolygon(socio.data || [], (r) => r.urbanPct),
+    [socio.data],
+  );
+  // Cases per lakh. The server computes this when it can resolve a population
+  // for the unit and sends null when it cannot, so the socio table fills the
+  // holes with the same formula rather than leaving the polygon unpainted.
+  const polygonRate = useMemo(() => {
+    const fromServer = meanPerPolygon(districts.data || [], (r) => r.ratePerLakh);
+    const out = { ...fromServer };
+    for (const [poly, cases] of Object.entries(polygonCasesRaw)) {
+      if (Number.isFinite(out[poly])) continue;
+      const pop = polygonPopulation[poly];
+      if (pop > 0) out[poly] = (cases / pop) * 100000;
+    }
+    return out;
+  }, [districts.data, polygonCasesRaw, polygonPopulation]);
   const choroValues = useMemo(() => {
     const rows = districts.data || [];
-    if (metric === 'rate') return meanPerPolygon(rows, (r) => r.ratePerLakh);
+    if (metric === 'rate' || metric === 'bivar') return polygonRate;
     if (metric === 'mom') return meanPerPolygon(rows, (r) => r.momDeltaPct);
+    if (metric === 'density') return meanPerPolygon(socio.data || [], (r) => r.densityPerKm2);
+    if (metric === 'urban') return polygonUrban;
     if (metric === 'risk') {
       return meanPerPolygon(stations.data || [], (s) => {
         const r = risk01(s.riskScore);
@@ -479,7 +605,30 @@ export default function GeoIntel() {
       });
     }
     return aggregateCountsPerPolygon(rows);
-  }, [districts.data, stations.data, metric]);
+  }, [districts.data, stations.data, socio.data, metric, polygonRate, polygonUrban]);
+  // Bivariate fill: crime rate on the X axis, urbanisation on the Y, both cut
+  // at their terciles across the polygons that have both values.
+  const bivariate = useMemo(() => {
+    if (metric !== 'bivar') return { colors: null, labels: null };
+    const polys = Object.keys(polygonRate).filter((p) => Number.isFinite(polygonUrban[p]));
+    const rateCuts = terciles(polys.map((p) => polygonRate[p]));
+    const urbanCuts = terciles(polys.map((p) => polygonUrban[p]));
+    if (!rateCuts || !urbanCuts) return { colors: null, labels: null };
+    const colors = {};
+    const labels = {};
+    for (const p of polys) {
+      const rc = tercileClass(polygonRate[p], rateCuts);
+      const uc = tercileClass(polygonUrban[p], urbanCuts);
+      colors[p] = bivariateColor(rc, uc);
+      labels[p] = t('geointel.metric.bivarValue', {
+        rate: fmtNum(polygonRate[p], 1),
+        urban: fmtNum(polygonUrban[p], 0),
+        rateClass: t(`geointel.metric.class.${rc}`),
+        urbanClass: t(`geointel.metric.class.${uc}`),
+      });
+    }
+    return { colors, labels };
+  }, [metric, polygonRate, polygonUrban, t]);
   const alertPolygons = useMemo(
     () => [...new Set(
       (districts.data || []).filter((d) => d.alert).map((d) => polygonForUnit(d.districtId)).filter(Boolean),
@@ -504,7 +653,15 @@ export default function GeoIntel() {
     }
     return rows;
   }, [incidents.data]);
-  const heatPoints = useMemo(() => incidentRows.map((r) => [r.lat, r.lng, 0.6]), [incidentRows]);
+  // Weekday lens — the incident surface restricted to one day of the week.
+  // CaseMaster exposes a date (not a timestamp) on this endpoint, so the day is
+  // taken from the registration date; the hour side of the story comes from the
+  // seasonality matrix, which the server derives from IncidentFromDate.
+  const activeIncidents = useMemo(
+    () => (weekday === null ? incidentRows : incidentRows.filter((r) => weekdayOf(r.registeredDate) === weekday)),
+    [incidentRows, weekday],
+  );
+  const heatPoints = useMemo(() => activeIncidents.map((r) => [r.lat, r.lng, 0.6]), [activeIncidents]);
   const headNames = useMemo(() => {
     const o = {};
     for (const h of lookups.data?.crimeHeads || []) o[String(h.crimeHeadId)] = h.headName;
@@ -576,10 +733,11 @@ export default function GeoIntel() {
   // Patrol-route suggestion — nearest-neighbour over the top-3 visible hotspots.
   const patrolRoute = useMemo(
     () => (patrolOn
-      ? nearestNeighborRoute(visibleHotspots, 3,
-        (h) => hotspotName(h, tName, t('geointel.hotspot.cluster', { id: h.clusterId })))
+      ? nearestNeighborRoute(visibleHotspots, patrolStopCount,
+        (h) => hotspotName(h, tName, t('geointel.hotspot.cluster', { id: h.clusterId })),
+        { optimize: patrolOptimize, roundTrip: patrolRoundTrip })
       : null),
-    [patrolOn, visibleHotspots, t, tName],
+    [patrolOn, visibleHotspots, patrolStopCount, patrolOptimize, patrolRoundTrip, t, tName],
   );
   // High-risk stations for the pulsing halo layer (risk ≥ 70).
   const haloRows = useMemo(
@@ -592,7 +750,7 @@ export default function GeoIntel() {
     [halos, stations.data],
   );
   // Case totals per polygon — powers the district multi-select aggregate.
-  const polygonCases = useMemo(() => aggregateCountsPerPolygon(districts.data || []), [districts.data]);
+  const polygonCases = polygonCasesRaw;
   const stateTotal = useMemo(
     () => Object.values(polygonCases).reduce((a, v) => a + (Number(v) || 0), 0),
     [polygonCases],
@@ -603,7 +761,7 @@ export default function GeoIntel() {
     if (!probe) return null;
     let count = 0;
     const heads = {};
-    for (const r of incidentRows) {
+    for (const r of activeIncidents) {
       if (haversineKm(probe.lat, probe.lng, r.lat, r.lng) <= probeKm) {
         count += 1;
         const k = String(r.crimeHeadId ?? '');
@@ -622,7 +780,7 @@ export default function GeoIntel() {
         : null,
       perKm2: count / (Math.PI * probeKm * probeKm),
     };
-  }, [probe, probeKm, incidentRows, headNames, t, tName]);
+  }, [probe, probeKm, activeIncidents, headNames, t, tName]);
   // Per-month case totals aligned to the scrubber window (histogram bars).
   const monthTotals = useMemo(() => {
     const d = trends.data;
@@ -631,6 +789,77 @@ export default function GeoIntel() {
     const offset = d.months.length - months.length;
     return months.map((_, i) => sums[offset + i] ?? 0);
   }, [trends.data, months]);
+
+  // ---- analysis workbench: statistical layers --------------------------------
+  // Every one of these runs over the rows already fetched for the map, so the
+  // workbench costs no extra API calls — but they are gated behind the toggles
+  // that use them, because at 2 000 incidents the grid and the catchment pass
+  // are the two most expensive things this route does.
+  // The workbench also lives inside the mobile sheet, where `dockOpen` is not
+  // what decides visibility — the sheet being open (and not showing a drill) is.
+  const dockActive = dockOpen || (sheetOpen && !drill);
+  const needGrid = gridOn || (dockActive && dockTab === 'grid');
+  const grid = useMemo(
+    () => (needGrid ? buildGrid(activeIncidents, gridKm) : null),
+    [needGrid, activeIncidents, gridKm],
+  );
+  const gridRenderCells = useMemo(
+    () => (gridOn && grid ? grid.cells.slice(0, GRID_RENDER_CAP) : null),
+    [gridOn, grid],
+  );
+  const needCatchment = spiderOn || gapsOn || (dockActive && dockTab === 'catchment');
+  const catchment = useMemo(
+    () => (needCatchment ? buildCatchment(activeIncidents, stations.data || [], { gapKm }) : null),
+    [needCatchment, activeIncidents, stations.data, gapKm],
+  );
+  const spiderLinks = useMemo(
+    () => (spiderOn && catchment ? catchment.links : null),
+    [spiderOn, catchment],
+  );
+  const gapPoints = useMemo(
+    () => (gapsOn && catchment ? catchment.gaps : null),
+    [gapsOn, catchment],
+  );
+  // Hotspot ranking table rows: the visible clusters plus their distance to the
+  // nearest police station, re-sorted by the active column.
+  const tableRows = useMemo(() => {
+    const sts = stations.data || [];
+    const withDist = visibleHotspots.map((h) => {
+      const near = sts.length
+        ? nearestStation(Number(h.centroidLat), Number(h.centroidLng), sts)
+        : null;
+      return { ...h, nearestKm: near ? near.km : null, nearestName: near ? near.station.unitName : null };
+    });
+    return sortHotspotRows(withDist, tableSort);
+  }, [visibleHotspots, stations.data, tableSort]);
+  const tableCases = useMemo(
+    () => tableRows.reduce((a, h) => a + (Number(h.caseCount) || 0), 0),
+    [tableRows],
+  );
+  const coLocated = useMemo(
+    () => (visibleHotspots.length > 1 ? coLocatedClusters(visibleHotspots) : []),
+    [visibleHotspots],
+  );
+  const coLocatedChords = useMemo(
+    () => (coLocateOn && coLocated.length ? coLocated.slice(0, 24) : null),
+    [coLocateOn, coLocated],
+  );
+  // Seasonality for the weekday × hour explorer — only fetched with the tab open.
+  const seasonality = useSeasonalityGrid(apiParams, dockActive && dockTab === 'spacetime');
+
+  // ---- viewport-scoped counts + exports --------------------------------------
+  const viewIncidents = useMemo(
+    () => (viewport ? activeIncidents.filter((r) => inBounds(r.lat, r.lng, viewport)) : activeIncidents),
+    [activeIncidents, viewport],
+  );
+  const viewStations = useMemo(
+    () => (viewport ? (stations.data || []).filter((s) => inBounds(s.lat, s.lng, viewport)) : (stations.data || [])),
+    [stations.data, viewport],
+  );
+  const viewHotspots = useMemo(
+    () => (viewport ? visibleHotspots.filter((h) => inBounds(h.centroidLat, h.centroidLng, viewport)) : visibleHotspots),
+    [visibleHotspots, viewport],
+  );
 
   // ---- interactions ---------------------------------------------------------
   const openDistrict = (polygonName, opts = {}) => {
@@ -752,6 +981,87 @@ export default function GeoIntel() {
     issueFly({ type: 'polygon', name: alertPolygons[i] });
     setTourIdx(i + 1);
   };
+  // ---- workbench actions ----------------------------------------------------
+  const openDock = (tab) => {
+    setDockTab(tab);
+    setDockOpen(true);
+  };
+  const focusGridCell = (c) => {
+    issueFly({
+      type: 'bounds',
+      bounds: { south: c.south, west: c.west, north: c.north, east: c.east },
+      maxZoom: 14,
+    });
+    toast.success(c.band
+      ? t('geointel.grid.cellToastSig', { n: fmtInt(c.count), z: fmtNum(c.z, 2), band: t(`geointel.grid.band.${c.band}`) })
+      : t('geointel.grid.cellToast', { n: fmtInt(c.count) }));
+  };
+  const focusGap = (g) => {
+    issueFly({ type: 'point', lat: g.lat, lng: g.lng, zoom: 13 });
+  };
+  const selectCatchmentStation = (row) => {
+    const full = (stations.data || []).find((s) => String(s.unitId) === String(row.unitId));
+    onStationClick(full || row);
+  };
+  const selectPair = (p) => {
+    setSelectedHotspotId(p.a.clusterId ?? null);
+    issueFly({
+      type: 'bounds',
+      bounds: {
+        south: Math.min(p.aLat, p.bLat), north: Math.max(p.aLat, p.bLat),
+        west: Math.min(p.aLng, p.bLng), east: Math.max(p.aLng, p.bLng),
+      },
+      maxZoom: 13,
+    });
+  };
+  const fitToData = () => {
+    const box = boundsOf([activeIncidents, visibleHotspots.map((h) => ({ lat: h.centroidLat, lng: h.centroidLng }))]);
+    if (!box) {
+      toast.error(t('geointel.fit.empty'));
+      return;
+    }
+    issueFly({ type: 'bounds', bounds: box, maxZoom: 12 });
+  };
+  const exportGrid = () => {
+    if (!grid || !grid.cells.length) return;
+    const fc = gridFeatureCollection(grid.cells);
+    const name = exportName(`grid${grid.cellKm}km`, apiParams, scrubMonth);
+    downloadGeoJson(name, fc);
+    toast.success(t('geointel.export.doneGeo', { n: fmtInt(fc.features.length), name }));
+  };
+  const exportCatchment = () => {
+    if (!catchment || !catchment.rows.length) return;
+    const rows = catchment.rows.map((r) => ({
+      unitId: r.unitId,
+      unitName: r.unitName,
+      districtId: r.districtId ?? '',
+      catchmentIncidents: r.count,
+      sharePct: (r.share * 100).toFixed(2),
+      meanKm: r.meanKm.toFixed(2),
+      maxKm: r.maxKm.toFixed(2),
+      caseCount: r.caseCount,
+      riskScore: r.riskScore ?? '',
+      lat: r.lat,
+      lng: r.lng,
+    }));
+    const name = exportName('catchment', apiParams, scrubMonth);
+    downloadCsv(name, CATCHMENT_COLS, rows);
+    toast.success(t('geointel.export.doneCsv', { n: fmtInt(rows.length), name }));
+  };
+  const pickSpaceTimeCell = (d, h) => {
+    setWeekday(d);
+    setHourPlaying(false);
+    setHour(h);
+  };
+  const resetSpaceTime = () => {
+    setWeekday(null);
+    setHourPlaying(false);
+    setHour(null);
+  };
+  const cycleWeekday = () => {
+    setWeekday((w) => (w === null ? 0 : (w >= 6 ? null : w + 1)));
+  };
+
   const copyRoute = async () => {
     if (!patrolRoute || !patrolRoute.stops.length) return;
     const band = t(HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'geointel.band.all');
@@ -764,8 +1074,12 @@ export default function GeoIntel() {
         ? t('geointel.patrol.textHeaderMonth', { band, month: monthLabel(scrubMonth) })
         : t('geointel.patrol.textHeader', { band }),
       ...lines,
+      patrolRoute.roundTrip && patrolRoute.closingKm > 0
+        ? t('geointel.patrol.textReturn', { km: patrolRoute.closingKm.toFixed(1) })
+        : null,
       t('geointel.patrol.textTotal', { km: patrolRoute.totalKm.toFixed(1), min: patrolRoute.etaMin }),
-    ].join('\n');
+      patrolRoute.savedKm > 0.05 ? t('geointel.patrol.textSaved', { km: patrolRoute.savedKm.toFixed(1) }) : null,
+    ].filter(Boolean).join('\n');
     const ok = await copyText(text);
     if (ok) toast.success(t('geointel.patrol.copied'));
     else toast.error(t('geointel.patrol.copyFailed'));
@@ -800,6 +1114,26 @@ export default function GeoIntel() {
         }).join(' · '),
       }));
     }
+    if (weekdayLabel) lines.push(t('geointel.brief.weekday', { day: weekdayLabel }));
+    // Statistical section — only when the grid has actually been computed, so
+    // the brief never claims an analysis the officer did not run.
+    if (grid && grid.cells.length) {
+      lines.push(t('geointel.brief.grid', {
+        km: grid.cellKm,
+        cells: fmtInt(grid.occupied),
+        hot: fmtInt(grid.hot95 + grid.hot99),
+        top: grid.top10Share === null ? '—' : fmtNum(grid.top10Share * 100, 0),
+      }));
+    }
+    if (catchment && catchment.rows.length) {
+      lines.push(t('geointel.brief.catchment', {
+        station: catchment.rows[0].unitName,
+        n: fmtInt(catchment.rows[0].count),
+        gaps: fmtInt(catchment.gapTotal || 0),
+        km: gapKm,
+      }));
+    }
+    if (coLocated.length) lines.push(t('geointel.brief.colocate', { n: fmtInt(coLocated.length) }));
     if (alertPolygons.length) lines.push(t('geointel.brief.redZones', { list: alertPolygons.join(', ') }));
     lines.push(t('geointel.brief.footer', {
       stations: fmtInt((stations.data || []).length), clusters: fmtInt(hotspotRows.length),
@@ -840,6 +1174,9 @@ export default function GeoIntel() {
     band: hotspotBand,
     hour,
     halos,
+    weekday,
+    grid: { on: gridOn, km: gridKm, gi: giMode },
+    dock: { open: dockOpen, tab: dockTab },
     filters: {
       districtId,
       crimeHeadId,
@@ -861,6 +1198,16 @@ export default function GeoIntel() {
     if (METRIC_PROPS[v.metric]) setMetric(v.metric);
     setHotspotBand(BAND_KEYS.includes(v.band) ? v.band : 'all');
     if (typeof v.halos === 'boolean') setHalos(v.halos);
+    setWeekday(Number.isInteger(v.weekday) && v.weekday >= 0 && v.weekday <= 6 ? v.weekday : null);
+    if (v.grid && typeof v.grid === 'object') {
+      setGridOn(!!v.grid.on);
+      if (GRID_SIZES.includes(v.grid.km)) setGridKm(v.grid.km);
+      setGiMode(!!v.grid.gi);
+    }
+    if (v.dock && typeof v.dock === 'object') {
+      setDockOpen(!!v.dock.open);
+      if (DOCK_TABS.includes(v.dock.tab)) setDockTab(v.dock.tab);
+    }
     setHourPlaying(false);
     const hv = Number(v.hour);
     setHour(v.hour === null || v.hour === undefined || !Number.isFinite(hv)
@@ -927,6 +1274,89 @@ export default function GeoIntel() {
     scrubMonth ? t('geointel.scope.month', { m: monthLabel(scrubMonth) }) : null,
   ].filter(Boolean).join(' · ');
 
+  // Workbench tabs. Built here (not inside the dock) so the identical nodes can
+  // be dropped into the mobile sheet at 360px without a second implementation.
+  const weekdayLabel = weekday === null
+    ? null
+    : dayShort(t, (seasonality.data?.weekdays || ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])[weekday]);
+  const dockTabs = [
+    {
+      key: 'hotspots',
+      label: t('geointel.dock.tabHotspots'),
+      node: (
+        <HotspotTable
+          rows={tableRows}
+          sort={tableSort}
+          onSort={setTableSort}
+          selectedId={selectedHotspotId}
+          onSelect={onHotspotClick}
+          onHover={setHoverHotspotId}
+          coLocated={coLocated}
+          onSelectPair={selectPair}
+          totalCases={tableCases}
+          coLocateOn={coLocateOn}
+          onCoLocate={setCoLocateOn}
+        />
+      ),
+    },
+    {
+      key: 'grid',
+      label: t('geointel.dock.tabGrid'),
+      node: (
+        <GridPanel
+          grid={grid}
+          cellKm={gridKm}
+          onCellKm={setGridKm}
+          gridOn={gridOn}
+          onGridOn={setGridOn}
+          giMode={giMode}
+          onGiMode={setGiMode}
+          onFocusCell={focusGridCell}
+          onExport={exportGrid}
+          light={light}
+          loading={wantIncidents && incidents.isFetching && !grid}
+        />
+      ),
+    },
+    {
+      key: 'catchment',
+      label: t('geointel.dock.tabCatchment'),
+      node: (
+        <CatchmentPanel
+          catchment={catchment}
+          gapKm={gapKm}
+          onGapKm={setGapKm}
+          spider={spiderOn}
+          onSpider={setSpiderOn}
+          gapsOn={gapsOn}
+          onGapsOn={setGapsOn}
+          onStationSelect={selectCatchmentStation}
+          onFocusGap={focusGap}
+          onExport={exportCatchment}
+        />
+      ),
+    },
+    {
+      key: 'spacetime',
+      label: t('geointel.dock.tabSpacetime'),
+      node: (
+        <SpaceTimePanel
+          data={seasonality.data}
+          loading={seasonality.isLoading}
+          error={seasonality.error}
+          onRetry={() => seasonality.refetch()}
+          hour={hour}
+          weekday={weekday}
+          onPick={pickSpaceTimeCell}
+          onHour={(h) => { setHourPlaying(false); setHour(h); }}
+          onWeekday={setWeekday}
+          onReset={resetSpaceTime}
+          light={light}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className={shellCls} ref={shellRef}>
       <style>{GEOINTEL_CSS}</style>
@@ -936,12 +1366,14 @@ export default function GeoIntel() {
         geojson={geojson.data || null}
         choroValues={choroValues}
         choroMetric={choroMetric}
+        choroColors={bivariate.colors}
+        choroLabels={bivariate.labels}
         choroOpacity={choroOpacity}
         heatOpacity={heatOpacity}
         alertPolygons={alertPolygons}
         cityMarkers={cityMarkers}
         heatPoints={heatPoints}
-        incidentRows={incidentRows}
+        incidentRows={activeIncidents}
         headNames={headNames}
         hotspots={visibleHotspots}
         stations={stations.data || []}
@@ -956,6 +1388,15 @@ export default function GeoIntel() {
         compareHeatPoints={compareOn && compareMonth ? comparePoints : null}
         comparePct={compareOn && compareMonth && scrubMonth ? comparePct : null}
         nightDim={hour !== null && (hour >= 19 || hour < 6)}
+        gridCells={gridRenderCells}
+        gridMax={grid ? grid.max : 1}
+        giMode={giMode}
+        onGridCellClick={focusGridCell}
+        spiderLinks={spiderLinks}
+        gapPoints={gapPoints}
+        coLocatedPairs={coLocatedChords}
+        highlightHotspotId={hoverHotspotId}
+        onViewportChange={setViewport}
         fly={fly}
         light={light}
         basemap={basemap}
@@ -1052,10 +1493,34 @@ export default function GeoIntel() {
             <ExportMenu
               stations={stations.data || []}
               hotspots={visibleHotspots}
-              incidents={incidentRows}
+              incidents={activeIncidents}
+              viewStations={viewStations}
+              viewHotspots={viewHotspots}
+              viewIncidents={viewIncidents}
               apiParams={apiParams}
               scrubMonth={scrubMonth}
             />
+            <Tooltip label={dockOpen ? t('geointel.dock.hide') : t('geointel.dock.show')} position="bottom">
+              <button
+                type="button"
+                className={`btn gi-tap !px-2 !py-1.5 ${dockOpen ? '!text-primary !border-primary/60' : ''}`}
+                aria-pressed={dockOpen}
+                aria-label={dockOpen ? t('geointel.dock.hideAria') : t('geointel.dock.showAria')}
+                onClick={() => setDockOpen((v) => !v)}
+              >
+                {AnalysisIcon}
+              </button>
+            </Tooltip>
+            <Tooltip label={t('geointel.fit.title')} position="bottom">
+              <button
+                type="button"
+                className="btn gi-tap !px-2 !py-1.5"
+                aria-label={t('geointel.fit.aria')}
+                onClick={fitToData}
+              >
+                {FitIcon}
+              </button>
+            </Tooltip>
             <Tooltip label={measuring ? t('geointel.toolbar.measureExit') : t('geointel.toolbar.measure')} position="bottom">
               <button
                 type="button"
@@ -1263,8 +1728,29 @@ export default function GeoIntel() {
         )}
       </div>
 
+      {/* analysis workbench (desktop): hotspot table, grid statistics, station
+          catchment and the weekday × hour explorer. The bottom overlay stack
+          slides right by the dock width while it is open. */}
+      {dockOpen && (
+        <AnalysisDock
+          className="gi-noprint hidden md:flex absolute left-3 bottom-3 w-[23rem] max-w-[46vw] z-20"
+          // Grows upward from the bottom-left, capped so it never reaches under
+          // the top overlay (title + filter + layer rows, which wrap on narrow
+          // desktops). The tab body scrolls inside whatever height is left.
+          style={{ maxHeight: 'calc(100% - 16.5rem)', minHeight: '17rem' }}
+          tabs={dockTabs}
+          tab={dockTab}
+          onTab={setDockTab}
+          onClose={() => setDockOpen(false)}
+        />
+      )}
+
       {/* bottom overlay (desktop): legend/metric bar + movers + hotspot chips + scrubber */}
-      <div className="hidden md:flex absolute left-3 bottom-3 right-24 z-10 pointer-events-none flex-col items-start gap-2">
+      <div
+        className={`hidden md:flex absolute bottom-3 right-24 z-10 pointer-events-none flex-col items-start gap-2 ${
+          dockOpen ? 'left-[24.75rem]' : 'left-3'
+        }`}
+      >
         <LegendBar
           light={light}
           metricKey={metric}
@@ -1276,6 +1762,17 @@ export default function GeoIntel() {
           onChoroOpacity={setChoroOpacity}
           onHeatOpacity={setHeatOpacity}
         />
+        <div className="gi-noprint max-w-full">
+          <ViewportChip
+            incidents={viewIncidents.length}
+            stations={viewStations.length}
+            hotspots={viewHotspots.length}
+            totalIncidents={activeIncidents.length}
+            weekdayLabel={weekdayLabel}
+            onFit={fitToData}
+            onClearWeekday={() => setWeekday(null)}
+          />
+        </div>
         {metric === 'mom' && (
           <div className="gi-noprint pointer-events-none max-w-full">
             <TopMovers rows={districts.data || []} onSelect={onMoverSelect} />
@@ -1319,6 +1816,28 @@ export default function GeoIntel() {
             >
               ⇆ {t('geointel.compare.label')}
             </button>
+            <button
+              type="button"
+              className={`chip gi-tap shrink-0 bg-panel/95 shadow-lg transition-colors text-[11px] ${
+                gridOn ? '!border-primary/60 !text-primary' : 'text-muted hover:text-ink'
+              }`}
+              aria-pressed={gridOn}
+              onClick={() => { setGridOn((v) => !v); if (!gridOn) openDock('grid'); }}
+              title={t('geointel.grid.chipHint')}
+            >
+              ▦ {t('geointel.grid.chip')}
+            </button>
+            <button
+              type="button"
+              className={`chip gi-tap shrink-0 bg-panel/95 shadow-lg transition-colors text-[11px] ${
+                weekday !== null ? '!border-primary/60 !text-primary' : 'text-muted hover:text-ink'
+              }`}
+              aria-pressed={weekday !== null}
+              onClick={cycleWeekday}
+              title={t('geointel.weekday.hint')}
+            >
+              ▤ {weekdayLabel || t('geointel.weekday.label')}
+            </button>
           </div>
         )}
         {hour !== null && (
@@ -1343,6 +1862,12 @@ export default function GeoIntel() {
                 : t(HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'geointel.band.all')}
               onCopy={copyRoute}
               onExit={() => setPatrolOn(false)}
+              stopCount={patrolStopCount}
+              onStopCount={setPatrolStopCount}
+              optimize={patrolOptimize}
+              onOptimize={setPatrolOptimize}
+              roundTrip={patrolRoundTrip}
+              onRoundTrip={setPatrolRoundTrip}
             />
           </div>
         )}
@@ -1407,7 +1932,7 @@ export default function GeoIntel() {
             onStationSelect={onStationClick}
             pins={pins}
             onTogglePin={onTogglePin}
-            incidentRows={incidentRows}
+            incidentRows={activeIncidents}
             stationsAll={stations.data || []}
             headNames={headNames}
             nameIds={nameIds}
@@ -1455,7 +1980,7 @@ export default function GeoIntel() {
               onStationSelect={onStationClick}
               pins={pins}
               onTogglePin={onTogglePin}
-              incidentRows={incidentRows}
+              incidentRows={activeIncidents}
               stationsAll={stations.data || []}
               headNames={headNames}
               nameIds={nameIds}
@@ -1474,6 +1999,15 @@ export default function GeoIntel() {
               stations={stations.data || []}
               onPickUnit={(u) => { onLocateUnit(u); setSheetOpen(false); }}
               onPickStation={(s) => { onStationClick(s); }}
+            />
+            <ViewportChip
+              incidents={viewIncidents.length}
+              stations={viewStations.length}
+              hotspots={viewHotspots.length}
+              totalIncidents={activeIncidents.length}
+              weekdayLabel={weekdayLabel}
+              onFit={() => { fitToData(); setSheetOpen(false); }}
+              onClearWeekday={() => setWeekday(null)}
             />
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{t('geointel.hotspot.top')}</p>
@@ -1548,14 +2082,34 @@ export default function GeoIntel() {
                   <PatrolRoutePill
                     route={patrolRoute}
                     bandLabel={hotspotBand === 'all'
-                ? null
-                : t(HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'geointel.band.all')}
+                      ? null
+                      : t(HOUR_BANDS.find((b) => b.key === hotspotBand)?.label || 'geointel.band.all')}
                     onCopy={copyRoute}
                     onExit={() => setPatrolOn(false)}
+                    stopCount={patrolStopCount}
+                    onStopCount={setPatrolStopCount}
+                    optimize={patrolOptimize}
+                    onOptimize={setPatrolOptimize}
+                    roundTrip={patrolRoundTrip}
+                    onRoundTrip={setPatrolRoundTrip}
                   />
                 </div>
               )}
             </div>
+            {/* The sheet keeps its children mounted while collapsed, so the
+                workbench is gated on `sheetOpen` — otherwise a phone-sized DOM
+                copy of every tab would render behind the desktop layout too. */}
+            {sheetOpen && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{t('geointel.dock.title')}</p>
+                <AnalysisDock
+                  className="h-[52vh]"
+                  tabs={dockTabs}
+                  tab={dockTab}
+                  onTab={setDockTab}
+                />
+              </div>
+            )}
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{t('geointel.sheet.display')}</p>
               <div className="space-y-2">

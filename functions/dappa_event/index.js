@@ -45,6 +45,40 @@ function severityOf(z) {
   return 1;
 }
 
+const TRUTHY = new Set(['on', 'true', '1', 'yes', 'enabled']);
+
+function flagOn(name) {
+  return TRUTHY.has(String(process.env[name] || '').trim().toLowerCase());
+}
+
+/**
+ * Critical-anomaly push (Catalyst Push Notifications, web channel).
+ * Recipients come from PUSH_RECIPIENTS (comma separated) — the API's
+ * /notify/register registry lives in Cache, which this function does not share.
+ * Fallback: log the exact payload and carry on. A failed notification must
+ * never fail the event, or the AggMonthly upsert above would be lost.
+ */
+async function notifyCritical(app, alert) {
+  const payload = {
+    message: `[S${alert.severity}] ${alert.narrative}`,
+    districtId: alert.districtId,
+    headId: alert.headId,
+    zScore: alert.z
+  };
+  const recipients = String(process.env.PUSH_RECIPIENTS || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  if (!flagOn('FEATURE_PUSH') || !recipients.length) {
+    log('info', 'push_preview', Object.assign({ mode: flagOn('FEATURE_PUSH') ? 'no-recipients' : 'disabled' }, payload));
+    return;
+  }
+  try {
+    await app.pushNotification().web().sendNotification(payload.message, recipients);
+    log('info', 'push_sent', { recipients: recipients.length, districtId: alert.districtId });
+  } catch (err) {
+    log('warn', 'push_failed', Object.assign({ message: err && err.message }, payload));
+  }
+}
+
 async function handleInsert(app, row) {
   const zcql = app.zcql();
   const crimeNo = String(row.CrimeNo || '');
@@ -113,6 +147,7 @@ async function handleInsert(app, row) {
     return;
   }
   const zR = Math.round(z * 100) / 100;
+  const severity = severityOf(z);
   const narrative = `Live z-check: ${current} cases this month vs ~${Math.round(mean * 10) / 10} expected for this district/head (z=${zR}).`;
   await app.datastore().table('AnomalyAlert').insertRow({
     AlertID: `EVT-${Date.now()}`,
@@ -124,12 +159,14 @@ async function handleInsert(app, row) {
     Observed: current,
     Expected: Math.round(mean * 10) / 10,
     ZScore: zR,
-    Severity: severityOf(z),
+    Severity: severity,
     Status: 'OPEN',
     Narrative: narrative,
     CreatedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
   });
-  log('info', 'alert_inserted', { districtId, headId, ym, z: zR });
+  log('info', 'alert_inserted', { districtId, headId, ym, z: zR, severity });
+  // Severity 3 = z >= 4: the "call someone now" band.
+  if (severity >= 3) await notifyCritical(app, { severity, narrative, districtId, headId, z: zR });
 }
 
 module.exports = async (event, context) => {

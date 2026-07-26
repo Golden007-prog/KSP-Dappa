@@ -7,6 +7,7 @@ Refreshes the derived analytics tables from `CaseMaster`:
 3. **StationRisk** — `100 · minmax(0.45·trend-slope + 0.35·hotspot-proximity + 0.20·anomaly-weight)` with human-readable `DriversJson`.
 4. **ForecastMonthly** — seasonal-naive (month−12) with 80% CI, `naive-mean3` under 13 months of history. Always written locally; in cloud mode it only overwrites the table when `DAPPA_REFRESH_FORECAST=1`, so the pipeline's Holt-Winters rows survive by default.
 5. Refresh timestamp — `RefreshMeta` row in cloud mode (best effort), `refresh_meta.json` locally.
+6. **Catalyst Mail digest** — the recomputed alerts rendered and sent through `app.email()`. Runs last, after everything is persisted, and never raises: a mail misconfiguration costs the digest, not the refresh. Flag `FEATURE_MAIL` (off by default) with `MAIL_FROM` (a console-verified sender) and `DIGEST_TO` (comma-separated). Fallback: the rendered digest is logged and returned as `meta["digest"]["preview"]`, and `mode` reports exactly why it did not send (`disabled` / `not-configured` / `no-send-method` / `error-fallback`). Dry runs always report `local-dryrun`.
 
 No statsmodels/scikit-learn: seasonal-naive/linear methods keep the function inside Catalyst limits (see master spec §4 vendoring note).
 
@@ -15,6 +16,7 @@ No statsmodels/scikit-learn: seasonal-naive/linear methods keep the function ins
 - `catalyst-config.json` — cron function, `python_3_12` stack, entry `main.py` (`handler(cron_details, context)`).
 - `main.py` — entry point + mode switch; also runnable directly for dry runs.
 - `nightly_core.py` — pure pandas/numpy refresh logic (deterministic).
+- `notify.py` — Catalyst Mail digest (render + guarded send).
 - `store_local.py` / `store_catalyst.py` — CSV vs Data Store I/O.
 - `test_fixture/` — deterministic tiny dataset (`make_fixture.py` regenerates it).
 

@@ -11,6 +11,15 @@
 // leaderboard + compare, hotspot windows, station-risk watchlist, alerts feed
 // with quick-ack, saved views, CSV/poster exports, panel maximize, keyboard
 // shortcuts, configurable auto-refresh and a print-ready situation brief.
+//
+// Second wave (real-data command view): a census-backed per-lakh choropleth
+// mode and an adjustable red-zone z threshold, a socio-economic correlation
+// board with residual outlier ranking, an emerging/cooling sub-head board, a
+// four-way district compare board, a district → station drill explorer with
+// breadcrumbs, shift-wise (day/evening/night) split tiles, a year × month heat
+// calendar that can retarget the global date filter, a patrol-deployment
+// planner driven by hotspot intensity and station risk, a heinous-share KPI
+// tile and an open-alert severity rollup.
 // Route-local modules live in ./dashboard/.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -28,6 +37,7 @@ import FilterBar from '../components/FilterBar.jsx';
 import LoadingSkeleton from '../components/LoadingSkeleton.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import PulseDot from '../components/PulseDot.jsx';
+import Badge from '../components/Badge.jsx';
 import SegmentedControl from '../components/SegmentedControl.jsx';
 import MiniChoropleth from '../components/MiniChoropleth.jsx';
 import { useTheme } from '../components/ThemeProvider.jsx';
@@ -54,6 +64,13 @@ import IntelTicker from './dashboard/IntelTicker.jsx';
 import HotspotWindows from './dashboard/HotspotWindows.jsx';
 import RiskWatchlist from './dashboard/RiskWatchlist.jsx';
 import DistrictDrillSheet from './dashboard/DistrictDrillSheet.jsx';
+import SocioBoard from './dashboard/SocioBoard.jsx';
+import EmergingBoard from './dashboard/EmergingBoard.jsx';
+import CompareBoard from './dashboard/CompareBoard.jsx';
+import StationExplorer from './dashboard/StationExplorer.jsx';
+import ShiftSplit from './dashboard/ShiftSplit.jsx';
+import HeatCalendar from './dashboard/HeatCalendar.jsx';
+import DeploymentPanel from './dashboard/DeploymentPanel.jsx';
 import { usePanelPrefs, useAutoRefresh } from './dashboard/prefs.js';
 import { downloadCsv, downloadDataUrl, stamp } from './dashboard/exports.js';
 import {
@@ -64,6 +81,12 @@ import {
   unitPopulation, populationCorrelation, riskPerPolygon, redZonesFromAlerts,
   detectSpikes, seasonalitySplits, buildInsights,
 } from './dashboard/insights.js';
+import {
+  useSocio, useEmerging, useAlertSummary, useMonthlyRaw, useSeasonalityRaw,
+} from './dashboard/dataExtra.js';
+import {
+  joinSocio, polygonCensusRate, monthEndDate, emergingMovers, SOCIO_INDICATOR_KEYS,
+} from './dashboard/analytics.js';
 import { buildDashboardPoster } from './dashboard/poster.js';
 
 const DETECTION_TARGET = 65; // state target, %
@@ -138,6 +161,58 @@ function RisingChips({ kpis, share, linkSearch = '' }) {
   );
 }
 
+// Statewide open-alert rollup from /alerts/summary — a single server-computed
+// count of every alert in the store, which the paginated feed cannot give you
+// (the feed shows the top few; this says how many exist and where). Renders
+// nothing at all rather than a zero row when the endpoint has no alerts.
+function AlertSummaryChips({ query, linkSearch = '', onPickDistrict }) {
+  const t = useT();
+  const tName = useNames();
+  const d = query.data;
+  if (query.isLoading || query.error || !d || !d.total) return null;
+  const open = Number(d.byStatus?.OPEN) || 0;
+  const acked = Number(d.byStatus?.ACK) || 0;
+  // The server keys severity numerically (3 = critical) — map to the same
+  // vocabulary the feed and the poster already use.
+  const SEV = { 3: 'critical', 2: 'high', 1: 'medium' };
+  const sevBits = Object.entries(d.bySeverity || {})
+    .map(([k, v]) => ({ key: SEV[k] || 'low', n: Number(v) || 0 }))
+    .filter((s) => s.n > 0)
+    .sort((a, b) => b.n - a.n);
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+      <Badge tone={open > 0 ? 'red' : 'slate'} pulse={open > 0}>
+        {t('dashboard.alertSummary.open', { n: fmtInt(open), total: fmtInt(d.total) })}
+      </Badge>
+      {acked > 0 && <Badge tone="teal">{t('dashboard.alertSummary.acked', { n: fmtInt(acked) })}</Badge>}
+      {sevBits.map((s) => (
+        <Badge key={s.key} tone={s.key === 'critical' ? 'red' : s.key === 'high' ? 'amber' : 'slate'}>
+          {t('dashboard.alertSummary.sevBit', { n: fmtInt(s.n), sev: t(`dashboard.sev.${s.key}`) })}
+        </Badge>
+      ))}
+      {(d.topDistricts || []).slice(0, 3).map((x) => (
+        <button
+          key={x.districtId}
+          type="button"
+          onClick={() => onPickDistrict?.(x.districtId)}
+          title={t('dashboard.alertSummary.districtTitle', {
+            name: tName('districts', x.districtId, x.districtName) || x.districtName,
+          })}
+          className="chip min-h-[32px] gap-1 px-2 text-[10px] hover:border-signal/40"
+        >
+          <span className="max-w-[7rem] truncate">
+            {tName('districts', x.districtId, x.districtName) || x.districtName}
+          </span>
+          <span className="num font-semibold text-signal">{fmtInt(x.openCount)}</span>
+        </button>
+      ))}
+      <Link to={`/alerts${linkSearch}`} className="ml-auto text-[10px] text-amber hover:underline">
+        {t('dashboard.link.all')}
+      </Link>
+    </div>
+  );
+}
+
 // ---- toolbar chrome --------------------------------------------------------
 
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -179,7 +254,21 @@ function ToolBtn({ label, title, onClick, active = false, children }) {
 
 // Mode ids are the localStorage/preference contract; the visible label, the
 // panel subtitle and the map's value caption all come from the dictionary.
-const CHORO_MODE_IDS = ['cases', 'rate', 'mom', 'pop', 'risk'];
+// 'socio' is the census-backed per-lakh rate: /geo/districts ships ratePerLakh
+// as null whenever the aggregate table has no population column, so the older
+// 'rate' mode can flatten to zero — 'socio' recomputes it from /meta/socio,
+// which always carries a real population for all 38 districts.
+const CHORO_MODE_IDS = ['cases', 'rate', 'socio', 'mom', 'pop', 'risk'];
+
+// Red-zone pulse sensitivity — the |z| at which an open alert makes its
+// district pulse. 2σ is the default; a quiet week is read at 1.5, a flood of
+// alerts at 3.
+const Z_THRESHOLDS = [1.5, 2, 2.5, 3];
+
+// How far back the heat calendar reaches. AggMonthly starts in 2023-08; five
+// years of padding costs nothing (the server returns zero-filled months, which
+// monthCalendar drops) and survives the dataset growing.
+const CALENDAR_YEARS = 4;
 
 function choroAggregate(rows, mode) {
   const acc = {};
@@ -237,6 +326,21 @@ export default function Dashboard() {
   const hotspots = useHotspots({});
   const riskQ = useStationRisk({});
   const forecastQ = useForecast(apiParams);
+
+  // ---- second-wave sources (see ./dashboard/dataExtra.js) -----------------
+  const socioQ = useSocio();
+  const emergingQ = useEmerging({ districtId });
+  const alertSummaryQ = useAlertSummary();
+  const seasonRawQ = useSeasonalityRaw(apiParams);
+  // Multi-year window for the heat calendar — deliberately NOT apiParams, whose
+  // date filter is what the calendar exists to help you choose.
+  const calendarParams = useMemo(() => {
+    const now = new Date();
+    const to = now.toISOString().slice(0, 10);
+    const from = `${now.getFullYear() - CALENDAR_YEARS}-01-01`;
+    return { from, to, ...(crimeHeadId ? { crimeHeadId } : {}), ...(districtId ? { districtId } : {}) };
+  }, [crimeHeadId, districtId]);
+  const calendarQ = useMonthlyRaw(calendarParams);
 
   // Crime-head names arrive from the API in English while the chart, the
   // compare strip and the insight sentences must render them in the active
@@ -309,6 +413,22 @@ export default function Dashboard() {
     return prior > 0 ? ((cur - prior) / prior) * 100 : undefined;
   }, [monthlyTotals]);
 
+  // Heinous share of the current month, with a 12-month share sparkline. Both
+  // read heinousCount off the RAW monthly rows — the shared trends normalizer
+  // folds that column away, so this is the only place the ratio can come from.
+  const heinousPct = Number(k.totalFirs) > 0
+    ? (Number(k.heinousCount) / Number(k.totalFirs)) * 100
+    : null;
+  const heinousSpark = useMemo(() => {
+    const rows = (calendarQ.data || []).filter((r) => Number(r?.caseCount) > 0);
+    if (rows.length < 3) return undefined;
+    return rows.slice(-12).map((r) => Math.round(((Number(r.heinousCount) || 0) / Number(r.caseCount)) * 1000) / 10);
+  }, [calendarQ.data]);
+  const heinousAvgPct = useMemo(() => {
+    if (!heinousSpark || !heinousSpark.length) return null;
+    return heinousSpark.reduce((a, b) => a + b, 0) / heinousSpark.length;
+  }, [heinousSpark]);
+
   const compareView = useMemo(() => {
     const v = buildCompareView(trends.data);
     if (!v) return null;
@@ -328,18 +448,27 @@ export default function Dashboard() {
   // ---- choropleth ---------------------------------------------------------
   const [choroMode, setChoroMode] = useLocalPref('dappa-dash-choromode', 'cases');
   const [cityMarkersOn, setCityMarkersOn] = useLocalPref('dappa-dash-citymarkers', false);
+  const [zThreshold, setZThreshold] = useLocalPref('dappa-dash-zthreshold', 2);
+  const minZ = Z_THRESHOLDS.includes(Number(zThreshold)) ? Number(zThreshold) : 2;
   const riskPoly = useMemo(() => riskPerPolygon(riskQ.data), [riskQ.data]);
-  const choroValues = useMemo(
-    () => (choroMode === 'risk' ? riskPoly : choroAggregate(geo.data, choroMode)),
-    [geo.data, choroMode, riskPoly],
+  const censusRatePoly = useMemo(
+    () => polygonCensusRate(geo.data, socioQ.data),
+    [geo.data, socioQ.data],
   );
+  const choroValues = useMemo(() => {
+    if (choroMode === 'risk') return riskPoly;
+    if (choroMode === 'socio') return censusRatePoly;
+    return choroAggregate(geo.data, choroMode);
+  }, [geo.data, choroMode, riskPoly, censusRatePoly]);
   const choroModes = useMemo(
     () => CHORO_MODE_IDS.map((value) => ({ value, label: t(`dashboard.choro.mode.${value}`) })),
     [t],
   );
   // Red zones: server anomaly flags UNION districts whose open alerts run
-  // |z| ≥ 2 above their historical mean — both pulse on the map.
-  const redZones = useMemo(() => redZonesFromAlerts(alerts.data), [alerts.data]);
+  // |z| ≥ the chosen threshold above their historical mean — both pulse on the
+  // map. The threshold is a live control, so the pulse can be tuned to the real
+  // z distribution of the week rather than a hardcoded 2σ.
+  const redZones = useMemo(() => redZonesFromAlerts(alerts.data, { minZ }), [alerts.data, minZ]);
   const alertPolygons = useMemo(
     () => [...new Set([
       ...(geo.data || []).filter((d) => d.alert).map((d) => polygonForUnit(d.districtId)).filter(Boolean),
@@ -369,7 +498,19 @@ export default function Dashboard() {
   const [drillPolygon, setDrillPolygon] = useState(null);
   const onPolygonClick = (name) => setDrillPolygon(name);
   const onMarkerClick = (m) => setDrillPolygon(polygonForUnit(m.unitId));
-  const choroLoading = geo.isLoading || (choroMode === 'risk' && riskQ.isLoading);
+  const choroLoading = geo.isLoading
+    || (choroMode === 'risk' && riskQ.isLoading)
+    || (choroMode === 'socio' && socioQ.isLoading);
+
+  // ---- socio-economic join (C3) -------------------------------------------
+  // Statewide rows so the correlation is computed across every district, not
+  // just the one currently filtered.
+  const socioRows = useMemo(
+    () => joinSocio(geoAll.data, socioQ.data),
+    [geoAll.data, socioQ.data],
+  );
+  const socioReady = socioRows.some((r) => SOCIO_INDICATOR_KEYS.some((k) => Number.isFinite(r[k])));
+  const emergingFlagged = useMemo(() => emergingMovers(emergingQ.data), [emergingQ.data]);
 
   // ---- trend chart --------------------------------------------------------
   const [trendMode, setTrendMode] = useLocalPref('dappa-dash-trendmode', 'stacked');
@@ -574,6 +715,54 @@ export default function Dashboard() {
       Array.isArray(r.drivers) ? r.drivers.join('; ') : '',
     ]),
   );
+  const exportSocioCsv = () => downloadCsv(
+    `socio-correlation-${stamp()}.csv`,
+    [t('dashboard.csv.district'), t('dashboard.csv.cases'), t('dashboard.csv.ratePerLakh'),
+      t('dashboard.csv.population'), t('dashboard.socio.ind.urbanPct'), t('dashboard.socio.ind.literacyPct'),
+      t('dashboard.socio.ind.densityPerKm2'), t('dashboard.socio.ind.perCapitaIncomeIdx')],
+    socioRows.map((r) => [
+      tName('districts', r.districtId, r.districtName) || r.districtName,
+      r.caseCount,
+      r.ratePerLakh == null ? '' : Number(r.ratePerLakh).toFixed(2),
+      r.population ?? '',
+      r.urbanPct ?? '', r.literacyPct ?? '', r.densityPerKm2 ?? '', r.perCapitaIncomeIdx ?? '',
+    ]),
+  );
+  const exportEmergingCsv = () => downloadCsv(
+    `emerging-subheads-${stamp()}.csv`,
+    [t('dashboard.csv.subHead'), t('dashboard.csv.crimeHead'), t('dashboard.csv.recentAvg'),
+      t('dashboard.csv.baselineAvg'), t('dashboard.csv.growthPct'), t('dashboard.csv.emerging')],
+    [...(emergingQ.data?.rising || []), ...(emergingQ.data?.falling || [])].map((m) => [
+      tName('crimeSubHeads', m.subHeadId, m.subHeadName) || m.subHeadName,
+      tName('crimeHeads', m.headId, m.headName) || m.headName || '',
+      m.recentAvg, m.baselineAvg, m.growthPct, m.emerging ? yes() : '',
+    ]),
+  );
+  const exportCalendarCsv = () => downloadCsv(
+    `month-calendar-${stamp()}.csv`,
+    [t('dashboard.csv.month'), t('dashboard.csv.cases'), t('dashboard.csv.heinous')],
+    (calendarQ.data || []).filter((r) => Number(r?.caseCount) > 0)
+      .map((r) => [r.ym, r.caseCount, r.heinousCount]),
+  );
+  const exportShiftCsv = () => {
+    const rows = seasonRawQ.data?.matrix || [];
+    const days = seasonRawQ.data?.weekdays || [];
+    if (!rows.length) return;
+    downloadCsv(
+      `shift-split-${stamp()}.csv`,
+      [t('dashboard.csv.weekday'), ...Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`)],
+      rows.map((row, i) => [days[i] ?? i, ...Array.from({ length: 24 }, (_, h) => Number(row?.[h]) || 0)]),
+    );
+  };
+
+  // A month cell in the heat calendar becomes the global date filter.
+  const pickCalendarMonth = (ym) => {
+    const end = monthEndDate(ym);
+    if (!end) return;
+    setFilters({ range: '', from: `${ym}-01`, to: end });
+    toast.success(t('dashboard.calendar.applied', { month: monthLabel(ym) }));
+  };
+
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -584,6 +773,7 @@ export default function Dashboard() {
   };
 
   const donutRef = useRef(null);
+  const socioRef = useRef(null);
   const exportPoster = async () => {
     const sevCounts = {};
     for (const a of openFeed) {
@@ -641,6 +831,8 @@ export default function Dashboard() {
     kpis.dataUpdatedAt || 0, geo.dataUpdatedAt || 0, trends.dataUpdatedAt || 0,
     share.dataUpdatedAt || 0, alerts.dataUpdatedAt || 0, hotspots.dataUpdatedAt || 0,
     riskQ.dataUpdatedAt || 0, forecastQ.dataUpdatedAt || 0,
+    emergingQ.dataUpdatedAt || 0, alertSummaryQ.dataUpdatedAt || 0,
+    calendarQ.dataUpdatedAt || 0, seasonRawQ.dataUpdatedAt || 0,
   );
 
   const filterSummary = useMemo(() => {
@@ -705,6 +897,24 @@ export default function Dashboard() {
                 >
                   {t('dashboard.choro.cityUnits')}
                 </button>
+                <span className="h-4 w-px shrink-0 bg-grid" aria-hidden="true" />
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted">
+                  {t('dashboard.choro.zLabel')}
+                </span>
+                {Z_THRESHOLDS.map((z) => (
+                  <button
+                    key={z}
+                    type="button"
+                    aria-pressed={minZ === z}
+                    title={t('dashboard.choro.zTitle', { z })}
+                    onClick={() => setZThreshold(z)}
+                    className={`chip num min-h-[36px] shrink-0 px-2 transition-colors ${
+                      minZ === z ? '!border-signal/60 !text-signal bg-signal/5' : 'hover:border-signal/40'
+                    }`}
+                  >
+                    {z}
+                  </button>
+                ))}
               </div>
               <MiniChoropleth
                 values={choroValues}
@@ -728,7 +938,7 @@ export default function Dashboard() {
                     {redZones.length
                       ? [
                         t('dashboard.choro.anomalyCount', { n: alertPolygons.length }),
-                        `${t(redZones.length > 1 ? 'dashboard.choro.redZones' : 'dashboard.choro.redZone', { n: redZones.length })} ${t('dashboard.choro.redZoneSuffix')}`,
+                        `${t(redZones.length > 1 ? 'dashboard.choro.redZones' : 'dashboard.choro.redZone', { n: redZones.length })} ${t('dashboard.choro.redZoneSuffix', { z: minZ })}`,
                       ].join(' · ')
                       : t('dashboard.choro.anomalyDistrict')}
                   </span>
@@ -887,6 +1097,16 @@ export default function Dashboard() {
           )}
           onExportCsv={feedQuery.data?.length ? exportAlertsCsv : undefined}
         >
+          <AlertSummaryChips
+            query={alertSummaryQ}
+            linkSearch={search}
+            onPickDistrict={(id) => {
+              setFilter('districtId', String(districtId) === String(id) ? '' : id);
+              toast.info(t(String(districtId) === String(id)
+                ? 'dashboard.toast.districtCleared'
+                : 'dashboard.toast.districtFiltered'));
+            }}
+          />
           <AlertDigest alerts={openFeed} linkSearch={search} />
           <AlertsFeed query={feedQuery} linkSearch={search} />
         </DashPanel>
@@ -998,6 +1218,165 @@ export default function Dashboard() {
         </DashPanel>
       ),
     },
+    {
+      id: 'socio',
+      span: 'xl:col-span-2',
+      node: (
+        <DashPanel
+          {...panelProps('socio')}
+          title={t('dashboard.panel.socio.title')}
+          subtitle={t('dashboard.panel.socio.sub')}
+          onExportCsv={socioReady ? exportSocioCsv : undefined}
+        >
+          <SocioBoard
+            rows={socioRows}
+            loading={geoAll.isLoading || socioQ.isLoading}
+            error={socioQ.error || geoAll.error}
+            onRetry={() => { socioQ.refetch(); geoAll.refetch(); }}
+            activeDistrictId={districtId}
+            chartRef={socioRef}
+            onPickDistrict={(id) => {
+              setFilter('districtId', String(districtId) === String(id) ? '' : id);
+              toast.info(t(String(districtId) === String(id)
+                ? 'dashboard.toast.districtCleared'
+                : 'dashboard.toast.districtFiltered'));
+            }}
+          />
+        </DashPanel>
+      ),
+    },
+    {
+      id: 'emerging',
+      span: '',
+      node: (
+        <DashPanel
+          {...panelProps('emerging')}
+          title={t('dashboard.panel.emerging.title')}
+          subtitle={t('dashboard.panel.emerging.sub')}
+          headerExtra={(
+            <Link to={`/trends${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
+              {t('dashboard.link.trends')}
+            </Link>
+          )}
+          onExportCsv={emergingQ.data?.rising?.length ? exportEmergingCsv : undefined}
+        >
+          <EmergingBoard
+            query={emergingQ}
+            linkSearch={search}
+            activeHeadId={crimeHeadId}
+            onPickHead={(id) => {
+              if (id === null || id === undefined) return;
+              const same = String(crimeHeadId) === String(id);
+              setFilter('crimeHeadId', same ? '' : id);
+              toast.info(same
+                ? t('dashboard.toast.headCleared')
+                : t('dashboard.toast.headFiltered', {
+                  name: tName('crimeHeads', id, String(id)) || String(id),
+                }));
+            }}
+          />
+        </DashPanel>
+      ),
+    },
+    {
+      id: 'cmpboard',
+      span: 'xl:col-span-2',
+      node: (
+        <DashPanel
+          {...panelProps('cmpboard')}
+          title={t('dashboard.panel.cmpboard.title')}
+          subtitle={t('dashboard.panel.cmpboard.sub')}
+        >
+          <CompareBoard
+            districts={lookups.data?.districts || []}
+            defaultIds={topDistricts.map((d) => d.districtId)}
+            baseParams={apiParams}
+            loading={lookups.isLoading}
+            activeDistrictId={districtId}
+            onPickDistrict={(id) => {
+              setFilter('districtId', String(districtId) === String(id) ? '' : id);
+              toast.info(t(String(districtId) === String(id)
+                ? 'dashboard.toast.districtCleared'
+                : 'dashboard.toast.districtFiltered'));
+            }}
+          />
+        </DashPanel>
+      ),
+    },
+    {
+      id: 'stations',
+      span: '',
+      node: (
+        <DashPanel
+          {...panelProps('stations')}
+          title={t('dashboard.panel.stations.title')}
+          subtitle={t('dashboard.panel.stations.sub')}
+        >
+          <StationExplorer
+            districts={geoAll.data || []}
+            lookupDistricts={lookups.data?.districts || []}
+            riskRows={riskQ.data || []}
+            linkSearch={search}
+            activeDistrictId={districtId}
+            onPickDistrict={(id) => {
+              setFilter('districtId', id);
+              toast.info(t('dashboard.toast.districtFiltered'));
+            }}
+          />
+        </DashPanel>
+      ),
+    },
+    {
+      id: 'shift',
+      span: '',
+      node: (
+        <DashPanel
+          {...panelProps('shift')}
+          title={t('dashboard.panel.shift.title')}
+          subtitle={t('dashboard.panel.shift.sub')}
+          onExportCsv={seasonRawQ.data?.matrix?.length ? exportShiftCsv : undefined}
+        >
+          <ShiftSplit query={seasonRawQ} />
+        </DashPanel>
+      ),
+    },
+    {
+      id: 'calendar',
+      span: 'xl:col-span-2',
+      node: (
+        <DashPanel
+          {...panelProps('calendar')}
+          title={t('dashboard.panel.calendar.title')}
+          subtitle={t('dashboard.panel.calendar.sub')}
+          onExportCsv={calendarQ.data?.length ? exportCalendarCsv : undefined}
+        >
+          <HeatCalendar
+            query={calendarQ}
+            onPickMonth={pickCalendarMonth}
+            activeFrom={from}
+            activeTo={to}
+          />
+        </DashPanel>
+      ),
+    },
+    {
+      id: 'deploy',
+      span: '',
+      node: (
+        <DashPanel
+          {...panelProps('deploy')}
+          title={t('dashboard.panel.deploy.title')}
+          subtitle={t('dashboard.panel.deploy.sub')}
+          headerExtra={(
+            <Link to={`/map${search}`} className="inline-flex min-h-[36px] items-center px-1 text-xs text-amber hover:underline">
+              {t('dashboard.link.map')}
+            </Link>
+          )}
+        >
+          <DeploymentPanel hotspots={hotspots} riskRows={riskQ.data || []} linkSearch={search} />
+        </DashPanel>
+      ),
+    },
   ];
 
   const PANEL_IDS = panels.map((p) => p.id);
@@ -1104,7 +1483,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI link tiles */}
-      <div className={`grid grid-cols-2 gap-3 ${showForecastTile ? 'md:grid-cols-3 xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+      <div className={`grid grid-cols-2 gap-3 ${showForecastTile ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-3 xl:grid-cols-5'}`}>
         <KpiLinkTile
           to={`/cases${search}`}
           label={t('dashboard.kpi.firs')}
@@ -1126,6 +1505,18 @@ export default function Dashboard() {
           accent="red"
           loading={kpis.isLoading}
           hint={t('dashboard.kpi.heinousHint')}
+        />
+        <KpiLinkTile
+          to={`/cases${search}`}
+          label={t('dashboard.kpi.heinousShare')}
+          value={heinousPct == null ? '—' : fmtPct(heinousPct)}
+          accent="red"
+          loading={kpis.isLoading}
+          hint={heinousAvgPct == null
+            ? t('dashboard.kpi.heinousShareHintPlain')
+            : t('dashboard.kpi.heinousShareHint', { avg: fmtNum(heinousAvgPct, 1) })}
+          spark={heinousSpark}
+          sparkBaseline
         />
         <KpiLinkTile
           to={`/predict${search}`}

@@ -23,6 +23,9 @@ import ForecastExplorer from './predict/ForecastExplorer.jsx';
 import BacktestPanel from './predict/BacktestPanel.jsx';
 import ScenarioPanel from './predict/ScenarioPanel.jsx';
 import ModelCards from './predict/ModelCards.jsx';
+import AccuracyBoard from './predict/AccuracyBoard.jsx';
+import HorizonPanel from './predict/HorizonPanel.jsx';
+import DriverLift from './predict/DriverLift.jsx';
 
 export default function Predict() {
   const navigate = useNavigate();
@@ -107,6 +110,13 @@ export default function Predict() {
         />
       </div>
 
+      <DriverLift
+        rows={rows}
+        loading={risk.isLoading}
+        error={risk.error}
+        onRetry={() => risk.refetch()}
+      />
+
       <OutcomePanel />
 
       <ForecastExplorer defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
@@ -114,6 +124,11 @@ export default function Predict() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <BacktestPanel defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
         <ScenarioPanel defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <HorizonPanel defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
+        <AccuracyBoard districtId={districtId} />
       </div>
 
       <RiskDrawer

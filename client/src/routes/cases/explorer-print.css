@@ -1,0 +1,72 @@
+/* Print styling for /cases — same two-job structure as case-detail-print.css.
+   1. Structural: Layout scrolls inside #main-scroll, which clips a printed page
+      to one screenful; flatten the scroller and let the table's own horizontal
+      scroller expand so no column is guillotined.
+   2. Palette: inside .cases-print-root, remap the design-token triplets to a
+      light print palette so the scan report comes out ink-on-white without
+      touching any shared file. Alpha utilities (bg-amber/10 …) keep working
+      because only the RGB triplets change. */
+
+@media print {
+  html, body, #root {
+    height: auto !important;
+  }
+  #root > div {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  #main-scroll {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .cases-print-root {
+    --t-base: 255 255 255;
+    --t-panel: 255 255 255;
+    --t-panel-raised: 245 247 250;
+    --t-grid: 203 209 220;
+    --t-ink: 17 24 39;
+    --t-muted: 75 85 99;
+    --t-primary: 29 78 216;
+    --t-primary-on: 255 255 255;
+    --t-amber: 146 91 6;
+    --t-signal: 153 27 27;
+    --t-teal: 15 118 110;
+    --c-base: #ffffff;
+    --c-panel: #ffffff;
+    --c-grid: #cbd1dc;
+    --c-ink: #111827;
+    --c-muted: #4b5563;
+    --c-amber: #92400e;
+    --c-red: #991b1b;
+    --c-teal: #0f766e;
+    --c-primary: #1d4ed8;
+    max-width: none;
+  }
+  .cases-print-root section {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+  /* Table + calendar scrollers must open up, or print clips them at the fold. */
+  .cases-print-root .overflow-x-auto,
+  .cases-print-root .overflow-hidden {
+    overflow: visible !important;
+  }
+  .cases-print-root table {
+    font-size: 10px;
+  }
+  .cases-print-root thead {
+    display: table-header-group;
+  }
+  .cases-print-root tr {
+    break-inside: avoid;
+  }
+  .cases-print-root .skeleton::after {
+    animation: none;
+  }
+  /* Sticky bars are screen affordances — never part of a printed report. */
+  .cases-print-root .sticky {
+    position: static !important;
+  }
+}

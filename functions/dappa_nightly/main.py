@@ -22,6 +22,7 @@ import logging
 import os
 
 import nightly_core as core
+import notify
 import store_local
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -68,6 +69,9 @@ def _run_local(out_dir, now_str):
     }
     dest = store_local.write_outputs(out_dir, fresh_agg, delta, alerts, risk, forecast, meta)
     meta["output_dir"] = dest
+    # Dry runs render the digest but can never send it (no Catalyst app).
+    meta["digest"] = {"sent": False, "mode": "local-dryrun",
+                      "preview": notify.build_digest(alerts, meta)}
     return meta
 
 
@@ -125,6 +129,9 @@ def _run_catalyst(now_str):
         "forecast_write": forecast_stats,
     }
     meta["refresh_meta_persisted"] = store_catalyst.write_refresh_meta(app, meta)
+    # Catalyst Mail digest — last step, after everything is persisted, so a
+    # mail misconfiguration can never cost the refresh.
+    meta["digest"] = notify.send_digest(app, notify.build_digest(alerts, meta))
     return meta
 
 

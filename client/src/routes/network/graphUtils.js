@@ -5,12 +5,50 @@ import { DAPPA_CHART_COLORS } from '../../components/ChartPanel.jsx';
 
 const UNKNOWN_COMMUNITY = '#64748B';
 
-/** Stable palette color for a community id (null/unknown → slate). */
+/** Shift a #rrggbb toward black (t<0) or white (t>0) — second palette cycle. */
+function shade(hex, t) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+  if (!m) return hex;
+  const v = parseInt(m[1], 16);
+  const mix = (c) => {
+    const target = t > 0 ? 255 : 0;
+    return Math.round(c + (target - c) * Math.abs(t));
+  };
+  const r = mix((v >> 16) & 255); const g = mix((v >> 8) & 255); const b = mix(v & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * Stable palette color for a community id (null/unknown → slate).
+ * The LIVE pipeline writes Louvain labels as STRINGS ('C01'…'C13'), so a plain
+ * Number() cast collapsed every real community to the unknown slate; ids are
+ * hashed when they are not numeric. Sixteen slots (eight hues × two shades)
+ * keep the 13 live groups visually separable.
+ */
 export function communityColor(communityId) {
   if (communityId === null || communityId === undefined || communityId === '') return UNKNOWN_COMMUNITY;
-  const n = Math.abs(Number(communityId));
-  if (!Number.isFinite(n)) return UNKNOWN_COMMUNITY;
-  return DAPPA_CHART_COLORS[Math.floor(n) % DAPPA_CHART_COLORS.length];
+  const raw = String(communityId);
+  const n = Number(raw);
+  let slot;
+  if (Number.isFinite(n)) {
+    slot = Math.floor(Math.abs(n));
+  } else {
+    // Louvain labels are a prefix plus an ordinal ('C01'…'C13'); reading the
+    // ordinal keeps consecutive groups in consecutive palette slots, which a
+    // string hash would scatter into collisions.
+    const ord = /^[A-Za-z]*0*(\d+)$/.exec(raw);
+    if (ord) {
+      slot = Number(ord[1]);
+    } else {
+      let h = 5381;
+      for (let i = 0; i < raw.length; i += 1) h = ((h * 33) ^ raw.charCodeAt(i)) >>> 0;
+      slot = h;
+    }
+  }
+  const cycles = DAPPA_CHART_COLORS.length * 2;
+  const pos = slot % cycles;
+  const base = DAPPA_CHART_COLORS[pos % DAPPA_CHART_COLORS.length];
+  return pos < DAPPA_CHART_COLORS.length ? base : shade(base, -0.35);
 }
 
 /** Canonical undirected edge id — same for (a,b) and (b,a). */

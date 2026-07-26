@@ -5,11 +5,12 @@ import Badge from '../../components/Badge.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useT } from '../../lib/i18n.jsx';
 import { slaDuration, slaPolicyText, SLA_HOURS, DEFAULT_SLA_HOURS } from './sla.js';
+import { sevKey } from './severity.js';
 
 export default function SlaBadge({ sla, severity, className = '' }) {
   const t = useT();
   if (!sla) return null;
-  const sev = String(severity || '').toLowerCase();
+  const sev = sevKey(severity);
   const hours = SLA_HOURS[sev] ?? DEFAULT_SLA_HOURS;
   const sevLabel = sev ? t(`alerts.sevLower.${sev}`) : t('alerts.sla.thisSeverity');
   const tip = t('alerts.sla.tip', { sev: sevLabel, hours, policy: slaPolicyText(t) });

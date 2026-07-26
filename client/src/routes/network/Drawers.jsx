@@ -1,14 +1,16 @@
 // Selection drawers for the Network Explorer — offender panel on node tap
 // (with bridge/cut-vertex context and a watchlist star), shared-case panel on
 // edge tap (with tier badge and mutual-associate chips).
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useOffender } from '../../lib/api.js';
 import Badge from '../../components/Badge.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
-import { fmtInt, fmtNum } from '../../lib/format.js';
+import { fmtInt, fmtNum, fmtPct } from '../../lib/format.js';
 import { useT } from '../../lib/i18n.jsx';
 import { communityColor, edgeTier } from './graphUtils.js';
+import { clusteringOf } from './analysis.js';
 import { useCaseNames } from '../cases/names.js';
 import { addToCompare, COMPARE_MAX } from '../offenders/compareStore.js';
 import { useWatchlist, WATCH_MAX } from '../offenders/watchlistStore.js';
@@ -46,12 +48,21 @@ function Stat({ label, children }) {
 }
 
 /** Node tap → offender identity drawer (enriched via GET /offenders/:key). */
-export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEgo = false, broker = null, isCut = false }) {
+export function NodeDrawer({
+  node, onClose, onIsolate, onSetPathEnd, onEgo, isEgo = false, broker = null, isCut = false,
+  links = null, sharedFirs = null, coreness = null, viewEdges = null,
+}) {
   const toast = useToast();
   const t = useT();
   const trName = useCaseNames();
   const detail = useOffender(node?.id || '');
   const d = detail.data || {};
+  // Local closure: how tightly this person's co-accused know each other. Near 1
+  // reads as a closed cell, near 0 as a hub introducing strangers.
+  const cluster = useMemo(
+    () => (viewEdges && node?.id ? clusteringOf(viewEdges, node.id) : null),
+    [viewEdges, node?.id],
+  );
   const hasCommunity = node?.communityId !== null && node?.communityId !== undefined && node?.communityId !== '';
   const { keys: watchKeys, toggle: toggleWatch } = useWatchlist();
   const watched = watchKeys.has(String(node?.id));
@@ -83,9 +94,27 @@ export function NodeDrawer({ node, onClose, onIsolate, onSetPathEnd, onEgo, isEg
     >
       <div className="grid grid-cols-3 gap-2">
         <Stat label={t('network.drawer.cases')}>{fmtInt(node?.caseCount)}</Stat>
-        <Stat label={t('network.drawer.degree')}>{fmtInt(node?.degree)}</Stat>
+        <Stat label={t('network.drawer.degree')}>{fmtInt(links ?? node?.links ?? node?.degree)}</Stat>
         <Stat label={t('network.drawer.risk')}>{detail.isLoading ? '…' : fmtNum(d.riskScore, 1)}</Stat>
       </div>
+
+      {(coreness !== null || sharedFirs !== null || cluster) && (
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label={t('network.drawer.coreness')}>{fmtInt(coreness ?? node?.coreness ?? 0)}</Stat>
+          <Stat label={t('network.drawer.sharedFirs')}>{fmtInt(sharedFirs ?? 0)}</Stat>
+          <Stat label={t('network.drawer.cohesion')}>
+            {cluster && cluster.degree >= 2 ? fmtPct(cluster.coeff * 100, { digits: 0 }) : '—'}
+          </Stat>
+        </div>
+      )}
+
+      {cluster && cluster.degree >= 4 && (
+        <p className="text-[11px] text-muted">
+          {t(cluster.coeff >= 0.4 ? 'network.drawer.cellRole' : 'network.drawer.hubRole', {
+            n: fmtInt(cluster.triangles),
+          })}
+        </p>
+      )}
 
       {(isCut || (broker && broker.crossLinks > 0)) && (
         <div className="flex flex-wrap gap-1.5">

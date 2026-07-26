@@ -21,6 +21,8 @@ const GROUPS = [
       [['Esc'], 'cases.shortcuts.clearSearch'],
       [['e'], 'cases.shortcuts.export'],
       [['c'], 'cases.shortcuts.compare'],
+      [['b'], 'cases.shortcuts.bulk'],
+      [['q'], 'cases.shortcuts.builder'],
       [['?'], 'cases.shortcuts.help'],
       [['Enter'], 'cases.shortcuts.openRow'],
     ],

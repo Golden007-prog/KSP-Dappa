@@ -6,8 +6,9 @@
 // All chart colors resolve through trends/palettes.js per app theme + the
 // persisted Standard/CB-safe palette preference.
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  useSeasonality, useTrendsMonthly, useCategoryShare, useDistrictsGeo, useLookups,
+  useSeasonality, useTrendsMonthly, useCategoryShare, useDistrictsGeo, useLookups, apiGet,
 } from '../lib/api.js';
 import { useUrlFilters } from '../lib/filters.js';
 import FilterBar from '../components/FilterBar.jsx';
@@ -26,6 +27,10 @@ import PinnedViews from './trends/PinnedViews.jsx';
 import Decomposition from './trends/Decomposition.jsx';
 import SocioScatter from './trends/SocioScatter.jsx';
 import MixRadar from './trends/MixRadar.jsx';
+import EmergingPanel from './trends/EmergingPanel.jsx';
+import SeverityMix from './trends/SeverityMix.jsx';
+import CorrelationMatrix from './trends/CorrelationMatrix.jsx';
+import ABCompare from './trends/ABCompare.jsx';
 import {
   usePalettePref, seriesColors, OTHER_COLOR, ANOMALY_COLOR, HEAT_RAMP, DIVERGING_RAMP, SURFACE,
 } from './trends/palettes.js';
@@ -33,6 +38,7 @@ import {
   sumSeries, trimLeadingZeros, rollingMean, detectAnomalies, linearTrend,
   recentDeltaPct, buildMonthYearMatrix, buildYoyMatrix, calendarMonthMeans, derivePopulations,
   toPerLakh, detectChangepoints, hourProfiles, seasonalityQuickStats, monthShortNames, dayName,
+  districtKey,
 } from './trends/analysis.js';
 import {
   FESTIVAL_MONTHS, seasonalityInsight, monthlyInsight, shareInsight, districtInsight,
@@ -139,15 +145,25 @@ export default function Trends() {
   }, [apiParams]);
   const geo = useDistrictsGeo(compareParams);
 
-  // Populations back-solved from caseCount/ratePerLakh (filter-invariant).
-  const pops = useMemo(() => derivePopulations(geo.data), [geo.data]);
-  const population = districtId ? pops.byDistrict.get(String(districtId)) : pops.statePop;
+  // Populations back-solved from caseCount/ratePerLakh (filter-invariant),
+  // with /meta/socio as the source of record wherever the server left
+  // ratePerLakh null — without the fallback the per-lakh toggle sat disabled
+  // across the whole page and the socio joins came back empty.
+  const socio = useQuery({
+    queryKey: ['meta-socio'],
+    queryFn: ({ signal }) => apiGet('/meta/socio', {}, { signal })
+      .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    staleTime: 60 * 60 * 1000,
+  });
+  const pops = useMemo(() => derivePopulations(geo.data, socio.data), [geo.data, socio.data]);
+  const population = districtId ? pops.byDistrict.get(districtKey(districtId)) : pops.statePop;
 
   const compareWindow = useMemo(() => ({ from, to }), [from, to]);
+  // Lookup-shaped ids ('101'), because these seed FilterBar-compatible selects.
   const topDistrictIds = useMemo(() => [...(geo.data || [])]
     .sort((a, b) => (Number(b.caseCount) || 0) - (Number(a.caseCount) || 0))
     .slice(0, 3)
-    .map((r) => String(r.districtId)), [geo.data]);
+    .map((r) => districtKey(r.districtId)), [geo.data]);
 
   // ---- 1. hour × weekday seasonality heatmap ------------------------------
   const seasonalityOption = useMemo(() => {
@@ -559,8 +575,10 @@ export default function Trends() {
           value: metric === 'rate' ? Number(val(r).toFixed(1)) : val(r),
           itemStyle: {
             // single-hue magnitude bars; a selected district stays solid while
-            // the rest recede — same hue, lower opacity, not a repaint
-            color: !districtId || String(r.districtId) === String(districtId)
+            // the rest recede — same hue, lower opacity, not a repaint.
+            // /geo/* pads the id ('0101'), the filter carries the lookup id
+            // ('101') — compare on the normalised key or nothing highlights.
+            color: !districtId || districtKey(r.districtId) === districtKey(districtId)
               ? accent
               : hexToRgba(accent, 0.35),
             borderRadius: [0, 4, 4, 0],
@@ -582,8 +600,10 @@ export default function Trends() {
     click: (p) => {
       const row = districtView?.byName.get(p?.name);
       if (!row) return;
-      // clicking the already-focused district clears the filter (toggle)
-      setFilter('districtId', String(row.districtId) === String(districtId) ? '' : String(row.districtId));
+      // clicking the already-focused district clears the filter (toggle);
+      // the id is normalised so the FilterBar select can match its option
+      const key = districtKey(row.districtId);
+      setFilter('districtId', key === districtKey(districtId) ? '' : key);
     },
   }), [districtView, districtId, setFilter]);
 
@@ -970,11 +990,37 @@ export default function Trends() {
         </div>
       </div>
 
+      <EmergingPanel
+        districtId={districtId}
+        setFilter={setFilter}
+        colors={colors}
+        anomalyColor={anomalyColor}
+        surface={surface}
+        isNarrow={isNarrow}
+      />
+
+      <SeverityMix
+        apiParams={apiParams}
+        districtId={districtId}
+        colors={colors}
+        anomalyColor={anomalyColor}
+        surface={surface}
+        isNarrow={isNarrow}
+      />
+
       <StackedShare
         baseParams={apiParams}
         colors={colors}
         otherColor={otherColor}
         surface={surface}
+      />
+
+      <ABCompare
+        window={compareWindow}
+        defaultDistrictIds={topDistrictIds}
+        colors={colors}
+        surface={surface}
+        isNarrow={isNarrow}
       />
 
       <CompareGrid
@@ -996,6 +1042,15 @@ export default function Trends() {
         colors={colors}
         surface={surface}
         anomalyColor={anomalyColor}
+        isNarrow={isNarrow}
+      />
+
+      <CorrelationMatrix
+        window={compareWindow}
+        crimeHeadId={crimeHeadId}
+        setFilter={setFilter}
+        surface={surface}
+        divergingRamp={divergingRamp}
         isNarrow={isNarrow}
       />
 

@@ -12,6 +12,8 @@
 //                                              absent → builder's saved level
 //   ?exec=…                                  — officer-edited executive summary
 //                                              (absent → saved override → auto)
+//   ?breaks=1                                — start each section on a new
+//                                              printed page
 //   ?autoprint=1                             — fires window.print() once all
 //                                              data has settled — unless every
 //                                              query failed (guarded, retryable).
@@ -56,6 +58,7 @@ export default function PrintBrief() {
     ? CUSTOM_WINDOW
     : (WINDOWS.some((w) => w.value === raw) ? raw : DEFAULT_WINDOW);
   const autoprint = searchParams.get('autoprint') === '1';
+  const pageBreaks = searchParams.get('breaks') === '1';
   const preparedBy = (searchParams.get('by') || '').trim().slice(0, 80);
   const urlDensity = searchParams.get('density');
   const density = urlDensity === 'compact' ? 'compact'
@@ -114,6 +117,7 @@ export default function PrintBrief() {
     if (orderQS) p.set('order', orderQS);
     if (preparedBy) p.set('by', preparedBy);
     if (density === 'compact') p.set('density', 'compact');
+    if (pageBreaks) p.set('breaks', '1');
     if (classification !== 'unclassified') p.set('class', classification);
     if (execParam) p.set('exec', execParam);
     return `?${p.toString()}`;
@@ -131,6 +135,15 @@ export default function PrintBrief() {
   };
 
   const sectionCount = DEFAULT_ORDER.filter((k) => sections[k] !== false).length;
+
+  /** Flip the one-section-per-page layout (URL only — the builder persists it). */
+  const toggleBreaks = () => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (pageBreaks) p.delete('breaks'); else p.set('breaks', '1');
+      return p;
+    }, { replace: true });
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f3f4f6' }}>
@@ -190,6 +203,17 @@ export default function PrintBrief() {
         </button>
         <button
           type="button"
+          style={{ ...toolbarBtn, fontWeight: pageBreaks ? 700 : 400 }}
+          onClick={toggleBreaks}
+          aria-pressed={pageBreaks}
+          title={t('alerts.print.breaksTip')}
+        >
+          {t('alerts.print.breaksBtn', {
+            label: pageBreaks ? t('alerts.print.breaksOn') : t('alerts.print.breaksOff'),
+          })}
+        </button>
+        <button
+          type="button"
           style={{ ...toolbarBtn, fontWeight: density === 'compact' ? 700 : 400 }}
           onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
           aria-pressed={density === 'compact'}
@@ -216,6 +240,7 @@ export default function PrintBrief() {
             preparedBy={preparedBy}
             execText={execText}
             classification={classification}
+            pageBreaks={pageBreaks}
           />
         </div>
       </div>

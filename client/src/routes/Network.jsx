@@ -32,33 +32,49 @@ import SavedViews from './network/SavedViews.jsx';
 import TopConnectors from './network/TopConnectors.jsx';
 import CommunitySummary from './network/CommunitySummary.jsx';
 import WatchlistPanel from './network/WatchlistPanel.jsx';
+import LinkSuggestions from './network/LinkSuggestions.jsx';
+import BrokerBoard from './network/BrokerBoard.jsx';
+import GroupMatrix from './network/GroupMatrix.jsx';
+import PairAnalyzer from './network/PairAnalyzer.jsx';
 import {
   communityColor, computeCommunityStats, shortestPath, edgeKey,
   edgeTier, egoSubgraph, countComponents, brokerStats, articulationPoints,
   mutualNeighbors,
 } from './network/graphUtils.js';
-import { downloadDataUrl, downloadCsv } from './network/download.js';
+import {
+  degreeIndex, corenessMap, bridgeEdges, strongestPath, graphBrief,
+} from './network/analysis.js';
+import { downloadDataUrl, downloadCsv, downloadBlob } from './network/download.js';
 import { copyText } from './network/clipboard.js';
 import { useMediaQuery, readPref, writePref } from './network/hooks.js';
 import { useWatchlist } from './offenders/watchlistStore.js';
 
-const NODE_CAP = 400;
+// The live graph carries 23,833 links over 2,002 linked persons, so the canvas
+// is capped and the cap is the analyst's choice rather than a hidden constant.
+const NODE_CAPS = [200, 400, 800];
+const DEFAULT_CAP = 400;
+const MAX_DEGREE_FILTER = 40;
+const MAX_CORE_FILTER = 30;
 const LAYOUTS = ['fcose', 'concentric', 'grid', 'breadthfirst'];
 const LAYOUT_PREF = 'dappa-net-layout';
 const LEGEND_PREF = 'dappa-net-legend';
 const LABELS_PREF = 'dappa-net-labels';
 const NEIGHBOR_PREF = 'dappa-net-neighbor';
 const BRIDGE_PREF = 'dappa-net-bridges';
+const WEAK_PREF = 'dappa-net-weaklinks';
+const CAP_PREF = 'dappa-net-cap';
 
 // Tier ids only — labels/hints resolve through t('network.tier.<id>[Hint]').
 const EDGE_TIERS = ['single', 'repeat', 'strong'];
 
 // CSV headers are user-visible, so the column sets are built per render with
 // the active translator rather than frozen at module load.
-const nodeCsvColumns = (t) => [
+const nodeCsvColumns = (t, degrees = new Map(), core = new Map()) => [
   { key: 'id', label: t('network.csv.personKey') },
   { key: 'label', label: t('network.csv.name') },
   { key: 'communityId', label: t('network.csv.community') },
+  { label: t('network.csv.links'), map: (n) => degrees.get(String(n.id))?.links || 0 },
+  { label: t('network.csv.coreness'), map: (n) => core.get(String(n.id)) || 0 },
   { key: 'degree', label: t('network.csv.degree') },
   { key: 'caseCount', label: t('network.csv.cases') },
 ];
@@ -69,13 +85,27 @@ const edgeCsvColumns = (t) => [
   { label: t('network.csv.caseIds'), map: (e) => (e.caseIds || []).join('; ') },
 ];
 
-/** Tiny degree-distribution bar strip for the Legend card (degrees 1..7, 8+). */
-function DegreeHistogram({ nodes }) {
+// Co-offending degree is heavy-tailed on the real graph (median 6, max 263),
+// so the histogram uses doubling buckets instead of the old 1..8 linear strip,
+// which flattened the entire live distribution into its first two bars.
+const DEGREE_BUCKETS = [
+  { label: '1', test: (d) => d === 1 },
+  { label: '2–3', test: (d) => d >= 2 && d <= 3 },
+  { label: '4–7', test: (d) => d >= 4 && d <= 7 },
+  { label: '8–15', test: (d) => d >= 8 && d <= 15 },
+  { label: '16–31', test: (d) => d >= 16 && d <= 31 },
+  { label: '32–63', test: (d) => d >= 32 && d <= 63 },
+  { label: '64+', test: (d) => d >= 64 },
+];
+
+/** Degree-distribution bar strip for the Legend card (doubling buckets). */
+function DegreeHistogram({ nodes, degrees }) {
   const t = useT();
-  const counts = [0, 0, 0, 0, 0, 0, 0, 0];
+  const counts = DEGREE_BUCKETS.map(() => 0);
   for (const n of nodes) {
-    const d = Math.max(1, Math.min(8, Number(n.degree) || 1));
-    counts[d - 1] += 1;
+    const d = degrees.get(String(n.id))?.links || 0;
+    const i = DEGREE_BUCKETS.findIndex((b) => b.test(d));
+    if (i >= 0) counts[i] += 1;
   }
   const max = Math.max(...counts, 1);
   if (!nodes.length) return null;
@@ -86,17 +116,17 @@ function DegreeHistogram({ nodes }) {
         className="flex items-end gap-1"
         role="img"
         aria-label={t('network.legend.degreeDistAria', {
-          list: counts.map((c, i) => `${i + 1 === 8 ? '8+' : i + 1}: ${fmtInt(c)}`).join(', '),
+          list: counts.map((c, i) => `${DEGREE_BUCKETS[i].label}: ${fmtInt(c)}`).join(', '),
         })}
       >
         {counts.map((c, i) => (
-          <div key={i} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+          <div key={DEGREE_BUCKETS[i].label} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
             <div
               className={`w-full rounded-sm ${c ? 'bg-amber/70' : 'bg-grid/50'}`}
               style={{ height: `${3 + Math.round((c / max) * 30)}px` }}
-              title={t('network.legend.degreeBarTitle', { d: i + 1 === 8 ? '8+' : i + 1, n: fmtInt(c) })}
+              title={t('network.legend.degreeBarTitle', { d: DEGREE_BUCKETS[i].label, n: fmtInt(c) })}
             />
-            <span className="text-[9px] text-muted num" aria-hidden="true">{i + 1 === 8 ? '8+' : i + 1}</span>
+            <span className="text-[9px] text-muted num" aria-hidden="true">{DEGREE_BUCKETS[i].label}</span>
           </div>
         ))}
       </div>
@@ -134,7 +164,10 @@ export default function Network() {
   const communityId = searchParams.get('communityId') || '';
   const ego = searchParams.get('ego') || '';
   const depth = Math.min(3, Math.max(1, Number(searchParams.get('depth')) || 1));
-  const minDegree = Math.min(8, Math.max(1, Number(searchParams.get('minDegree')) || 1));
+  const minDegree = Math.min(MAX_DEGREE_FILTER, Math.max(1, Number(searchParams.get('minDegree')) || 1));
+  // The live graph peels to a 34-core, so the ceiling is 30 rather than a
+  // token single digit — the slider has to be able to reach the nucleus.
+  const minCore = Math.min(MAX_CORE_FILTER, Math.max(0, Number(searchParams.get('core')) || 0));
 
   const [layout, setLayout] = useState(() => {
     const v = readPref(LAYOUT_PREF, 'fcose');
@@ -149,6 +182,14 @@ export default function Network() {
   const [showLabels, setShowLabels] = useState(() => readPref(LABELS_PREF, '1') !== '0');
   const [neighborFocus, setNeighborFocus] = useState(() => readPref(NEIGHBOR_PREF, '0') === '1');
   const [showBridges, setShowBridges] = useState(() => readPref(BRIDGE_PREF, '0') === '1');
+  const [showWeak, setShowWeak] = useState(() => readPref(WEAK_PREF, '0') === '1');
+  const [pathMode, setPathMode] = useState('hops');
+  const [suggestion, setSuggestion] = useState(null); // predicted-link inspection
+  const [groupPair, setGroupPair] = useState(null); // [communityA, communityB]
+  const [nodeCap, setNodeCap] = useState(() => {
+    const v = Number(readPref(CAP_PREF, String(DEFAULT_CAP)));
+    return NODE_CAPS.includes(v) ? v : DEFAULT_CAP;
+  });
   const { keys: watchKeys } = useWatchlist();
   const cyApi = useRef(null);
   const pendingFly = useRef(null);
@@ -201,18 +242,34 @@ export default function Network() {
     return m;
   }, [graph.data]);
 
-  // Client-side view pipeline: edge tiers → bridges → community isolate →
-  // linked-only → ego subgraph → min-degree floor → node cap.
-  const filtered = useMemo(() => {
+  // Tier-filtered edge universe — the basis for TRUE co-offending degree. The
+  // API forwards OffenderProfile.DegreeCentrality as a normalized 0–1 value
+  // (0.0205 for a person with 41 partners), so every degree read in this route
+  // is recomputed from the edges instead.
+  const tierEdges = useMemo(() => {
     const allNodes = graph.data?.nodes || [];
     const commOf = new Map();
     for (const n of allNodes) commOf.set(String(n.id), String(n.communityId ?? ''));
-
     let edges = (graph.data?.edges || []).map((e) => ({ ...e, id: edgeKey(e.source, e.target) }));
     edges = edges.filter((e) => edgeTypes[edgeTier(e.weight)]);
     if (!edgeTypes.bridge) {
       edges = edges.filter((e) => commOf.get(String(e.source)) === commOf.get(String(e.target)));
     }
+    return edges;
+  }, [graph.data, edgeTypes]);
+
+  const degrees = useMemo(() => degreeIndex(tierEdges), [tierEdges]);
+  const maxLinks = useMemo(() => {
+    let m = 0;
+    for (const s of degrees.values()) m = Math.max(m, s.links);
+    return m;
+  }, [degrees]);
+
+  // Client-side view pipeline: edge tiers → bridges → community isolate →
+  // linked-only → ego subgraph → min-degree floor → k-core floor → node cap.
+  const filtered = useMemo(() => {
+    const allNodes = graph.data?.nodes || [];
+    let edges = tierEdges;
 
     let nodes;
     if (communityId) {
@@ -239,20 +296,38 @@ export default function Network() {
     }
 
     if (minDegree > 1) {
-      nodes = nodes.filter((n) => (Number(n.degree) || 0) >= minDegree || String(n.id) === ego);
+      nodes = nodes.filter((n) => (degrees.get(String(n.id))?.links || 0) >= minDegree || String(n.id) === ego);
       const keep = new Set(nodes.map((n) => String(n.id)));
       edges = edges.filter((e) => keep.has(String(e.source)) && keep.has(String(e.target)));
     }
 
-    let capped = false;
-    if (nodes.length > NODE_CAP) {
-      capped = true;
-      nodes = [...nodes].sort((a, b) => (Number(b.degree) || 0) - (Number(a.degree) || 0)).slice(0, NODE_CAP);
+    // k-core floor — peel everyone who is not inside a subgraph where every
+    // member keeps at least `minCore` co-accused links. This is the structural
+    // way to get from 2,000 fringe names to the nucleus that matters.
+    let coreOfView = new Map();
+    let maxCoreOfView = 0;
+    if (nodes.length) {
+      const c = corenessMap(nodes, edges);
+      coreOfView = c.core;
+      maxCoreOfView = c.maxCore;
+      if (minCore > 0) {
+        nodes = nodes.filter((n) => (coreOfView.get(String(n.id)) || 0) >= minCore || String(n.id) === ego);
+        const keep = new Set(nodes.map((n) => String(n.id)));
+        edges = edges.filter((e) => keep.has(String(e.source)) && keep.has(String(e.target)));
+      }
+    }
+
+    let capped = 0;
+    if (nodes.length > nodeCap) {
+      capped = nodes.length;
+      nodes = [...nodes]
+        .sort((a, b) => (degrees.get(String(b.id))?.links || 0) - (degrees.get(String(a.id))?.links || 0))
+        .slice(0, nodeCap);
       const keep = new Set(nodes.map((n) => String(n.id)));
       edges = edges.filter((e) => keep.has(String(e.source)) && keep.has(String(e.target)));
     }
-    return { nodes, edges, capped, egoMissing };
-  }, [graph.data, edgeTypes, communityId, ego, depth, minDegree]);
+    return { nodes, edges, capped, egoMissing, core: coreOfView, maxCore: maxCoreOfView };
+  }, [graph.data, tierEdges, degrees, communityId, ego, depth, minDegree, minCore, nodeCap]);
 
   const components = useMemo(
     () => countComponents(filtered.nodes, filtered.edges),
@@ -271,8 +346,15 @@ export default function Network() {
     () => articulationPoints(filtered.nodes, filtered.edges),
     [filtered.nodes, filtered.edges],
   );
-  const bridgeIds = useMemo(() => {
-    if (!showBridges) return [];
+  // Structural bridges (cut EDGES) — a single shared FIR holding two crews
+  // together. Removing it splits the component, which makes it the highest
+  // value corroboration target in the view.
+  const weakSet = useMemo(
+    () => (showWeak ? bridgeEdges(filtered.nodes, filtered.edges) : new Set()),
+    [showWeak, filtered.nodes, filtered.edges],
+  );
+
+  const crossCommunityIds = useMemo(() => {
     const commOf = new Map(filtered.nodes.map((n) => [String(n.id), String(n.communityId ?? '')]));
     const ids = new Set();
     for (const e of filtered.edges) {
@@ -281,8 +363,45 @@ export default function Network() {
         ids.add(e.id); ids.add(String(e.source)); ids.add(String(e.target));
       }
     }
+    return ids;
+  }, [filtered.nodes, filtered.edges]);
+
+  // Highlight precedence: an inspected prediction, then a picked group pair,
+  // then the standing Bridges / Weak-link toggles.
+  const bridgeIds = useMemo(() => {
+    if (suggestion) {
+      // If a filter change dropped an endpoint, highlight nothing rather than
+      // dimming the whole canvas around elements that are no longer drawn.
+      const visible = new Set(filtered.nodes.map((n) => String(n.id)));
+      if (!visible.has(String(suggestion.a)) || !visible.has(String(suggestion.b))) return [];
+      const ids = new Set([String(suggestion.a), String(suggestion.b),
+        ...(suggestion.via || []).map(String).filter((v) => visible.has(v))]);
+      for (const e of filtered.edges) {
+        const s = String(e.source); const tg = String(e.target);
+        if (ids.has(s) && ids.has(tg)) ids.add(e.id);
+      }
+      return [...ids];
+    }
+    if (groupPair) {
+      const commOf = new Map(filtered.nodes.map((n) => [String(n.id), String(n.communityId ?? '')]));
+      const ids = new Set();
+      for (const e of filtered.edges) {
+        const cs = commOf.get(String(e.source)); const ct = commOf.get(String(e.target));
+        const hit = (cs === groupPair[0] && ct === groupPair[1]) || (cs === groupPair[1] && ct === groupPair[0]);
+        if (hit) { ids.add(e.id); ids.add(String(e.source)); ids.add(String(e.target)); }
+      }
+      return [...ids];
+    }
+    const ids = new Set();
+    if (showBridges) for (const id of crossCommunityIds) ids.add(id);
+    if (showWeak) {
+      for (const e of filtered.edges) {
+        if (!weakSet.has(e.id)) continue;
+        ids.add(e.id); ids.add(String(e.source)); ids.add(String(e.target));
+      }
+    }
     return [...ids];
-  }, [showBridges, filtered.nodes, filtered.edges]);
+  }, [suggestion, groupPair, showBridges, showWeak, weakSet, crossCommunityIds, filtered.nodes, filtered.edges]);
 
   const density = filtered.nodes.length > 1
     ? (2 * filtered.edges.length) / (filtered.nodes.length * (filtered.nodes.length - 1))
@@ -296,17 +415,19 @@ export default function Network() {
   }, [filtered.nodes]);
 
   const elements = useMemo(() => {
-    const maxDegree = Math.max(1, ...filtered.nodes.map((n) => Number(n.degree) || 0));
+    const maxDegree = Math.max(1, ...filtered.nodes.map((n) => degrees.get(String(n.id))?.links || 0));
     const maxWeight = Math.max(1, ...filtered.edges.map((e) => Number(e.weight) || 0));
     const nodes = filtered.nodes.map((n) => ({
       data: {
         id: String(n.id),
         label: n.label || String(n.id),
         color: communityColor(n.communityId),
-        size: Math.round(16 + 26 * Math.sqrt((Number(n.degree) || 0) / maxDegree)),
+        size: Math.round(16 + 26 * Math.sqrt((degrees.get(String(n.id))?.links || 0) / maxDegree)),
         communityId: n.communityId,
         caseCount: n.caseCount,
         degree: n.degree,
+        links: degrees.get(String(n.id))?.links || 0,
+        coreness: filtered.core.get(String(n.id)) || 0,
         isEgo: ego && String(n.id) === ego ? 1 : 0,
         watch: watchKeys.has(String(n.id)) ? 1 : 0,
       },
@@ -322,13 +443,17 @@ export default function Network() {
       },
     }));
     return [...nodes, ...edges];
-  }, [filtered, ego, watchKeys]);
+  }, [filtered, degrees, ego, watchKeys]);
 
-  // Shortest path (BFS over the visible edges).
-  const path = useMemo(
-    () => (pathEnds.a && pathEnds.b ? shortestPath(filtered.edges, pathEnds.a, pathEnds.b) : null),
-    [filtered.edges, pathEnds],
-  );
+  // Association path over the visible edges — fewest hops (BFS) or strongest
+  // evidence (Dijkstra on 1/shared-FIRs, so repeat co-offending beats a chain
+  // of one-off links even when that costs an extra hop).
+  const path = useMemo(() => {
+    if (!pathEnds.a || !pathEnds.b) return null;
+    return pathMode === 'strength'
+      ? strongestPath(filtered.edges, pathEnds.a, pathEnds.b)
+      : shortestPath(filtered.edges, pathEnds.a, pathEnds.b);
+  }, [filtered.edges, pathEnds, pathMode]);
   const pathIds = useMemo(() => {
     if (!path || path.length < 2) return [];
     const ids = [...path];
@@ -359,8 +484,14 @@ export default function Network() {
     focusApplied.current = true;
   }, [graph.data, searchParams, allNodesById]);
 
-  // Reset the path tool when the visible universe changes shape.
-  useEffect(() => { setPathEnds({ a: '', b: '' }); }, [districtName, communityId, ego]);
+  // Reset the pair tools and any standing highlight when the visible universe
+  // changes shape — a suggestion or group pair from the old slice is not an
+  // answer about the new one.
+  useEffect(() => {
+    setPathEnds({ a: '', b: '' });
+    setSuggestion(null);
+    setGroupPair(null);
+  }, [districtName, communityId, ego]);
 
   // A drawer must never show an element the filters just removed — close it
   // (Isolate / ego / path actions would otherwise target an off-screen target).
@@ -397,13 +528,35 @@ export default function Network() {
     setNeighborFocus((v) => { writePref(NEIGHBOR_PREF, v ? '0' : '1'); return !v; });
   };
   const toggleBridges = () => {
+    setSuggestion(null); setGroupPair(null);
     setShowBridges((v) => { writePref(BRIDGE_PREF, v ? '0' : '1'); return !v; });
   };
+  const toggleWeak = () => {
+    setSuggestion(null); setGroupPair(null);
+    setShowWeak((v) => { writePref(WEAK_PREF, v ? '0' : '1'); return !v; });
+  };
+  const changeCap = (v) => { setNodeCap(v); writePref(CAP_PREF, String(v)); };
 
   const clearGraphFilters = () => {
     setCommunity('');
-    setParams({ minDegree: '', ego: '', depth: '' });
+    setParams({ minDegree: '', ego: '', depth: '', core: '' });
     setEdgeTypes({ single: true, repeat: true, strong: true, bridge: true });
+    setSuggestion(null);
+    setGroupPair(null);
+  };
+
+  // A predicted link is inspected, not applied: both people load into the pair
+  // tools and the canvas highlights them with the associates that connect them.
+  const inspectSuggestion = (r) => {
+    setSuggestion((prev) => (prev && prev.a === r.a && prev.b === r.b ? null : r));
+    setGroupPair(null);
+    setPathEnds({ a: String(r.a), b: String(r.b) });
+    cyApi.current?.flyTo(String(r.a));
+  };
+
+  const pickGroupPair = (a, b) => {
+    setSuggestion(null);
+    setGroupPair((prev) => (prev && prev[0] === a && prev[1] === b ? null : [a, b]));
   };
 
   const personOptions = useMemo(
@@ -483,12 +636,77 @@ export default function Network() {
   const exportCsv = () => {
     if (!filtered.nodes.length) { toast.info(t('network.toast.nothingToExport')); return; }
     const day = new Date().toISOString().slice(0, 10);
-    downloadCsv(`dappa-network-nodes-${day}.csv`, nodeCsvColumns(t), filtered.nodes);
+    downloadCsv(`dappa-network-nodes-${day}.csv`, nodeCsvColumns(t, degrees, filtered.core), filtered.nodes);
     downloadCsv(`dappa-network-edges-${day}.csv`, edgeCsvColumns(t), filtered.edges);
     toast.success(t('network.toast.csvExported', {
       n: fmtInt(filtered.nodes.length),
       m: fmtInt(filtered.edges.length),
     }));
+  };
+
+  // Subgraph handoff — the exact visible slice as a graph-exchange JSON
+  // (nodes with community/degree/coreness + weighted edges with case ids), so
+  // the view can travel into a case file or another tool without a re-query.
+  const exportJson = () => {
+    if (!filtered.nodes.length) { toast.info(t('network.toast.nothingToExport')); return; }
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      scope: {
+        district: districtName || null,
+        communityId: communityId || null,
+        ego: ego || null,
+        depth: ego ? depth : null,
+        minDegree,
+        minCore,
+        edgeTiers: Object.entries(edgeTypes).filter(([, v]) => v).map(([k]) => k),
+        nodeCap,
+        capped: filtered.capped || 0,
+      },
+      stats: {
+        people: filtered.nodes.length,
+        links: filtered.edges.length,
+        components,
+        groups: communities.length,
+        density,
+      },
+      nodes: filtered.nodes.map((n) => ({
+        personKey: String(n.id),
+        name: n.label || String(n.id),
+        communityId: n.communityId ?? null,
+        caseCount: Number(n.caseCount) || 0,
+        links: degrees.get(String(n.id))?.links || 0,
+        sharedFirs: degrees.get(String(n.id))?.weight || 0,
+        coreness: filtered.core.get(String(n.id)) || 0,
+      })),
+      edges: filtered.edges.map((e) => ({
+        source: String(e.source),
+        target: String(e.target),
+        sharedCases: Number(e.weight) || 0,
+        caseIds: e.caseIds || [],
+      })),
+    };
+    downloadBlob(
+      `dappa-network-subgraph-${new Date().toISOString().slice(0, 10)}.json`,
+      new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    );
+    toast.success(t('network.toast.jsonExported', {
+      n: fmtInt(filtered.nodes.length),
+      m: fmtInt(filtered.edges.length),
+    }));
+  };
+
+  const copyBrief = async () => {
+    const scope = [
+      districtName ? tName('districts', districtId, districtName) : t('network.brief.statewide'),
+      communityId ? t('network.badge.isolated', { id: communityId }) : '',
+      ego ? t('network.ego.badge', { name: egoLabel }) : '',
+    ].filter(Boolean).join(' · ');
+    const text = graphBrief({
+      nodes: filtered.nodes, edges: filtered.edges, communities, scope,
+    });
+    const ok = await copyText(text);
+    if (ok) toast.success(t('network.toast.briefCopied'));
+    else toast.error(t('network.toast.copyFailed'));
   };
 
   const copyLink = async () => {
@@ -516,6 +734,10 @@ export default function Network() {
           isEgo={!!ego && String(sel.data.id) === ego}
           broker={brokers.get(String(sel.data.id)) || null}
           isCut={cutSet.has(String(sel.data.id))}
+          links={degrees.get(String(sel.data.id))?.links ?? null}
+          sharedFirs={degrees.get(String(sel.data.id))?.weight ?? null}
+          coreness={filtered.core.get(String(sel.data.id)) ?? null}
+          viewEdges={filtered.edges}
         />
       );
     }
@@ -553,7 +775,7 @@ export default function Network() {
           message={communityId
             ? t('network.empty.communityMsg', { id: communityId })
             : t('network.empty.msg')}
-          action={(communityId || minDegree > 1 || ego || Object.values(edgeTypes).some((v) => !v)) ? (
+          action={(communityId || minDegree > 1 || minCore > 0 || ego || Object.values(edgeTypes).some((v) => !v)) ? (
             <button type="button" className="btn" onClick={clearGraphFilters}>
               {t('network.empty.clearFilters')}
             </button>
@@ -602,13 +824,41 @@ export default function Network() {
           <input
             type="range"
             min="1"
-            max="8"
+            max={MAX_DEGREE_FILTER}
             step="1"
             value={minDegree}
             onChange={(e) => setParams({ minDegree: Number(e.target.value) > 1 ? e.target.value : '' })}
             className="accent-amber w-24"
             aria-label={t('network.control.degreeMinAria')}
           />
+        </label>
+        <Tooltip label={t('network.control.coreHint')}>
+          <label className="flex items-center gap-2 text-xs text-muted whitespace-nowrap min-h-[40px]">
+            <span>{t('network.control.core')} <span className="num text-ink">{fmtInt(minCore)}</span></span>
+            <input
+              type="range"
+              min="0"
+              max={MAX_CORE_FILTER}
+              step="1"
+              value={minCore}
+              onChange={(e) => setParams({ core: Number(e.target.value) > 0 ? e.target.value : '' })}
+              className="accent-amber w-20"
+              aria-label={t('network.control.coreAria')}
+            />
+          </label>
+        </Tooltip>
+        <label className="flex items-center gap-2 text-xs text-muted whitespace-nowrap">
+          <span className="hidden sm:inline">{t('network.control.cap')}</span>
+          <select
+            className="input-dark !py-1.5"
+            value={nodeCap}
+            onChange={(e) => changeCap(Number(e.target.value))}
+            aria-label={t('network.control.capAria')}
+          >
+            {NODE_CAPS.map((c) => (
+              <option key={c} value={c}>{t('network.control.capOption', { n: fmtInt(c) })}</option>
+            ))}
+          </select>
         </label>
         <span className="text-xs text-muted whitespace-nowrap hidden sm:inline" aria-hidden="true">{t('network.control.linksLabel')}</span>
         {EDGE_TIERS.map((tier) => (
@@ -683,11 +933,21 @@ export default function Network() {
             <Tooltip label={t('network.stat.avgLinksHint')}>
               <span className="num hidden md:inline">{t('network.stat.avgLinks', { n: fmtNum(avgDegree, 1) })}</span>
             </Tooltip>
+            <span className="hidden lg:inline">·</span>
+            <Tooltip label={t('network.stat.maxCoreHint')}>
+              <span className="num hidden lg:inline">{t('network.stat.maxCore', { n: fmtInt(filtered.maxCore) })}</span>
+            </Tooltip>
             {districtName && <Badge tone="amber">{tName('districts', districtId, districtName)}</Badge>}
             {communityId && <Badge tone="teal">{t('network.badge.isolated', { id: communityId })}</Badge>}
-            {filtered.capped && <Badge tone="slate">{t('network.badge.capped', { n: fmtInt(NODE_CAP) })}</Badge>}
+            {filtered.capped > 0 && (
+              <Badge tone="slate">{t('network.badge.cappedOf', { n: fmtInt(nodeCap), total: fmtInt(filtered.capped) })}</Badge>
+            )}
+            {minCore > 0 && <Badge tone="teal">{t('network.badge.core', { n: fmtInt(minCore) })}</Badge>}
             {filtered.egoMissing && <Badge tone="slate">{t('network.badge.egoMissing')}</Badge>}
-            {showBridges && !bridgeIds.length && <Badge tone="slate">{t('network.badge.noBridges')}</Badge>}
+            {showWeak && <Badge tone="red">{t('network.badge.weak', { n: fmtInt(weakSet.size) })}</Badge>}
+            {suggestion && <Badge tone="amber" pulse>{t('network.badge.inspecting')}</Badge>}
+            {groupPair && <Badge tone="amber">{t('network.badge.groupPair', { a: groupPair[0], b: groupPair[1] })}</Badge>}
+            {showBridges && !crossCommunityIds.size && <Badge tone="slate">{t('network.badge.noBridges')}</Badge>}
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2 min-w-0">
               <div className="relative">
                 <input
@@ -792,6 +1052,16 @@ export default function Network() {
                   {t('network.tool.bridges')}
                 </button>
               </Tooltip>
+              <Tooltip label={showWeak ? t('network.tool.weakOnHint') : t('network.tool.weakOffHint')}>
+                <button
+                  type="button"
+                  className={`${toolBtn} ${showWeak ? '!border-signal/60 text-signal' : ''}`}
+                  onClick={toggleWeak}
+                  aria-pressed={showWeak}
+                >
+                  {t('network.tool.weak')}
+                </button>
+              </Tooltip>
               <Tooltip label={t('network.tool.pngHint')}>
                 <button type="button" className={toolBtn} onClick={exportPng}>
                   {t('network.tool.png')}
@@ -800,6 +1070,16 @@ export default function Network() {
               <Tooltip label={t('network.tool.csvHint')}>
                 <button type="button" className={toolBtn} onClick={exportCsv}>
                   {t('network.tool.csv')}
+                </button>
+              </Tooltip>
+              <Tooltip label={t('network.tool.jsonHint')}>
+                <button type="button" className={toolBtn} onClick={exportJson}>
+                  {t('network.tool.json')}
+                </button>
+              </Tooltip>
+              <Tooltip label={t('network.tool.briefHint')}>
+                <button type="button" className={toolBtn} onClick={copyBrief}>
+                  {t('network.tool.brief')}
                 </button>
               </Tooltip>
               <Tooltip label={t('network.tool.linkHint')}>
@@ -867,10 +1147,25 @@ export default function Network() {
               onClear={() => setCommunity('')}
               profilesByKey={profilesByKey}
               brokers={brokers}
+              degrees={degrees}
             />
           )}
 
-          <Card title={t('network.path.title')} subtitle={t('network.path.subtitle')}>
+          <Card
+            title={t('network.path.title')}
+            subtitle={t(pathMode === 'strength' ? 'network.path.subtitleStrength' : 'network.path.subtitle')}
+            actions={(
+              <SegmentedControl
+                ariaLabel={t('network.path.modeAria')}
+                value={pathMode}
+                onChange={setPathMode}
+                options={[
+                  { value: 'hops', label: t('network.path.modeHops') },
+                  { value: 'strength', label: t('network.path.modeStrength') },
+                ]}
+              />
+            )}
+          >
             <div className="space-y-2.5">
               <PersonSelect label={t('network.path.personA')} value={pathEnds.a} onChange={(v) => setPathEnds((p) => ({ ...p, a: v }))} options={personOptions} />
               <PersonSelect label={t('network.path.personB')} value={pathEnds.b} onChange={(v) => setPathEnds((p) => ({ ...p, b: v }))} options={personOptions} />
@@ -920,7 +1215,7 @@ export default function Network() {
             </div>
           </Card>
 
-          <TopConnectors nodes={filtered.nodes} onPick={pickFromPanel} />
+          <TopConnectors nodes={filtered.nodes} degrees={degrees} onPick={pickFromPanel} />
 
           <WatchlistPanel nodesById={nodesById} onPick={pickFromPanel} />
 
@@ -956,10 +1251,13 @@ export default function Network() {
                   <li><span className="text-teal">{t('network.legend.tealRing')}</span> {t('network.legend.tealRingText')}</li>
                   <li><span className="text-amber">{t('network.legend.dashedAmber')}</span> {t('network.legend.dashedAmberText')}</li>
                   <li>{t('network.legend.diamond')}</li>
+                  <li>{t('network.legend.coreness')}</li>
+                  <li>{t('network.legend.weakLink')}</li>
+                  <li>{t('network.legend.predicted')}</li>
                   <li>{t('network.legend.gestures')}</li>
                 </ul>
                 <div className="border-t border-grid/60 pt-2.5">
-                  <DegreeHistogram nodes={filtered.nodes} />
+                  <DegreeHistogram nodes={filtered.nodes} degrees={degrees} />
                 </div>
                 <div className="border-t border-grid/60 pt-2.5">
                   <p className="text-[10px] uppercase tracking-wide mb-1.5">{t('network.legend.keyboard')}</p>
@@ -989,6 +1287,46 @@ export default function Network() {
           )}
         </div>
       </div>
+
+      {!graph.isLoading && !graph.error && filtered.nodes.length > 0 && (
+        <>
+          <div>
+            <h2 className="text-sm font-semibold text-ink">{t('network.analysis.title')}</h2>
+            <p className="text-[11px] text-muted">{t('network.analysis.subtitle')}</p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <LinkSuggestions
+              edges={filtered.edges}
+              nodesById={nodesById}
+              activeKey={suggestion ? `${suggestion.a}~~${suggestion.b}` : ''}
+              onInspect={inspectSuggestion}
+            />
+            <BrokerBoard
+              nodes={filtered.nodes}
+              edges={filtered.edges}
+              degrees={degrees}
+              core={filtered.core}
+              brokers={brokers}
+              cutSet={cutSet}
+              onPick={pickFromPanel}
+            />
+            <PairAnalyzer
+              edges={filtered.edges}
+              nodesById={nodesById}
+              a={pathEnds.a}
+              b={pathEnds.b}
+              onSelectNode={pickFromPanel}
+            />
+            <GroupMatrix
+              nodes={filtered.nodes}
+              edges={filtered.edges}
+              activePair={groupPair}
+              onIsolate={setCommunity}
+              onPickPair={pickGroupPair}
+            />
+          </div>
+        </>
+      )}
 
       {!isDesktop && (
         <Sheet

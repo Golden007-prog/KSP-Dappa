@@ -228,7 +228,9 @@ function register(router) {
       personKey: req.query.personKey,
       depth: req.query.depth
     };
-    const { graph, source } = await network.getGraph(params, { ds: ctx.ds, loaders: ctx.services.graphLoaders });
+    const { graph, source } = await network.getGraph(params, {
+      ds: ctx.ds, loaders: ctx.services.graphLoaders, cache: ctx.cache
+    });
     ok(res, graph, { source, nodeCount: graph.nodes.length, edgeCount: graph.edges.length });
   }));
 
@@ -334,18 +336,20 @@ function register(router) {
     const ctx = req.ctx;
     const horizon = toNum(req.query.horizon, 30);
     const lk = await getLookups(ctx);
-    let rows = await ctx.ds.query({
+    // 282 scored stations today, 359 possible — both past the 300-row ZCQL
+    // page, so page rather than silently dropping the tail of the ranking.
+    let rows = await ctx.ds.queryAll({
       table: 'StationRisk',
       columns: ['UnitID', 'Horizon', 'RiskScore', 'DriversJson', 'ComputedAt'],
       where: [{ col: 'Horizon', op: '=', val: horizon }],
       orderBy: { col: 'RiskScore', desc: true }
-    });
+    }, { maxRows: 1500 });
     if (!rows.length) {
       // tolerate a single-horizon table
-      rows = await ctx.ds.query({
+      rows = await ctx.ds.queryAll({
         table: 'StationRisk', columns: ['UnitID', 'Horizon', 'RiskScore', 'DriversJson', 'ComputedAt'],
         orderBy: { col: 'RiskScore', desc: true }
-      });
+      }, { maxRows: 1500 });
     }
     // Per-station mini-trend: last 6 months of AggMonthly counts (one grouped
     // query), zero-filled, for sparkline cells in the risk table.
@@ -356,11 +360,12 @@ function register(router) {
       const anchor = await anchorYm(ctx.ds, null);
       sparkFromYm = ymAdd(anchor, -5);
       sparkMonths = ymRange(sparkFromYm, anchor);
-      const agg = await ctx.ds.query({
+      // 359 units x 6 months = 2154 groups; must page.
+      const agg = await ctx.ds.queryAll({
         table: 'AggMonthly', columns: ['UnitID', 'Ym', 'SUM(CaseCount)'],
         where: [{ col: 'Ym', op: '>=', val: sparkFromYm }, { col: 'Ym', op: '<=', val: anchor }],
-        groupBy: ['UnitID', 'Ym']
-      });
+        groupBy: ['UnitID', 'Ym'], orderBy: { col: 'UnitID' }
+      }, { maxRows: 3000 });
       for (const r of agg) {
         const id = String(r.UnitID);
         if (!sparkByUnit.has(id)) sparkByUnit.set(id, new Map());

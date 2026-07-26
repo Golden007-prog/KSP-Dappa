@@ -127,15 +127,17 @@ function register(router) {
     const baseHour = hourOf(base.IncidentFromDate);
     const baseLat = toNum(base.latitude, null);
     const baseLng = toNum(base.longitude, null);
-    const candidates = await ctx.ds.query({
+    // The candidate pool must be wider than one 300-row ZCQL page for the
+    // similarity ranking to mean anything against 45,000 cases.
+    const candidates = await ctx.ds.queryAll({
       table: 'CaseMaster',
       columns: LIST_COLUMNS.concat(['IncidentFromDate', 'latitude', 'longitude']),
       where: [
         { col: 'CrimeMinorHeadID', op: '=', val: base.CrimeMinorHeadID },
         { col: 'CaseMasterID', op: '!=', val: id }
       ],
-      limit: { count: 400 }
-    });
+      orderBy: { col: 'CrimeRegisteredDate', desc: true }
+    }, { maxRows: 1200 });
     const scored = candidates.map((c) => {
       const why = ['same crime pattern'];
       let hourScore = 0;

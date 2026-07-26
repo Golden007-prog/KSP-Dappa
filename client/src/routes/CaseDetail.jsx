@@ -35,6 +35,10 @@ import { copyText } from './cases/clipboard.js';
 import { pickValue } from './cases/caseDates.js';
 import { readStars, toggleStar } from './cases/stars.js';
 import { pushRecent } from './cases/recent.js';
+import CaseCompleteness from './cases/CaseCompleteness.jsx';
+import StationContext from './cases/StationContext.jsx';
+import PeerCohortPanel from './cases/PeerCohortPanel.jsx';
+import { buildCaseBrief } from './cases/caseBrief.js';
 import './cases/case-detail-print.css';
 
 const WEEKDAY_KEYS = ['cases.detail.wd.sun', 'cases.detail.wd.mon', 'cases.detail.wd.tue',
@@ -68,6 +72,7 @@ const ICONS = {
   copy: <Icon><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></Icon>,
   link: <Icon><path d="M10 14a4 4 0 0 0 6 .5l2.5-2.5a4 4 0 1 0-5.7-5.7L11.5 7.6" /><path d="M14 10a4 4 0 0 0-6-.5L5.5 12a4 4 0 1 0 5.7 5.7l1.3-1.3" /></Icon>,
   json: <Icon><path d="M12 3v11m0 0 4.5-4.5M12 14 7.5 9.5M4 17.5V20h16v-2.5" /></Icon>,
+  brief: <Icon><path d="M6 3.5h9L19 8v12.5H6V3.5Z" /><path d="M14.5 3.5V8H19M9 12h7M9 15.5h7M9 18h4" /></Icon>,
   print: <Icon><path d="M7 8V3.5h10V8M7 17H4.5a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1V16a1 1 0 0 1-1 1H17m-10-3.5h10V21H7v-7.5Z" /></Icon>,
 };
 
@@ -173,6 +178,16 @@ export default function CaseDetail() {
     downloadCaseJson(d);
     toast.success(t('cases.detail.toast.jsonDownloaded'));
   };
+  // Paste-ready plain-text brief — whitelisted fields only, party counts rather
+  // than party records (same guardrail as the JSON export).
+  const copyBrief = async () => {
+    const ok = await copyText(buildCaseBrief(d, t));
+    if (ok) toast.success(t('cases.brief.copied'));
+    else toast.error(t('cases.toast.copyBlocked'));
+  };
+  const openRelated = useCallback((r) => {
+    if (r?.caseMasterId) navigate({ pathname: `/cases/${r.caseMasterId}`, search: location.search });
+  }, [navigate, location.search]);
 
   const countdown = useMemo(() => hearingCountdown(d.court, new Date(), t), [d.court, t]);
 
@@ -330,6 +345,10 @@ export default function CaseDetail() {
           {ICONS.link}
           {t('cases.detail.link')}
         </button>
+        <button type="button" className="btn !py-2 sm:!py-1.5" onClick={copyBrief} aria-label={t('cases.brief.aria')}>
+          {ICONS.brief}
+          {t('cases.brief.button')}
+        </button>
         <button type="button" className="btn !py-2 sm:!py-1.5" onClick={exportJson} aria-label={t('cases.detail.jsonAria')}>
           {ICONS.json}
           {t('cases.detail.json')}
@@ -417,6 +436,11 @@ export default function CaseDetail() {
       </Card>
 
       <CaseLagStrip caseData={d} />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <CaseCompleteness caseData={d} />
+        <PeerCohortPanel caseData={d} />
+      </div>
 
       <CaseTimeline caseData={d} />
 
@@ -541,6 +565,8 @@ export default function CaseDetail() {
           actions={countdown ? <Badge tone={countdown.tone}>{t('cases.detail.hearing', { when: countdown.label })}</Badge> : null}
         />
       </div>
+
+      <StationContext caseData={d} onOpenCase={openRelated} />
 
       <SimilarCases caseData={d} similar={similar} />
     </div>

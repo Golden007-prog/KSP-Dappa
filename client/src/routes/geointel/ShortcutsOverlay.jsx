@@ -16,6 +16,10 @@ const SHORTCUTS = [
   ['C', 'geointel.shortcuts.compare'],
   ['P', 'geointel.shortcuts.patrol'],
   ['M', 'geointel.shortcuts.measure'],
+  ['A', 'geointel.shortcuts.analysis'],
+  ['G', 'geointel.shortcuts.grid'],
+  ['W', 'geointel.shortcuts.weekday'],
+  ['Z', 'geointel.shortcuts.fit'],
   ['/', 'geointel.shortcuts.locate'],
   ['?', 'geointel.shortcuts.help'],
 ];
@@ -34,7 +38,7 @@ export default function ShortcutsOverlay({ onClose }) {
         role="dialog"
         aria-modal="true"
         aria-label={t('geointel.shortcuts.title')}
-        className="w-full max-w-xs bg-panel border border-grid rounded-xl shadow-lift p-4 animate-scale-in"
+        className="w-full max-w-xs max-h-[85vh] overflow-y-auto bg-panel border border-grid rounded-xl shadow-lift p-4 animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">

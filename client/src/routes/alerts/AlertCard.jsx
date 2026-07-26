@@ -13,13 +13,11 @@ import SlaBadge from './SlaBadge.jsx';
 import { caseDrillHref } from './links.js';
 import { fmtInt, fmtNum, dateLabel, getFormatLocale } from '../../lib/format.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
+import { sevKey, SEV_TONE, direction, statusKey } from './severity.js';
 
-const SEV_TONE = { critical: 'red', high: 'red', medium: 'amber', low: 'neutral' };
-
-function cardBorder(severity, acked, snoozed) {
+function cardBorder(sev, acked, snoozed) {
   if (acked) return 'opacity-80';
   if (snoozed) return 'opacity-70 border-grid';
-  const sev = String(severity || '').toLowerCase();
   if (sev === 'critical') return 'border-signal/70 animate-pulse-glow';
   if (sev === 'high') return 'border-signal/50 animate-pulse-glow';
   return 'border-signal/30';
@@ -57,10 +55,14 @@ export default function AlertCard({
   alert: a, stations, acked = false, onAck, ackPending = false, ackError = false,
   unread = false, onRead, onCopy, onSnooze, snoozedUntil = 0, onUnsnooze,
   sla = null, onOpenDetail,
+  // New (all optional — omitting them reproduces the previous card exactly).
+  selected = false, onSelect, hasNote = false, owner = '', onDismiss,
 }) {
   const t = useT();
   const tName = useNames();
-  const sev = String(a.severity || 'medium').toLowerCase();
+  const sev = sevKey(a.severity) || 'medium';
+  const dir = direction(a);
+  const state = statusKey(a.status);
   const snoozed = Number(snoozedUntil) > Date.now();
   const rel = endedAgo(a.periodEnd, t);
   const drill = caseDrillHref(a);
@@ -72,11 +74,41 @@ export default function AlertCard({
       <div className="flex flex-col md:flex-row gap-4">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
+            {onSelect && (
+              <label className="flex h-11 w-6 shrink-0 cursor-pointer items-center sm:h-6">
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => onSelect(a.alertId)}
+                  aria-label={t('alerts.bulk.selectAria', { name: `${head} — ${district}` })}
+                  className="h-4 w-4 accent-current text-primary"
+                />
+              </label>
+            )}
             <Badge tone={acked || snoozed ? 'slate' : (SEV_TONE[sev] || 'neutral')} pulse={!acked && !snoozed}>{t(`alerts.sevLower.${sev}`)}</Badge>
             <h3 className="text-sm font-semibold text-ink truncate">
               {head} — {district}
             </h3>
             <Badge tone={acked || snoozed ? 'slate' : 'red'} className="num">{t('alerts.card.z')} {fmtNum(a.zScore, 1)}</Badge>
+            {dir && (
+              <Tooltip label={t(dir === 'up' ? 'alerts.dir.upTip' : 'alerts.dir.downTip')}>
+                <span tabIndex={0} className="inline-flex rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
+                  <Badge tone={acked || snoozed ? 'slate' : (dir === 'up' ? 'red' : 'teal')}>
+                    {t(dir === 'up' ? 'alerts.dir.up' : 'alerts.dir.down')}
+                  </Badge>
+                </span>
+              </Tooltip>
+            )}
+            {state === 'reviewed' && <Badge tone="slate">{t('alerts.status.reviewed')}</Badge>}
+            {state === 'dismissed' && <Badge tone="slate">{t('alerts.status.dismissed')}</Badge>}
+            {owner && <Badge tone="teal">{t('alerts.triage.assignedTo', { who: owner })}</Badge>}
+            {hasNote && (
+              <Tooltip label={t('alerts.card.hasNoteTip')}>
+                <span tabIndex={0} className="inline-flex rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
+                  <Badge tone="amber">{t('alerts.card.hasNote')}</Badge>
+                </span>
+              </Tooltip>
+            )}
             {snoozed && (
               <Badge tone="slate">{t('alerts.card.snoozedUntil', { when: snoozeLabel(snoozedUntil) })}</Badge>
             )}
@@ -162,7 +194,7 @@ export default function AlertCard({
               </button>
             )}
           </div>
-          {(onCopy || drill || (!acked && (onSnooze || onUnsnooze))) && (
+          {(onCopy || drill || (!acked && (onSnooze || onUnsnooze || onDismiss))) && (
             <div className="flex items-center gap-2">
               {onCopy && (
                 <button type="button" className={`btn ${actionBtn}`} onClick={() => onCopy(a)}>
@@ -181,6 +213,16 @@ export default function AlertCard({
                 >
                   {t('alerts.card.cases')}
                 </Link>
+              )}
+              {!acked && onDismiss && (
+                <button
+                  type="button"
+                  className={`btn ${actionBtn}`}
+                  title={t('alerts.card.dismissTip')}
+                  onClick={() => onDismiss(a.alertId)}
+                >
+                  {t('alerts.card.dismiss')}
+                </button>
               )}
               {!acked && (snoozed ? (
                 onUnsnooze && (

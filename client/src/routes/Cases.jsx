@@ -10,8 +10,15 @@
 // client + server CSV export, Markdown/link copy, and keyboard shortcuts
 // ('/' search · 'e' export · 'c' compare · '?' help). Server filters ride the
 // URL (shareable); status / search / anomaly / starred / age are client-side
-// refinements over the newest 200 rows of the server filter, because
-// GET /cases has no status or text param (docs/CONTRACTS.md).
+// refinements, because GET /cases has no status or text param
+// (docs/CONTRACTS.md).
+//
+// Those refinements run over a DEEP SCAN (cases/deepScan.js): the endpoint caps
+// perPage at 200, so the explorer pages it up to a user-chosen depth instead of
+// judging 45,000 FIRs from one page. That scanned corpus is also what the
+// analytics stack reads — faceted live counts, day-level registration heat,
+// pendency distribution, crime-series detection, emerging-subhead watch, the
+// station load board and CrimeNo serial continuity.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCases, useLookups, API_BASE, prune } from '../lib/api.js';
@@ -48,6 +55,19 @@ import CompareTray from './cases/CompareTray.jsx';
 import CompareSheet from './cases/CompareSheet.jsx';
 import PeekSheet from './cases/PeekSheet.jsx';
 import ShortcutsSheet from './cases/ShortcutsSheet.jsx';
+import QueryBuilder from './cases/QueryBuilder.jsx';
+import FacetRail from './cases/FacetRail.jsx';
+import RegistrationCalendar from './cases/RegistrationCalendar.jsx';
+import PendencyPanel from './cases/PendencyPanel.jsx';
+import SeriesDetector from './cases/SeriesDetector.jsx';
+import EmergingWatch from './cases/EmergingWatch.jsx';
+import StationLoad from './cases/StationLoad.jsx';
+import SerialGaps from './cases/SerialGaps.jsx';
+import BulkBar from './cases/BulkBar.jsx';
+import { useDeepScan, SCAN_DEPTHS, readScanDepth, persistScanDepth } from './cases/deepScan.js';
+import { readBulk, writeBulk, toggleBulk, addManyBulk, removeManyBulk, BULK_CAP } from './cases/bulk.js';
+import { readSearches, pushSearch, removeSearch, clearSearches } from './cases/searchHistory.js';
+import './cases/explorer-print.css';
 
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === '1';
 
@@ -71,7 +91,21 @@ const ICONS = {
   keyboard: <Icon size={14}><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" /></Icon>,
   link: <Icon size={14}><path d="M10 14a4 4 0 0 0 6 .5l2.5-2.5a4 4 0 1 0-5.7-5.7L11.5 7.6" /><path d="M14 10a4 4 0 0 0-6-.5L5.5 12a4 4 0 1 0 5.7 5.7l1.3-1.3" /></Icon>,
   markdown: <Icon size={14}><rect x="2.5" y="5" width="19" height="14" rx="2" /><path d="M6 15v-6l2.5 3L11 9v6M15.5 9v6m0 0 -2-2m2 2 2-2" /></Icon>,
+  builder: <Icon><path d="M4 6h10M4 12h16M4 18h7" /><circle cx="18" cy="6" r="2" /><circle cx="14" cy="18" r="2" /></Icon>,
+  bulk: <Icon><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><path d="m14 17.5 2.2 2.2L20.5 15" /></Icon>,
+  heat: <Icon><path d="M12 3s4.5 4.2 4.5 8.2A4.5 4.5 0 0 1 12 15.7a4.5 4.5 0 0 1-4.5-4.5C7.5 7.2 12 3 12 3Z" /><path d="M8 21h8" /></Icon>,
+  print: <Icon><path d="M7 8V3.5h10V8M7 17H4.5a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1V16a1 1 0 0 1-1 1H17m-10-3.5h10V21H7v-7.5Z" /></Icon>,
 };
+
+/** Pendency heat swatch for the Registered column — teal fresh → red stale. */
+function heatColor(age) {
+  if (!Number.isFinite(age)) return 'transparent';
+  if (age <= 30) return 'rgb(var(--t-teal) / 0.85)';
+  if (age <= 90) return 'rgb(var(--t-amber) / 0.55)';
+  if (age <= 180) return 'rgb(var(--t-amber) / 0.95)';
+  if (age <= 365) return 'rgb(var(--t-signal) / 0.7)';
+  return 'rgb(var(--t-signal) / 1)';
+}
 
 const StarIcon = ({ filled = false, size = 15 }) => (
   <svg
@@ -135,6 +169,7 @@ const ROW_BTN = 'btn-ghost !p-0 flex h-10 w-10 sm:h-8 sm:w-8 items-center justif
 const buildColumnDefs = ({
   onCopy, onOpen, onToggleStar, onToggleCompare, onPeek, stars = {}, compareIds, needles = [],
   t = (k) => k, trName = (kind, v) => v,
+  bulkMode = false, bulkIds, onToggleBulk, heat = false,
 }) => [
   {
     key: 'crimeNo', label: t('cases.col.crimeNo'), chooserLabel: t('cases.col.crimeNo.chooser'), locked: true, sortable: true,
@@ -144,20 +179,39 @@ const buildColumnDefs = ({
   {
     key: '_select', label: '', chooserLabel: t('cases.col.select.chooser'), locked: true, width: 44, align: 'center',
     render: (r) => {
-      const on = !!compareIds?.has(String(r.caseMasterId));
+      // One checkbox, two jobs: compare (cap 3) by default, bulk working-set
+      // (cap 500) while bulk mode is on.
+      const on = bulkMode
+        ? !!bulkIds?.has(String(r.caseMasterId))
+        : !!compareIds?.has(String(r.caseMasterId));
       return (
         <input
           type="checkbox"
-          className="h-4 w-4 accent-[var(--c-amber)] cursor-pointer align-middle"
+          className={`h-4 w-4 cursor-pointer align-middle ${bulkMode ? 'accent-[var(--c-teal)]' : 'accent-[var(--c-amber)]'}`}
           checked={on}
-          aria-label={t(on ? 'cases.row.compareRemove' : 'cases.row.compareAdd', { no: r.crimeNo })}
+          aria-label={bulkMode
+            ? t(on ? 'cases.bulk.rowRemove' : 'cases.bulk.rowAdd', { no: r.crimeNo })
+            : t(on ? 'cases.row.compareRemove' : 'cases.row.compareAdd', { no: r.crimeNo })}
           onClick={(e) => e.stopPropagation()}
-          onChange={() => onToggleCompare?.(r)}
+          onChange={() => (bulkMode ? onToggleBulk?.(r) : onToggleCompare?.(r))}
         />
       );
     },
   },
-  { key: 'registeredDate', label: t('cases.col.registered'), sortable: true, render: (r) => dateLabel(r.registeredDate) },
+  {
+    key: 'registeredDate', label: t('cases.col.registered'), sortable: true,
+    render: (r) => (heat ? (
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="inline-block h-3.5 w-1 rounded-sm shrink-0"
+          style={{ backgroundColor: heatColor(r.ageDays) }}
+          title={Number.isFinite(r.ageDays) ? t('cases.heat.swatch', { d: fmtInt(r.ageDays) }) : undefined}
+        />
+        {dateLabel(r.registeredDate)}
+      </span>
+    ) : dateLabel(r.registeredDate)),
+  },
   { key: 'caseNo', label: t('cases.col.caseNo'), defaultOff: true, className: 'whitespace-nowrap', render: (r) => <Hl text={r.caseNo} needles={needles} /> },
   {
     key: 'ageDays', label: t('cases.col.age'), chooserLabel: t('cases.col.age.chooser', { d: AGE_WARN_DAYS }), defaultOff: true, sortable: true, align: 'right', width: 78,
@@ -271,13 +325,19 @@ export default function Cases() {
   const [sort, setSortState] = useState(() => parseSortParam(searchParams.get('sort')));
   const [visibleCols, setVisibleCols] = useState(readVisibleColumns);
   const [stars, setStars] = useState(readStars);
-  const [sheet, setSheet] = useState(null); // 'filters' | 'presets' | 'columns' | 'compare' | 'shortcuts' | null
+  const [sheet, setSheet] = useState(null); // 'filters' | 'presets' | 'columns' | 'compare' | 'shortcuts' | 'builder' | null
   const [exporting, setExporting] = useState(false);
   const [jump, setJump] = useState('');
   // Compare tray (sessionStorage) + row quick-look.
   const [compareItems, setCompareItems] = useState(readCompare);
   const [peekRow, setPeekRow] = useState(null);
   const searchRef = useRef(null);
+  // Deep scan depth, bulk working set, pendency heat tint, recent searches.
+  const [scanDepth, setScanDepth] = useState(readScanDepth);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkItems, setBulkItems] = useState(readBulk);
+  const [heat, setHeat] = useState(false);
+  const [searches, setSearches] = useState(readSearches);
 
   const setSort = useCallback((next) => {
     setSortState(next);
@@ -312,12 +372,31 @@ export default function Cases() {
   }, [districtId, unitId, crimeHeadId, crimeSubHeadId, gravityId, from, to]);
 
   const clientRefined = !!(q || statusId || anomalyOnly || starredOnly || minAgeDays);
-  const cases = useCases(clientRefined
-    ? { ...serverFilterParams, page: 1, perPage: 200 }
+  // Unrefined → plain server pagination. Refined → deep scan, because the
+  // refinement predicates only exist on the client. The 1-row companion query
+  // keeps `meta.total` available without pulling a second page of rows.
+  const paged = useCases(clientRefined
+    ? { ...serverFilterParams, page: 1, perPage: 1 }
     : { ...serverFilterParams, page, perPage: pageSize });
+  // The scan always runs: it is the refinement corpus when the table is refined,
+  // and the analytics corpus either way. Depth is bounded and the panels say
+  // "newest N of M" rather than pretending the scan saw everything.
+  const deep = useDeepScan(serverFilterParams, scanDepth, true);
+  const cases = clientRefined
+    ? {
+      data: deep.data ? { rows: deep.data.rows, total: deep.data.total } : undefined,
+      isLoading: deep.isLoading,
+      isFetching: deep.isFetching,
+      error: deep.error,
+      refetch: deep.refetch,
+    }
+    : paged;
+  const scanFetched = deep.data?.fetched ?? 0;
+  const scanTruncated = !!deep.data?.truncated;
+  const scanTotal = deep.data?.total ?? 0;
 
   // Any filter/page-size change restarts pagination — page 6 of a narrower set is noise.
-  const filterKey = JSON.stringify([serverFilterParams, q, statusId, anomalyOnly, starredOnly, minAgeDays, pageSize]);
+  const filterKey = JSON.stringify([serverFilterParams, q, statusId, anomalyOnly, starredOnly, minAgeDays, pageSize, scanDepth]);
   useEffect(() => { setPage(1); }, [filterKey]);
 
   const statusName = statusId ? (lk?.statuses || []).find((s) => s.id === statusId)?.name || '' : '';
@@ -346,10 +425,21 @@ export default function Cases() {
 
   const totalMatches = clientRefined ? sorted.length : serverTotal;
   const pageRows = clientRefined ? sorted.slice((page - 1) * pageSize, page * pageSize) : sorted;
-  const scanCapped = clientRefined && Number(serverTotal) > 200;
+  const scanCapped = clientRefined && scanTruncated;
   const pages = Number.isFinite(Number(totalMatches)) && pageSize
     ? Math.max(1, Math.ceil(Number(totalMatches) / pageSize))
     : 1;
+
+  // Corpus every analytics panel reads: the deep scan, narrowed by whatever
+  // client-side refinement the table is showing.
+  const analysisRows = useMemo(() => {
+    const base = deep.data?.rows || [];
+    return clientRefined ? base.filter(refine) : base;
+  }, [deep.data, clientRefined, refine]);
+  const analysisScope = t('cases.scan.scope', { n: fmtInt(analysisRows.length), total: fmtInt(scanTotal) });
+  // Serial continuity can only claim a real gap when nothing filtered rows out
+  // of a station-year group in the first place.
+  const serialReliable = !crimeHeadId && !crimeSubHeadId && !gravityId && !from && !to && !clientRefined;
 
   // Tab title mirrors the result count; restored on unmount.
   useEffect(() => {
@@ -410,6 +500,72 @@ export default function Cases() {
       { pathname: `/cases/${item.caseMasterId}`, search: location.search },
       { state: { siblings: compareItems.map((x) => String(x.caseMasterId)) } },
     );
+  };
+
+  // --- bulk working set -----------------------------------------------------
+  const bulkIds = useMemo(
+    () => new Set(bulkItems.map((x) => String(x.caseMasterId))),
+    [bulkItems],
+  );
+  const commitBulk = (next) => {
+    writeBulk(next);
+    setBulkItems(next.slice(0, BULK_CAP));
+  };
+  const handleToggleBulk = (r) => {
+    const next = toggleBulk(bulkItems, r);
+    if (next === bulkItems) {
+      toast.info(t('cases.bulk.full', { n: fmtInt(BULK_CAP) }));
+      return;
+    }
+    commitBulk(next);
+  };
+  const selectPage = () => {
+    const before = bulkItems.length;
+    const next = addManyBulk(bulkItems, pageRows);
+    commitBulk(next);
+    toast.success(t('cases.bulk.added', { n: fmtInt(next.length - before) }));
+  };
+  const deselectPage = () => commitBulk(removeManyBulk(bulkItems, pageRows));
+  const bulkStarred = bulkItems.filter((x) => stars[String(x.caseMasterId)]).length;
+  const bulkStarAll = () => {
+    let next = stars;
+    for (const it of bulkItems) {
+      if (!next[String(it.caseMasterId)]) next = toggleStar(next, it.caseMasterId, { crimeNo: it.crimeNo });
+    }
+    setStars(next);
+    toast.success(t('cases.bulk.starredAll', { n: fmtInt(bulkItems.length) }));
+  };
+  const bulkUnstarAll = () => {
+    let next = stars;
+    for (const it of bulkItems) {
+      if (next[String(it.caseMasterId)]) next = toggleStar(next, it.caseMasterId);
+    }
+    setStars(next);
+    toast.success(t('cases.bulk.unstarredAll', { n: fmtInt(bulkItems.length) }));
+  };
+  const bulkCopyNos = async () => {
+    const ok = await copyText(bulkItems.map((x) => x.crimeNo || x.caseMasterId).join('\n'));
+    if (ok) toast.success(t('cases.bulk.copied', { n: fmtInt(bulkItems.length) }));
+    else toast.error(t('cases.toast.copyBlocked'));
+  };
+  const bulkExport = () => {
+    if (!bulkItems.length) return;
+    downloadCsv(exportFilename('dappa-cases-selection'), toCsv(bulkItems, buildExportColumns(visibleCols)));
+    toast.success(t('cases.bulk.exported', { n: fmtInt(bulkItems.length) }));
+  };
+
+  // --- series actions -------------------------------------------------------
+  const loadSeriesIntoCompare = (rows) => {
+    const next = rows.slice(0, COMPARE_CAP).map(snapshotRow);
+    writeCompare(next);
+    setCompareItems(next);
+    setSheet('compare');
+  };
+  const copySeries = async (s) => {
+    const text = s.rows.map((r) => `${r.crimeNo} · ${r.registeredDate} · ${r.subHeadName}`).join('\n');
+    const ok = await copyText(`${s.station} · ${s.subHead} · ${s.from} → ${s.to}\n${text}`);
+    if (ok) toast.success(t('cases.series.copied', { n: fmtInt(s.rows.length) }));
+    else toast.error(t('cases.toast.copyBlocked'));
   };
 
   // --- copy / share utilities ----------------------------------------------
@@ -489,6 +645,12 @@ export default function Cases() {
       } else if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         compareOpenRef.current();
+      } else if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        setBulkMode((on) => !on);
+      } else if (e.key === 'q' || e.key === 'Q') {
+        e.preventDefault();
+        setSheet('builder');
       } else if (e.key === '?') {
         e.preventDefault();
         setSheet('shortcuts');
@@ -507,6 +669,20 @@ export default function Cases() {
     setPageSize(v);
     persistPageSize(v);
   };
+
+  const changeScanDepth = (v) => {
+    setScanDepth(v);
+    persistScanDepth(v);
+  };
+
+  // Remember a query only once it has settled — typing "chain snatching" should
+  // not leave nine prefixes in the history.
+  useEffect(() => {
+    const term = String(q || '').trim();
+    if (term.length < 2) return undefined;
+    const id = setTimeout(() => setSearches(pushSearch(term)), 1500);
+    return () => clearTimeout(id);
+  }, [q]);
 
   // Presets v2: optionally restore columns + sort captured with the filters.
   const applyView = (view) => {
@@ -557,9 +733,11 @@ export default function Cases() {
     () => buildColumnDefs({
       onCopy: copyCrimeNo, onOpen: openDetail, onToggleStar: handleToggleStar,
       onToggleCompare: toggleCompare, onPeek: setPeekRow, stars, compareIds, needles, t, trName,
+      bulkMode, bulkIds, onToggleBulk: handleToggleBulk, heat,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [siblings, location.search, stars, compareIds, compareItems, needles, t, trName],
+    [siblings, location.search, stars, compareIds, compareItems, needles, t, trName,
+      bulkMode, bulkIds, bulkItems, heat],
   );
   const activeColumns = columnDefs.filter((c) => c.locked || visibleCols.includes(c.key));
 
@@ -595,7 +773,7 @@ export default function Cases() {
   ) : emptyText;
 
   return (
-    <div className="space-y-4 max-w-[1500px] mx-auto">
+    <div className="cases-print-root space-y-4 max-w-[1500px] mx-auto">
       <div>
         <h1 className="page-title">{t('cases.page.title')}</h1>
         <p className="page-subtitle">
@@ -605,7 +783,7 @@ export default function Cases() {
       </div>
 
       {/* toolbar: search + sheet triggers */}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('cases.toolbar.aria')}>
+      <div className="no-print flex flex-wrap items-center gap-2" role="group" aria-label={t('cases.toolbar.aria')}>
         <div className="relative flex-1 min-w-[12rem]">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">{ICONS.search}</span>
           <input
@@ -640,6 +818,12 @@ export default function Cases() {
             <span className="num rounded-full bg-amber/15 text-amber text-[10px] font-semibold px-1.5 py-0.5">{activeCount}</span>
           )}
         </button>
+        <Tooltip label={t('cases.builder.tip')}>
+          <button type="button" className="btn !py-2.5 sm:!py-2" onClick={() => setSheet('builder')} aria-haspopup="dialog">
+            {ICONS.builder}
+            {t('cases.builder.button')}
+          </button>
+        </Tooltip>
         <button type="button" className="btn !py-2.5 sm:!py-2" onClick={() => setSheet('presets')} aria-haspopup="dialog">
           {ICONS.bookmark}
           {t('cases.toolbar.presets')}
@@ -670,7 +854,78 @@ export default function Cases() {
             {exporting ? t('cases.toolbar.exporting') : t('cases.toolbar.csv')}
           </button>
         </Tooltip>
+        <Tooltip label={t('cases.bulk.tip')}>
+          <button
+            type="button"
+            className={`btn !py-2.5 sm:!py-2 ${bulkMode ? '!border-teal/60 !text-teal' : ''}`}
+            onClick={() => setBulkMode((on) => !on)}
+            aria-pressed={bulkMode}
+          >
+            {ICONS.bulk}
+            {t('cases.bulk.button')}
+          </button>
+        </Tooltip>
+        <Tooltip label={t('cases.heat.tip')}>
+          <button
+            type="button"
+            className={`btn !py-2.5 sm:!py-2 ${heat ? '!border-amber/60 !text-amber' : ''}`}
+            onClick={() => setHeat((on) => !on)}
+            aria-pressed={heat}
+          >
+            {ICONS.heat}
+            {t('cases.heat.button')}
+          </button>
+        </Tooltip>
+        <Tooltip label={t('cases.printview.tip')}>
+          <button type="button" className="btn !py-2.5 sm:!py-2" onClick={() => window.print()} aria-label={t('cases.printview.aria')}>
+            {ICONS.print}
+            {t('cases.printview.button')}
+          </button>
+        </Tooltip>
       </div>
+
+      {/* pendency heat legend — only while the tint is on */}
+      {heat && (
+        <div className="no-print flex flex-wrap items-center gap-2 text-[11px] text-muted" aria-label={t('cases.heat.legendAria')}>
+          <span className="eyebrow">{t('cases.heat.legend')}</span>
+          {[[30, 'cases.heat.l1'], [90, 'cases.heat.l2'], [180, 'cases.heat.l3'], [365, 'cases.heat.l4'], [400, 'cases.heat.l5']].map(([age, key]) => (
+            <span key={key} className="inline-flex items-center gap-1">
+              <span aria-hidden="true" className="inline-block h-3 w-1.5 rounded-sm" style={{ backgroundColor: heatColor(age) }} />
+              {t(key)}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* recent searches — one tap re-runs a query */}
+      {searches.length > 0 && (
+        <div className="no-print flex flex-wrap items-center gap-1.5 text-xs text-muted" aria-label={t('cases.history.aria')}>
+          <span className="eyebrow">{t('cases.history.label')}</span>
+          {searches.slice(0, 8).map((s) => (
+            <span key={s.q} className={`chip !pr-0.5 max-w-full ${s.q === q ? '!border-amber/60 !text-amber' : ''}`}>
+              <button
+                type="button"
+                className="truncate max-w-[12rem]"
+                onClick={() => { setQInput(s.q); setMany({ q: s.q }); }}
+                title={t('cases.history.rerun', { q: s.q })}
+              >
+                {s.q}
+              </button>
+              <button
+                type="button"
+                aria-label={t('cases.history.remove', { q: s.q })}
+                className="ml-0.5 -my-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:text-signal hover:bg-signal/10 transition-colors"
+                onClick={() => setSearches(removeSearch(s.q))}
+              >
+                {ICONS.x}
+              </button>
+            </span>
+          ))}
+          <button type="button" className="btn-ghost !py-1 !px-2 text-xs" onClick={() => setSearches(clearSearches())}>
+            {t('cases.history.clear')}
+          </button>
+        </div>
+      )}
 
       {/* live CrimeNo decoding + one-tap pivots for number-like queries */}
       <CrimeNoSearchHint
@@ -729,6 +984,57 @@ export default function Cases() {
           })}
         </div>
       )}
+
+      {/* deep-scan control + honest coverage readout */}
+      <div className="no-print flex flex-wrap items-center justify-between gap-2 text-xs text-muted" aria-label={t('cases.scan.aria')}>
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <Tooltip label={t('cases.scan.tip')}>
+            <span className="eyebrow cursor-help underline decoration-dotted underline-offset-2">{t('cases.scan.label')}</span>
+          </Tooltip>
+          <label className="inline-flex items-center gap-1.5">
+            <select
+              className="input-dark !py-1 !px-2 !text-xs num"
+              value={scanDepth}
+              onChange={(e) => changeScanDepth(Number(e.target.value))}
+              aria-label={t('cases.scan.depthAria')}
+            >
+              {SCAN_DEPTHS.map((n) => <option key={n} value={n}>{t('cases.scan.depthOpt', { n })}</option>)}
+            </select>
+          </label>
+          {deep.isLoading ? (
+            <span className="num">{t('cases.scan.running')}</span>
+          ) : deep.error ? (
+            <span className="text-signal">{t('cases.scan.failed')}</span>
+          ) : (
+            <span className="num">
+              {t('cases.scan.read', { n: fmtInt(scanFetched), pages: fmtInt(deep.data?.pages ?? 0), total: fmtInt(scanTotal) })}
+            </span>
+          )}
+          {!deep.isLoading && (deep.data?.duplicates ?? 0) > 0 && (
+            <Tooltip label={t('cases.scan.dedupedTip')}>
+              <span className="num cursor-help underline decoration-dotted underline-offset-2">
+                {t('cases.scan.deduped', { n: fmtInt(deep.data.duplicates) })}
+              </span>
+            </Tooltip>
+          )}
+          {scanTruncated && !deep.isLoading && (
+            <Tooltip label={t('cases.scan.partialTip')}>
+              <span className="inline-flex items-center gap-1 text-amber cursor-help">
+                <PulseDot color="amber" />
+                {t('cases.scan.partial')}
+              </span>
+            </Tooltip>
+          )}
+          {deep.isFetching && !deep.isLoading && <span className="text-muted/70">{t('cases.summary.updating')}</span>}
+        </span>
+        {bulkMode && (
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <span className="eyebrow text-teal">{t('cases.bulk.modeOn')}</span>
+            <button type="button" className="btn !py-1 !px-2 text-xs" onClick={selectPage}>{t('cases.bulk.selectPage')}</button>
+            <button type="button" className="btn !py-1 !px-2 text-xs" onClick={deselectPage}>{t('cases.bulk.deselectPage')}</button>
+          </span>
+        )}
+      </div>
 
       {/* result summary + jump-to-page + page size */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
@@ -844,6 +1150,73 @@ export default function Cases() {
         />
       )}
 
+      {/* faceted rail — exact server counts per filterable dimension */}
+      <FacetRail
+        params={serverFilterParams}
+        values={{ crimeHeadId, crimeSubHeadId, gravityId }}
+        onApply={setMany}
+      />
+
+      {!cases.error && (
+        <>
+          {/* emerging-subhead watch (red-zone pulsing on a statistical spike) */}
+          <EmergingWatch
+            rows={analysisRows}
+            scopeLabel={analysisScope}
+            onApply={(subHeadName) => {
+              const sub = (lk?.crimeSubHeads || []).find((s) => s.subHeadName === subHeadName);
+              if (!sub) return;
+              setMany({
+                crimeHeadId: String(Math.floor(Number(sub.crimeSubHeadId) / 100)),
+                crimeSubHeadId: sub.crimeSubHeadId,
+              });
+            }}
+          />
+
+          {/* day-level registration heat grid */}
+          <RegistrationCalendar
+            rows={analysisRows}
+            scopeLabel={analysisScope}
+            onDayClick={(day) => {
+              setMany({ from: day, to: day });
+              toast.info(t('cases.cal.dayFiltered', { date: dateLabel(day) }));
+            }}
+          />
+
+          {/* pendency distribution + per-status median */}
+          <PendencyPanel
+            rows={analysisRows}
+            scopeLabel={analysisScope}
+            onMinAge={(v) => setMany({ minAge: v })}
+          />
+
+          {/* crime-series detection */}
+          <SeriesDetector
+            rows={analysisRows}
+            scopeLabel={analysisScope}
+            onApply={setMany}
+            onCompare={loadSeriesIntoCompare}
+            onCopy={copySeries}
+            onOpenCase={openDetail}
+          />
+
+          {/* station load board + Pareto concentration */}
+          <StationLoad
+            rows={analysisRows}
+            scopeLabel={analysisScope}
+            onStation={setMany}
+          />
+
+          {/* CrimeNo serial continuity */}
+          <SerialGaps
+            rows={analysisRows}
+            reliable={serialReliable}
+            truncated={scanTruncated}
+            scopeLabel={analysisScope}
+          />
+        </>
+      )}
+
       <Card padded={false}>
         {cases.error ? (
           <EmptyState
@@ -870,7 +1243,17 @@ export default function Cases() {
         )}
       </Card>
 
-      {/* sticky compare tray + sheets */}
+      {/* sticky trays + sheets */}
+      <BulkBar
+        items={bulkItems}
+        starredCount={bulkStarred}
+        onStarAll={bulkStarAll}
+        onUnstarAll={bulkUnstarAll}
+        onCopy={bulkCopyNos}
+        onExport={bulkExport}
+        onClear={() => commitBulk([])}
+        onExit={() => setBulkMode(false)}
+      />
       <CompareTray
         items={compareItems}
         onRemove={toggleCompare}
@@ -894,6 +1277,12 @@ export default function Cases() {
         onOpen={() => { if (peekRow) { const r = peekRow; setPeekRow(null); openDetail(r); } }}
       />
       <ShortcutsSheet open={sheet === 'shortcuts'} onClose={() => setSheet(null)} />
+      <QueryBuilder
+        open={sheet === 'builder'}
+        onClose={() => setSheet(null)}
+        query={q}
+        onApply={(next) => { setQInput(next); setMany({ q: next }); }}
+      />
 
       <FilterSheet
         open={sheet === 'filters'}

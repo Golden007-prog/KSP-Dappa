@@ -7,6 +7,7 @@ import { format, parseISO, subDays } from 'date-fns';
 import {
   useKpis, useAlerts, useHotspots, useNetworkGraph, useForecast, useStationRisk,
 } from '../../lib/api.js';
+import { useSocioCorrelation, useEmerging } from '../alerts/useAlertIntel.js';
 import { dateLabel } from '../../lib/format.js';
 import { translate, useT } from '../../lib/i18n.jsx';
 
@@ -84,6 +85,12 @@ export function useBriefData(windowKey, custom) {
   const network = useNetworkGraph();
   const forecast = useForecast();
   const risk = useStationRisk();
+  // Explanatory layers: socio-economic correlation answers "why here", the
+  // emerging roll-up answers "what is building". Both are optional sections, so
+  // a failure in either must not gate `ready` — hence they stay out of the
+  // settle list below and render their own unavailable note.
+  const socio = useSocioCorrelation();
+  const emerging = useEmerging();
 
   const queries = [kpis, alerts, hotspots, network, forecast, risk];
   // "settled" not "succeeded": an errored section renders its own note and must
@@ -92,7 +99,10 @@ export function useBriefData(windowKey, custom) {
   // Every brief query failed (API down) — /print/brief uses this to hold
   // autoprint instead of printing a page of "Section unavailable" notes.
   const allError = queries.every((q) => !!q.error);
-  const refetchAll = () => { [...queries, prevKpis].forEach((q) => q.refetch()); };
+  const refetchAll = () => { [...queries, prevKpis, socio, emerging].forEach((q) => q.refetch()); };
 
-  return { win, prevWin, kpis, prevKpis, alerts, hotspots, network, forecast, risk, ready, allError, refetchAll };
+  return {
+    win, prevWin, kpis, prevKpis, alerts, hotspots, network, forecast, risk,
+    socio, emerging, ready, allError, refetchAll,
+  };
 }

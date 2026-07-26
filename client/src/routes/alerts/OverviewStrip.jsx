@@ -11,6 +11,7 @@ import Card from '../../components/Card.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { fmtInt, dateLabel } from '../../lib/format.js';
 import { useT } from '../../lib/i18n.jsx';
+import { sevKey } from './severity.js';
 
 const SEV_CHIPS = [
   { key: 'critical', cls: 'text-signal' },
@@ -27,7 +28,8 @@ export default function OverviewStrip({ openAlerts, sev, onSev }) {
   const counts = useMemo(() => {
     const m = {};
     for (const a of openAlerts) {
-      const k = String(a.severity || '').toLowerCase();
+      const k = sevKey(a.severity);
+      if (!k) continue;
       m[k] = (m[k] || 0) + 1;
     }
     return m;

@@ -3,14 +3,15 @@
 // Follows the active UI language when the caller passes its translators.
 import { fmtInt, fmtNum, dateLabel } from '../../lib/format.js';
 import { translate } from '../../lib/i18n.jsx';
+import { sevKey } from './severity.js';
 
 const en = (key, vars) => translate('en', key, vars);
 const passThrough = (_kind, _id, fallback) => fallback || '';
 
 /** One alert → a WhatsApp-ready single line. */
 export function alertShareText(a, t = en, tName = passThrough) {
-  const sevKey = String(a?.severity || '').toLowerCase();
-  const sev = (sevKey ? t(`alerts.sevLower.${sevKey}`) : t('alerts.share.alertWord')).toUpperCase();
+  const key = sevKey(a?.severity);
+  const sev = (key ? t(`alerts.sevLower.${key}`) : t('alerts.share.alertWord')).toUpperCase();
   const where = tName('districts', a?.districtId, a?.districtName || a?.districtId || '')
     || t('alerts.unknownDistrict');
   const head = tName('crimeHeads', a?.crimeHeadId, a?.headName || '') || t('alerts.anomaly');

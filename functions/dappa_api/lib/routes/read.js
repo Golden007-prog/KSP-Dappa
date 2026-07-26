@@ -233,21 +233,36 @@ function register(router) {
         const units = lk.unitsOfDistrict(filters.districtId).map((u) => u.unitId);
         if (units.length) where.push({ col: 'PoliceStationID', op: 'in', val: units });
       }
-      const rows = await ctx.ds.query({
-        table: 'CaseMaster', columns: ['IncidentFromDate'], where, limit: { count: 5000 }
-      });
+      // ZCQL truncates a single SELECT at 300 rows, so the old
+      // `limit: {count: 5000}` returned a clipped page at best and errored at
+      // worst (dropping the whole endpoint into the fixture fallback, which is
+      // why sampleSize read 40 against a 45,000-row CaseMaster). Page instead:
+      // 300 rows per query, up to the sample budget.
+      const budget = Math.max(300, Math.min(12000, toNum(req.query.sample, 6000)));
+      const { rows, pages, truncated } = await ctx.ds.queryPaged({
+        table: 'CaseMaster', columns: ['CaseMasterID', 'IncidentFromDate'], where,
+        orderBy: { col: 'CaseMasterID' }
+      }, { maxRows: budget });
       const matrix = WEEKDAYS.map(() => new Array(24).fill(0));
       let maxCount = 0;
+      let parsed = 0;
       for (const r of rows) {
         const d = new Date(String(r.IncidentFromDate).replace(' ', 'T'));
         if (Number.isNaN(d.getTime())) continue;
+        parsed += 1;
         const cell = matrix[d.getDay()];
         cell[d.getHours()] += 1;
         if (cell[d.getHours()] > maxCount) maxCount = cell[d.getHours()];
       }
-      return { weekdays: WEEKDAYS, hours: [...Array(24).keys()], matrix, maxCount, sampleSize: rows.length };
+      return {
+        weekdays: WEEKDAYS, hours: [...Array(24).keys()], matrix, maxCount,
+        sampleSize: rows.length, parsedSize: parsed, pages, truncated, sampleBudget: budget
+      };
     });
-    ok(res, value, { cached, ttlSec: ttl, asOf: await asOfMeta(ctx) });
+    ok(res, value, {
+      cached, ttlSec: ttl, asOf: await asOfMeta(ctx),
+      sampleSize: value.sampleSize, pages: value.pages, truncated: value.truncated
+    });
   }));
 
   router.get('/trends/category-share', asyncH(async (req, res) => {
@@ -336,13 +351,15 @@ function register(router) {
       if (unitFilter && unitFilter.length) where.push({ col: 'PoliceStationID', op: 'in', val: unitFilter });
       if (filters.from) where.push({ col: 'CrimeRegisteredDate', op: '>=', val: filters.from });
       if (filters.to) where.push({ col: 'CrimeRegisteredDate', op: '<=', val: filters.to });
+      // 359 police stations statewide — both of these exceed the 300-row ZCQL
+      // page, so they page instead of silently returning the first 300.
       const [caseRows, riskRows] = await Promise.all([
-        ctx.ds.query({
+        ctx.ds.queryAll({
           table: 'CaseMaster',
           columns: ['PoliceStationID', 'COUNT(CaseMasterID)', 'AVG(latitude)', 'AVG(longitude)'],
-          where, groupBy: ['PoliceStationID']
-        }),
-        ctx.ds.query({ table: 'StationRisk', columns: ['UnitID', 'RiskScore'] })
+          where, groupBy: ['PoliceStationID'], orderBy: { col: 'PoliceStationID' }
+        }, { maxRows: 1500 }),
+        ctx.ds.queryAll({ table: 'StationRisk', columns: ['UnitID', 'RiskScore'], orderBy: { col: 'UnitID' } }, { maxRows: 1500 })
       ]);
       const risk = new Map(riskRows.map((r) => [String(r.UnitID), toNum(r.RiskScore)]));
       return caseRows.map((r) => {
@@ -385,11 +402,13 @@ function register(router) {
     // Cached (short TTL) — the point layer refetches on every bbox change.
     const ttl = ttlFor(req);
     const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
-      const rows = await ctx.ds.query({
+      // The point layer asks for up to 2000 incidents; a single ZCQL SELECT
+      // caps at 300, so page up to the requested limit.
+      const rows = await ctx.ds.queryAll({
         table: 'CaseMaster',
         columns: ['CaseMasterID', 'latitude', 'longitude', 'CrimeMajorHeadID', 'CrimeMinorHeadID', 'CrimeRegisteredDate'],
-        where, limit: { count: limit }
-      });
+        where, orderBy: { col: 'CaseMasterID' }, limit: { count: limit }
+      }, { maxRows: limit });
       return rows.map((r) => ({
         caseMasterId: r.CaseMasterID,
         lat: toNum(r.latitude),

@@ -1,16 +1,61 @@
-// Patrol-route suggestion pill: ordered stop chips for the nearest-neighbour
-// route over the top visible hotspots, total length, drive-time estimate and
-// a copy-as-text action for the shift briefing. The map polyline + numbered
-// stop markers render in MapCanvas.
+// Patrol-route suggestion pill: ordered stop chips for the route over the top
+// visible hotspots, total length, drive-time estimate and a copy-as-text action
+// for the shift briefing. The route itself is built in geo.js — nearest
+// neighbour, optionally refined by a 2-opt pass and optionally closed into a
+// loop; this pill exposes those controls and reports the km the optimiser saved.
+// The map polyline + numbered stop markers render in MapCanvas.
+import { PATROL_STOP_COUNTS } from './geo.js';
 import { useT } from '../../lib/i18n.jsx';
 
-export default function PatrolRoutePill({ route, bandLabel, onCopy, onExit }) {
+export default function PatrolRoutePill({
+  route, bandLabel, onCopy, onExit,
+  stopCount, onStopCount, optimize, onOptimize, roundTrip, onRoundTrip,
+}) {
   const t = useT();
   return (
     <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 bg-panel/95 border border-grid rounded-xl px-2.5 py-1.5 shadow-lg text-[11px] max-w-full">
       <span className="text-[10px] uppercase tracking-wider text-amber shrink-0">
         {bandLabel ? t('geointel.patrol.labelBand', { band: bandLabel }) : t('geointel.patrol.label')}
       </span>
+      {onStopCount && (
+        <label className="flex items-center gap-1 shrink-0 text-[10px] text-muted">
+          <span>{t('geointel.patrol.stops')}</span>
+          <select
+            value={stopCount}
+            onChange={(e) => onStopCount(Number(e.target.value))}
+            aria-label={t('geointel.patrol.stopsAria')}
+            className="gi-tap bg-base border border-grid rounded-md px-1 py-0.5 num text-[11px] text-ink cursor-pointer"
+          >
+            {PATROL_STOP_COUNTS.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      )}
+      {onOptimize && (
+        <button
+          type="button"
+          aria-pressed={optimize}
+          onClick={() => onOptimize(!optimize)}
+          title={t('geointel.patrol.optimizeHint')}
+          className={`chip gi-tap shrink-0 text-[10px] transition-colors ${
+            optimize ? '!border-teal/60 !text-teal' : 'text-muted hover:text-ink'
+          }`}
+        >
+          {t('geointel.patrol.optimize')}
+        </button>
+      )}
+      {onRoundTrip && (
+        <button
+          type="button"
+          aria-pressed={roundTrip}
+          onClick={() => onRoundTrip(!roundTrip)}
+          title={t('geointel.patrol.roundTripHint')}
+          className={`chip gi-tap shrink-0 text-[10px] transition-colors ${
+            roundTrip ? '!border-teal/60 !text-teal' : 'text-muted hover:text-ink'
+          }`}
+        >
+          ↺ {t('geointel.patrol.roundTrip')}
+        </button>
+      )}
       {!route || !route.stops.length ? (
         <span className="text-muted">{t('geointel.patrol.none')}</span>
       ) : (
@@ -22,10 +67,20 @@ export default function PatrolRoutePill({ route, bandLabel, onCopy, onExit }) {
               {i > 0 && <span className="num text-[10px] text-muted">{t('geointel.patrol.km', { km: s.legKm.toFixed(1) })}</span>}
             </span>
           ))}
+          {route.roundTrip && route.closingKm > 0 && (
+            <span className="chip !border-teal/40 text-teal shrink-0">
+              <span className="num text-[10px]">↺ {t('geointel.patrol.km', { km: route.closingKm.toFixed(1) })}</span>
+            </span>
+          )}
           <span className="shrink-0 text-ink">
             <span className="num font-semibold">{t('geointel.patrol.km', { km: route.totalKm.toFixed(1) })}</span>
             <span className="text-muted"> {t('geointel.patrol.eta', { n: route.etaMin })}</span>
           </span>
+          {route.savedKm > 0.05 && (
+            <span className="num text-[10px] text-teal shrink-0">
+              {t('geointel.patrol.saved', { km: route.savedKm.toFixed(1) })}
+            </span>
+          )}
           <button
             type="button"
             className="chip gi-tap shrink-0 text-muted hover:text-ink transition-colors"

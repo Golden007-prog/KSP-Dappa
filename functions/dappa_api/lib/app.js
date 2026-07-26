@@ -14,6 +14,7 @@ const insightRoutes = require('./routes/insight');
 const casesRoutes = require('./routes/cases');
 const actionsRoutes = require('./routes/actions');
 const extrasRoutes = require('./routes/extras');
+const servicesRoutes = require('./routes/services');
 
 /**
  * @param {object} [options]
@@ -59,6 +60,9 @@ function createApp(options) {
 
   const router = express.Router();
   readRoutes.register(router);
+  // services before insight/actions: /reports/artifacts and /admin/circuit/*
+  // must match ahead of any later param route on the same prefix.
+  servicesRoutes.register(router);
   // extras before insight: /alerts/summary and /offenders/mo-patterns must
   // match ahead of the /alerts/:id and /offenders/:personKey param routes.
   extrasRoutes.register(router);

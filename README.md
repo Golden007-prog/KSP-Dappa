@@ -94,6 +94,31 @@ the UI renders. Live AI calls are on-demand, flag-gated, with fallbacks.
 | Natural-language analytics | Ask DAPPA copilot | QuickML LLM + RAG, deterministic NL→ZCQL fallback, chart + ZCQL reveal |
 | Strategic intelligence delivery | Reports | One-click SmartBrowz Weekly Intelligence Brief PDF, Catalyst Mail digest |
 
+## Challenge coverage
+
+[`CAPABILITIES.md`](CAPABILITIES.md) is the auditable map from the six scored
+capabilities of the challenge to the features backing each one — with the
+verbatim requirement, the route or endpoint where a judge can see it working,
+the numbered feature list from [`FEATURES.md`](FEATURES.md), and an honest count.
+
+| Capability | Features | Bar |
+|---|---:|---|
+| C1 · Advanced Visualization | 186 | ✅ clears 100 |
+| C2 · Criminological Network & Link Analysis | 62 | ❌ short by 38 |
+| C3 · Sociological & AI-Driven Predictive Dashboards | 119 | ✅ clears 100 |
+| C4 · Pattern & Trend Discovery | 106 | ✅ clears 100 |
+| C5 · Network & Behavioural Analysis | 45 | ❌ short by 55 |
+| C6 · AI/ML-Driven Intelligence | 85 | ❌ short by 15 |
+
+Three capabilities clear the 100-feature bar and three do not; the gaps are
+named in [§ Shortfalls](CAPABILITIES.md#shortfalls). Of the 808 cataloged
+features, 398 back a scored capability and 410 are enabling infrastructure
+(app shell, error handling, print plumbing, i18n) that is deliberately
+**excluded** from these counts. Nothing is counted twice in silence: the full
+[overlap matrix](CAPABILITIES.md#overlap) and the 14
+[backend-only endpoints](CAPABILITIES.md#backend-only) are published so every
+number can be re-derived rather than taken on trust.
+
 ## Catalyst services used
 
 | # | Service | Use in DAPPA |

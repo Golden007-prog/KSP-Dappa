@@ -3,7 +3,12 @@
 		"name": "dappa_nightly",
 		"stack": "python_3_12",
 		"type": "cron",
-		"env_variables": {}
+		"env_variables": {
+			"FEATURE_MAIL": "off",
+			"MAIL_FROM": "",
+			"DIGEST_TO": "",
+			"APP_BASE_URL": ""
+		}
 	},
 	"execution": {
 		"main": "main.py"

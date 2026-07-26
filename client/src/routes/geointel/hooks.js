@@ -81,6 +81,55 @@ export function useTrendsForUnits(unitIds = [], extraParams = {}) {
 }
 
 /**
+ * Socio-economic reference rows (/meta/socio — 38 districts: population,
+ * urbanisation, density, literacy, income index). Rarely changes, so it is
+ * cached hard; the map uses it for the density / urbanisation choropleth
+ * metrics and the bivariate crime-vs-urbanisation classing.
+ */
+export function useSocioMeta() {
+  return useQuery({
+    queryKey: ['geo-socio'],
+    queryFn: ({ signal }) => apiGet('/meta/socio', {}, { signal }).then((r) => rows(r.data)),
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+/**
+ * Raw /trends/seasonality for the active filter, keeping the server's own
+ * weekday ordering. The shared normalizer reads `data.days`, but the endpoint
+ * sends `data.weekdays` (Sun-first, matching Date#getDay), so it silently
+ * relabels the matrix Mon-first — this hook reads `weekdays` directly so the
+ * weekday × hour explorer lines up with the real day of week.
+ * Returns { weekdays, hours, matrix, max, total, sampleSize }.
+ */
+export function useSeasonalityGrid(params = {}, enabled = true) {
+  return useQuery({
+    queryKey: ['geo-seasonality-grid', prune(params)],
+    queryFn: ({ signal }) => apiGet('/trends/seasonality', params, { signal }).then((r) => {
+      const d = r.data || {};
+      const hours = Array.from({ length: 24 }, (_, i) => i);
+      const weekdays = Array.isArray(d.weekdays) && d.weekdays.length === 7
+        ? d.weekdays.map(String)
+        : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const src = Array.isArray(d.matrix) ? d.matrix : [];
+      const matrix = weekdays.map((_, di) => hours.map((h) => Number(src?.[di]?.[h]) || 0));
+      const flat = matrix.flat();
+      return {
+        weekdays,
+        hours,
+        matrix,
+        max: Math.max(0, ...flat),
+        total: flat.reduce((a, v) => a + v, 0),
+        sampleSize: Number(d.sampleSize) || 0,
+      };
+    }),
+    enabled: !!enabled,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/**
  * Merged day×hour seasonality matrix for 1..n police units (district drill
  * heat-strip). Returns { days, hours, matrix, max, isLoading, error }.
  */

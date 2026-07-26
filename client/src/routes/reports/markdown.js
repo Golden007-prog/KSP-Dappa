@@ -7,8 +7,10 @@ import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.
 import { translate } from '../../lib/i18n.jsx';
 import {
   selectOpenAlerts, selectTopHotspots, selectCommunities,
-  selectForecastRows, selectRiskRows, hotspotLabel,
+  selectForecastRows, selectRiskRows, hotspotLabel, sevKey,
 } from './select.js';
+import { triageStats } from './triagePerf.js';
+import { briefReference } from './reference.js';
 import { DEFAULT_ORDER, normalizeOrder } from './briefSections.js';
 import { composeExecutiveSummary } from './exec.js';
 import { annexNotes } from './annex.js';
@@ -39,6 +41,8 @@ export function buildBriefMarkdown(
   const k = brief.kpis.data || {};
   const det = Number(k.detectionRate) <= 1 ? Number(k.detectionRate) * 100 : Number(k.detectionRate);
   const classBanner = classMeta(classification, t).banner;
+  const stats = triageStats(brief);
+  const reference = briefReference(win, seq, classification);
   const h = (key) => `## ${t(`alerts.brief.h.${key}`)}`;
 
   const lines = [
@@ -50,6 +54,7 @@ export function buildBriefMarkdown(
     `- ${t('alerts.md.period', { from: dateLabel(win.from), to: dateLabel(win.to), win: win.label })}`,
     `- ${t('alerts.md.generated', { date: dateLabel(new Date().toISOString().slice(0, 10)) })}`,
     ...(preparedBy ? [`- ${t('alerts.md.preparedBy', { who: esc(preparedBy) })}`] : []),
+    `- ${t('alerts.md.reference', { code: reference })}`,
     '',
     `> ${t('alerts.brief.disclaimer')}`,
     '',
@@ -97,17 +102,83 @@ export function buildBriefMarkdown(
           ],
           ['l', 'l', 'l', 'r', 'r', 'l'],
           rows.map((a) => {
-            const sevKey = String(a.severity || '').toLowerCase();
+            const key = sevKey(a.severity);
             return [
               tName('districts', a.districtId, a.districtName || a.districtId),
               tName('crimeHeads', a.crimeHeadId, a.headName),
               a.narrative,
               `${fmtInt(a.observed)} / ${fmtInt(a.expected)}`,
               fmtNum(a.zScore, 1),
-              sevKey ? t(`alerts.sevLower.${sevKey}`) : '—',
+              key ? t(`alerts.sevLower.${key}`) : '—',
             ];
           }),
         ),
+        '',
+      ];
+    },
+    triage: () => {
+      if (!stats) return [h('triage'), '', `_${t('alerts.brief.empty.triage')}_`, ''];
+      return [
+        h('triage'),
+        '',
+        ...table(
+          [t('alerts.brief.triage.total'), t('alerts.brief.triage.open'), t('alerts.brief.triage.handled'),
+            t('alerts.brief.triage.sla'), t('alerts.brief.triage.medianAge')],
+          ['r', 'r', 'r', 'r', 'r'],
+          [[
+            fmtInt(stats.total), fmtInt(stats.openCount), fmtInt(stats.handled),
+            stats.slaPct === null ? '—' : `${stats.slaPct.toFixed(0)}%`,
+            stats.medianOpenAgeDays === null ? '—' : `${stats.medianOpenAgeDays}d`,
+          ]],
+        ),
+        '',
+        t('alerts.brief.triage.split', { surges: fmtInt(stats.surges), drops: fmtInt(stats.drops) }),
+        '',
+      ];
+    },
+    emerging: () => {
+      const rising = (brief.emerging?.data?.rising || []).slice(0, 6);
+      const falling = (brief.emerging?.data?.falling || []).slice(0, 4);
+      const rows = [...rising, ...falling];
+      if (!rows.length) return [h('emerging'), '', `_${t('alerts.brief.empty.emerging')}_`, ''];
+      return [
+        h('emerging'),
+        '',
+        ...table(
+          [t('alerts.brief.col.subhead'), t('alerts.brief.col.crimeHead'), t('alerts.brief.col.recent'),
+            t('alerts.brief.col.baseline'), t('alerts.brief.col.growth')],
+          ['l', 'l', 'r', 'r', 'r'],
+          rows.map((r) => [
+            r.subHeadName,
+            tName('crimeHeads', r.headId, r.headName),
+            fmtNum(r.recentAvg, 1),
+            fmtNum(r.baselineAvg, 1),
+            fmtPct(Number(r.growthPct), { sign: true }),
+          ]),
+        ),
+        '',
+      ];
+    },
+    socio: () => {
+      const inds = brief.socio?.data?.indicators || [];
+      if (!inds.length) return [h('socio'), '', `_${t('alerts.brief.empty.socio')}_`, ''];
+      return [
+        h('socio'),
+        '',
+        ...table(
+          [t('alerts.brief.col.indicator'), t('alerts.brief.col.r'), t('alerts.brief.col.n'),
+            t('alerts.brief.col.strength'), t('alerts.brief.col.directionCol')],
+          ['l', 'r', 'r', 'l', 'l'],
+          inds.map((i) => [
+            i.label || i.key,
+            i.r === null || i.r === undefined ? '—' : fmtNum(i.r, 2),
+            fmtInt(i.n),
+            i.strength || '—',
+            i.direction || i.note || '—',
+          ]),
+        ),
+        '',
+        t('alerts.brief.socioNote'),
         '',
       ];
     },

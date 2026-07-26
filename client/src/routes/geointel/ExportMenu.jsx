@@ -39,11 +39,19 @@ const INCIDENT_COLS = [
   { key: 'lng', label: 'lng' },
 ];
 
-export default function ExportMenu({ stations, hotspots, incidents, apiParams, scrubMonth }) {
+export default function ExportMenu({
+  stations, hotspots, incidents, apiParams, scrubMonth,
+  viewStations = null, viewHotspots = null, viewIncidents = null,
+}) {
   const [open, setOpen] = useState(false);
+  // "Only what's in view" — exports the current map viewport rather than the
+  // whole filter window, so a zoomed-in briefing exports the zoomed-in facts.
+  const [inView, setInView] = useState(false);
   const rootRef = useRef(null);
   const toast = useToast();
   const t = useT();
+  const canView = !!(viewStations && viewHotspots && viewIncidents);
+  const pick = (all, view) => ((inView && canView) ? view : all);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -57,19 +65,22 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
   const incidentLabel = scrubMonth
     ? t('geointel.export.incidentsMonth', { month: scrubMonth })
     : t('geointel.export.incidentsWindow');
+  const stationRows = pick(stations, viewStations);
+  const hotspotRows = pick(hotspots, viewHotspots);
+  const incidentRows = pick(incidents, viewIncidents);
   const items = [
-    { key: 'stations', label: t('geointel.export.stations'), rows: stations, cols: STATION_COLS, month: null },
-    { key: 'hotspots', label: t('geointel.export.hotspots'), rows: hotspots, cols: HOTSPOT_COLS, month: null },
-    { key: 'incidents', label: incidentLabel, rows: incidents, cols: INCIDENT_COLS, month: scrubMonth },
+    { key: 'stations', label: t('geointel.export.stations'), rows: stationRows, cols: STATION_COLS, month: null },
+    { key: 'hotspots', label: t('geointel.export.hotspots'), rows: hotspotRows, cols: HOTSPOT_COLS, month: null },
+    { key: 'incidents', label: incidentLabel, rows: incidentRows, cols: INCIDENT_COLS, month: scrubMonth },
   ];
   const geoItems = [
-    { key: 'gj-hotspots', kind: 'hotspots', label: t('geointel.export.hotspots'), rows: hotspots, month: null },
-    { key: 'gj-stations', kind: 'stations', label: t('geointel.export.stations'), rows: stations, month: null },
-    { key: 'gj-incidents', kind: 'incidents', label: incidentLabel, rows: incidents, month: scrubMonth },
+    { key: 'gj-hotspots', kind: 'hotspots', label: t('geointel.export.hotspots'), rows: hotspotRows, month: null },
+    { key: 'gj-stations', kind: 'stations', label: t('geointel.export.stations'), rows: stationRows, month: null },
+    { key: 'gj-incidents', kind: 'incidents', label: incidentLabel, rows: incidentRows, month: scrubMonth },
   ];
 
   const run = (it) => {
-    const name = exportName(it.key, apiParams, it.month);
+    const name = exportName(inView && canView ? `${it.key}_inview` : it.key, apiParams, it.month);
     downloadCsv(name, it.cols, it.rows || []);
     toast.success(t('geointel.export.doneCsv', { n: fmtInt((it.rows || []).length), name }));
     setOpen(false);
@@ -77,7 +88,7 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
 
   const runGeo = (it) => {
     const fc = buildFeatureCollection(it.kind, it.rows || []);
-    const name = exportName(it.kind, apiParams, it.month);
+    const name = exportName(inView && canView ? `${it.kind}_inview` : it.kind, apiParams, it.month);
     downloadGeoJson(name, fc);
     toast.success(t('geointel.export.doneGeo', { n: fmtInt(fc.features.length), name }));
     setOpen(false);
@@ -103,6 +114,17 @@ export default function ExportMenu({ stations, hotspots, incidents, apiParams, s
       </button>
       {open && (
         <div className="pointer-events-auto absolute left-0 right-0 md:left-auto md:right-0 md:w-52 top-full mt-1 z-30 bg-panel border border-grid rounded-xl shadow-lift p-1.5 animate-scale-in">
+          {canView && (
+            <label className="flex items-center gap-1.5 px-2 py-1 gi-tap text-[11px] text-muted cursor-pointer hover:text-ink transition-colors">
+              <input
+                type="checkbox"
+                checked={inView}
+                onChange={(e) => setInView(e.target.checked)}
+                className="accent-[color:var(--c-amber)] cursor-pointer"
+              />
+              <span className="truncate">{t('geointel.export.inView')}</span>
+            </label>
+          )}
           <p className="px-2 pt-0.5 pb-0.5 text-[9px] uppercase tracking-wider text-muted">{t('geointel.export.csv')}</p>
           {items.map((it) => {
             const n = (it.rows || []).length;

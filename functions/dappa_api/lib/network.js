@@ -5,9 +5,18 @@
 const { toNum, parseJsonSafe } = require('./util');
 
 async function buildFromTables(ds) {
+  // NetworkEdge is ~24k rows and OffenderProfile ~2k: a single ZCQL SELECT
+  // stops at 300, so both page under a bounded budget.
+  const page = (q, maxRows) => (typeof ds.queryAll === 'function' ? ds.queryAll(q, { maxRows }) : ds.query(q));
   const [edges, profiles] = await Promise.all([
-    ds.query({ table: 'NetworkEdge', columns: ['PersonKeyA', 'PersonKeyB', 'Weight', 'CaseIDsJson', 'CommunityID'] }),
-    ds.query({ table: 'OffenderProfile', columns: ['PersonKey', 'CanonicalName', 'CaseCount', 'CommunityID', 'DegreeCentrality', 'DistrictsJson'] })
+    page({
+      table: 'NetworkEdge', columns: ['PersonKeyA', 'PersonKeyB', 'Weight', 'CaseIDsJson', 'CommunityID'],
+      orderBy: { col: 'PersonKeyA' }
+    }, 3000),
+    page({
+      table: 'OffenderProfile', columns: ['PersonKey', 'CanonicalName', 'CaseCount', 'CommunityID', 'DegreeCentrality', 'DistrictsJson'],
+      orderBy: { col: 'RiskScore', desc: true }
+    }, 2100)
   ]);
   const nodeMap = new Map();
   for (const p of profiles) {
@@ -69,12 +78,20 @@ function filterGraph(graph, params) {
   return { nodes: outNodes, edges };
 }
 
+const GRAPH_CACHE_KEY = 'v1:network:graph';
+const GRAPH_TTL_SEC = 600;
+
 /**
- * deps = { ds, loaders? } — loaders.nosql / loaders.stratus are async () => graph|null
- * (real implementations are wired in index.js; tests leave them unset).
+ * deps = { ds, loaders?, cache? } — loaders.nosql / loaders.stratus are
+ * async () => graph|null (real implementations are wired in index.js; tests
+ * leave them unset). When `cache` is supplied the UNFILTERED graph is memoized:
+ * the table-built path pages through thousands of NetworkEdge rows, and both
+ * /network/graph and /network/path would otherwise repeat that walk on every
+ * request. Filtering still happens per request, so the contract is unchanged.
  */
 async function getGraph(params, deps) {
   const loaders = (deps && deps.loaders) || {};
+  const cache = deps && deps.cache;
   for (const [name, load] of [['nosql', loaders.nosql], ['stratus', loaders.stratus]]) {
     if (!load) continue;
     try {
@@ -90,8 +107,14 @@ async function getGraph(params, deps) {
       // fall through the chain
     }
   }
-  const built = await buildFromTables(deps.ds);
+  let built;
+  if (cache) {
+    const { value } = await cache.wrap(GRAPH_CACHE_KEY, GRAPH_TTL_SEC, false, () => buildFromTables(deps.ds));
+    built = value;
+  } else {
+    built = await buildFromTables(deps.ds);
+  }
   return { graph: filterGraph(built, params), source: 'datastore' };
 }
 
-module.exports = { getGraph, buildFromTables, filterGraph };
+module.exports = { getGraph, buildFromTables, filterGraph, GRAPH_CACHE_KEY, GRAPH_TTL_SEC };

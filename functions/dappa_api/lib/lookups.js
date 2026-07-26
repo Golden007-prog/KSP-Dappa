@@ -7,20 +7,26 @@ const { toNum } = require('./util');
 
 const TTL_SEC = 3600;
 
-async function fetchTable(ds, table, columns) {
+// Lookups must be COMPLETE: Karnataka has 359 units, past the 300-row ZCQL
+// page. A truncated Unit table would leave ~60 stations rendering as raw ids
+// everywhere, so every lookup pages.
+async function fetchTable(ds, table, columns, orderBy) {
+  if (typeof ds.queryAll === 'function') {
+    return ds.queryAll({ table, columns, orderBy: orderBy ? { col: orderBy } : undefined }, { maxRows: 3000 });
+  }
   return ds.query({ table, columns });
 }
 
 async function loadRaw(ds) {
   const [districts, units, heads, subHeads, categories, statuses, gravities, socio] = await Promise.all([
-    fetchTable(ds, 'District', ['DistrictID', 'DistrictName']),
-    fetchTable(ds, 'Unit', ['UnitID', 'UnitName', 'TypeID', 'ParentUnit', 'DistrictID']),
-    fetchTable(ds, 'CrimeHead', ['CrimeHeadID', 'CrimeGroupName']),
-    fetchTable(ds, 'CrimeSubHead', ['CrimeSubHeadID', 'CrimeHeadID', 'CrimeHeadName']),
-    fetchTable(ds, 'CaseCategory', ['CaseCategoryID', 'LookupValue']),
-    fetchTable(ds, 'CaseStatusMaster', ['CaseStatusID', 'CaseStatusName']),
-    fetchTable(ds, 'GravityOffence', ['GravityOffenceID', 'LookupValue']),
-    fetchTable(ds, 'SocioEconomic', ['DistrictID', 'Population', 'UrbanPct', 'LiteracyPct', 'DensityPerKm2', 'PerCapitaIncomeIdx'])
+    fetchTable(ds, 'District', ['DistrictID', 'DistrictName'], 'DistrictID'),
+    fetchTable(ds, 'Unit', ['UnitID', 'UnitName', 'TypeID', 'ParentUnit', 'DistrictID'], 'UnitID'),
+    fetchTable(ds, 'CrimeHead', ['CrimeHeadID', 'CrimeGroupName'], 'CrimeHeadID'),
+    fetchTable(ds, 'CrimeSubHead', ['CrimeSubHeadID', 'CrimeHeadID', 'CrimeHeadName'], 'CrimeSubHeadID'),
+    fetchTable(ds, 'CaseCategory', ['CaseCategoryID', 'LookupValue'], 'CaseCategoryID'),
+    fetchTable(ds, 'CaseStatusMaster', ['CaseStatusID', 'CaseStatusName'], 'CaseStatusID'),
+    fetchTable(ds, 'GravityOffence', ['GravityOffenceID', 'LookupValue'], 'GravityOffenceID'),
+    fetchTable(ds, 'SocioEconomic', ['DistrictID', 'Population', 'UrbanPct', 'LiteracyPct', 'DensityPerKm2', 'PerCapitaIncomeIdx'], 'DistrictID')
   ]);
   return {
     source: 'datastore',

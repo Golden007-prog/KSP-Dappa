@@ -5,6 +5,7 @@
 import Tooltip from '../../components/Tooltip.jsx';
 import { fmtInt } from '../../lib/format.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
+import { sevKey } from './severity.js';
 
 const MAX_CHIPS = 8;
 
@@ -24,7 +25,7 @@ export default function DistrictRollup({ openAlerts, activeDistrictId, onPick })
     }
     const g = byDistrict.get(id);
     g.n += 1;
-    const sev = String(a.severity || '').toLowerCase();
+    const sev = sevKey(a.severity);
     if (sev === 'critical') g.crit += 1;
     else if (sev === 'high') g.high += 1;
   }

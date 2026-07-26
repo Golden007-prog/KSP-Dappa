@@ -110,23 +110,42 @@ export function calendarMonthMeans(months, values) {
 }
 
 /**
- * Derive district populations from /geo/districts rows — the server computes
- * ratePerLakh = caseCount / Population × 1e5 from the SocioEconomic table, so
- * Population back-solves exactly: pop = caseCount / ratePerLakh × 1e5.
- * → {byDistrict: Map<districtId, population>, statePop}
+ * District ids are NOT spelled the same across endpoints: /geo/* returns the
+ * zero-padded police code ('0101') while /meta/lookups and /meta/socio return
+ * the unpadded one ('101'). Joining the two without normalising silently
+ * produced empty scatters and a dead per-lakh toggle, so every cross-endpoint
+ * join goes through this key.
  */
-export function derivePopulations(geoRows) {
+export function districtKey(id) {
+  const s = String(id === undefined || id === null ? '' : id).trim();
+  if (!s) return '';
+  return s.replace(/^0+/, '') || s;
+}
+
+/**
+ * Derive district populations from /geo/districts rows — when the server
+ * resolves ratePerLakh it computes caseCount / Population × 1e5 from the
+ * SocioEconomic table, so Population back-solves exactly.
+ * `socioRows` (/meta/socio) is the fallback source used wherever the server
+ * left ratePerLakh null, and it also supplies districts with no cases at all.
+ * → {byDistrict: Map<districtKey, population>, statePop}
+ */
+export function derivePopulations(geoRows, socioRows) {
   const byDistrict = new Map();
-  let statePop = 0;
+  (socioRows || []).forEach((s) => {
+    const pop = num(s?.population);
+    const key = districtKey(s?.districtId);
+    if (key && pop > 0) byDistrict.set(key, pop);
+  });
   (geoRows || []).forEach((r) => {
     const count = num(r.caseCount);
     const rate = num(r.ratePerLakh);
     if (count > 0 && rate > 0) {
-      const pop = Math.round((count / rate) * 100000);
-      byDistrict.set(String(r.districtId), pop);
-      statePop += pop;
+      byDistrict.set(districtKey(r.districtId), Math.round((count / rate) * 100000));
     }
   });
+  let statePop = 0;
+  byDistrict.forEach((v) => { statePop += v; });
   return { byDistrict, statePop: statePop || null };
 }
 
@@ -381,4 +400,219 @@ export function seasonalityQuickStats(s) {
     bandPct: (band.sum / total) * 100,
     weekendPct: (weekendSum / total) * 100,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Inference helpers: significance-tested correlation, index-to-100 rebasing,
+// transparent forecast challengers, risk-driver association. Still pure — every
+// number on screen can be recomputed from the same inputs.
+// ---------------------------------------------------------------------------
+
+/** Lanczos log-gamma — the only special function the p-values need. */
+function lnGamma(x) {
+  const g = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+    -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let y = x;
+  let tmp = x + 5.5;
+  tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j += 1) { y += 1; ser += g[j] / y; }
+  return -tmp + Math.log((2.5066282746310005 * ser) / x);
+}
+
+/** Continued-fraction expansion for the incomplete beta (Lentz's method). */
+function betacf(a, b, x) {
+  const FPMIN = 1e-30;
+  const qab = a + b;
+  const qap = a + 1;
+  const qam = a - 1;
+  let c = 1;
+  let d = 1 - (qab * x) / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= 200; m += 1) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    h *= d * c;
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < 3e-7) break;
+  }
+  return h;
+}
+
+/** Regularised incomplete beta I_x(a,b). */
+function betai(a, b, x) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(lnGamma(a + b) - lnGamma(a) - lnGamma(b)
+    + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2)
+    ? (bt * betacf(a, b, x)) / a
+    : 1 - (bt * betacf(b, a, 1 - x)) / b;
+}
+
+/**
+ * Pearson correlation with a two-tailed significance test.
+ * → {r, n, df, t, p} or null when fewer than 3 usable pairs / no variance.
+ * p is exact (Student's t through the incomplete beta), not a normal
+ * approximation — at 5–38 districts that difference is the whole answer.
+ */
+export function pearsonTest(xs, ys) {
+  const pairs = [];
+  const len = Math.min(xs?.length || 0, ys?.length || 0);
+  for (let i = 0; i < len; i += 1) {
+    const x = Number(xs[i]);
+    const y = Number(ys[i]);
+    if (Number.isFinite(x) && Number.isFinite(y)) pairs.push([x, y]);
+  }
+  const n = pairs.length;
+  if (n < 3) return null;
+  const mx = meanOf(pairs.map((p) => p[0]));
+  const my = meanOf(pairs.map((p) => p[1]));
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (const [x, y] of pairs) {
+    sxy += (x - mx) * (y - my);
+    sxx += (x - mx) ** 2;
+    syy += (y - my) ** 2;
+  }
+  if (sxx <= 0 || syy <= 0) return null;
+  const r = Math.max(-1, Math.min(1, sxy / Math.sqrt(sxx * syy)));
+  const df = n - 2;
+  if (Math.abs(r) >= 1) return { r, n, df, t: Infinity, p: 0 };
+  const tStat = r * Math.sqrt(df / (1 - r * r));
+  const p = betai(df / 2, 0.5, df / (df + tStat * tStat));
+  return { r, n, df, t: tStat, p: Math.max(0, Math.min(1, p)) };
+}
+
+/** '', '*', '**', '***' for p < .05 / .01 / .001 — the usual reporting stars. */
+export function sigStars(p) {
+  if (!Number.isFinite(p)) return '';
+  if (p < 0.001) return '***';
+  if (p < 0.01) return '**';
+  if (p < 0.05) return '*';
+  return '';
+}
+
+/** Rebase a series so its first non-zero value is 100 (shape, not level). */
+export function indexTo100(values) {
+  const xs = (values || []).map(num);
+  const base = xs.find((v) => v > 0);
+  if (!base) return xs.map(() => null);
+  return xs.map((v) => (v > 0 ? (v / base) * 100 : null));
+}
+
+/** Mean absolute percentage error over aligned actual/predicted arrays. */
+export function mape(actual, predicted) {
+  let sum = 0;
+  let n = 0;
+  const len = Math.min(actual?.length || 0, predicted?.length || 0);
+  for (let i = 0; i < len; i += 1) {
+    const a = num(actual[i]);
+    const p = Number(predicted[i]);
+    if (a > 0 && Number.isFinite(p)) { sum += Math.abs(a - p) / a; n += 1; }
+  }
+  return n ? (sum / n) * 100 : null;
+}
+
+/**
+ * Replay a holdout with three transparent challengers fitted on the earlier
+ * history only — seasonal naive (same month last year), drift (last value +
+ * average slope) and a flat 3-month mean. Returns the models sorted by MAPE
+ * plus the holdout actuals, or null when the history is too short.
+ */
+export function backtestChallengers(values, holdout = 6, minHistory = 18) {
+  const xs = (values || []).map(num);
+  if (xs.length < minHistory) return null;
+  const cut = xs.length - holdout;
+  const train = xs.slice(0, cut);
+  const actual = xs.slice(cut);
+  const seasonal = actual.map((_, i) => {
+    const idx = cut + i - 12;
+    return idx >= 0 ? xs[idx] : train[train.length - 1];
+  });
+  const last = train[train.length - 1];
+  const slope = train.length > 1 ? (last - train[0]) / (train.length - 1) : 0;
+  const drift = actual.map((_, i) => Math.max(0, last + slope * (i + 1)));
+  const m3 = meanOf(train.slice(-3));
+  const mean3 = actual.map(() => m3);
+  const scored = [
+    { key: 'seasonal', pred: seasonal },
+    { key: 'drift', pred: drift },
+    { key: 'mean3', pred: mean3 },
+  ].map((m) => ({ ...m, mape: mape(actual, m.pred) }))
+    .filter((m) => m.mape !== null)
+    .sort((a, b) => a.mape - b.mape);
+  if (!scored.length) return null;
+  return { actual, models: scored, best: scored[0], holdout, trainMonths: train.length };
+}
+
+/**
+ * Driver analytics over a risk league: how often each driver string appears,
+ * and the mean-risk gap between stations that carry it and those that do not
+ * (an association measured on the league, never a fitted coefficient).
+ */
+export function driverStats(rows, { minCount = 1 } = {}) {
+  const league = (rows || []).filter((r) => Array.isArray(r.drivers));
+  if (!league.length) return [];
+  const all = league.map((r) => num(r.riskScore));
+  const grand = meanOf(all);
+  const total = all.reduce((a, b) => a + b, 0);
+  const seen = new Map();
+  for (const r of league) {
+    for (const d of new Set(r.drivers.map((x) => String(x)))) {
+      if (!seen.has(d)) seen.set(d, []);
+      seen.get(d).push(num(r.riskScore));
+    }
+  }
+  const out = [];
+  for (const [driver, withScores] of seen) {
+    if (withScores.length < minCount) continue;
+    const withMean = meanOf(withScores);
+    const withoutCount = league.length - withScores.length;
+    const withoutMean = withoutCount
+      ? (total - withScores.reduce((a, b) => a + b, 0)) / withoutCount
+      : null;
+    out.push({
+      driver,
+      count: withScores.length,
+      sharePct: (withScores.length / league.length) * 100,
+      withMean,
+      withoutMean,
+      lift: withoutMean === null ? null : withMean - withoutMean,
+      grandMean: grand,
+    });
+  }
+  return out.sort((a, b) => b.count - a.count);
+}
+
+/** Top co-occurring driver pairs across a risk league. */
+export function driverPairs(rows, limit = 5) {
+  const counts = new Map();
+  for (const r of rows || []) {
+    const ds = [...new Set((r.drivers || []).map((x) => String(x)))].sort();
+    for (let i = 0; i < ds.length; i += 1) {
+      for (let j = i + 1; j < ds.length; j += 1) {
+        counts.set(`${ds[i]}||${ds[j]}`, (counts.get(`${ds[i]}||${ds[j]}`) || 0) + 1);
+      }
+    }
+  }
+  return [...counts.entries()]
+    .map(([key, count]) => ({ a: key.split('||')[0], b: key.split('||')[1], count }))
+    .sort((x, y) => y.count - x.count)
+    .slice(0, limit);
 }

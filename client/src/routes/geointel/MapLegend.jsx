@@ -5,16 +5,43 @@
 // route). LegendBar composes all three into the collapsible desktop pill.
 import PulseDot from '../../components/PulseDot.jsx';
 import { legendGradient } from './utils.js';
+import { BIVARIATE_PALETTE, GI_COLORS } from './stats.js';
 import { useT } from '../../lib/i18n.jsx';
 
 // label/legend are translation keys; the chip labels stay abbreviation-short
-// in every script so the four chips fit one row at 360px.
+// in every script so the chips still wrap cleanly at 360px.
 export const CHORO_METRICS = [
   { key: 'cases', label: 'geointel.metric.cases', legend: 'geointel.metric.casesLegend' },
   { key: 'rate', label: 'geointel.metric.rate', legend: 'geointel.metric.rateLegend' },
   { key: 'mom', label: 'geointel.metric.mom', legend: 'geointel.metric.momLegend', diverging: true },
   { key: 'risk', label: 'geointel.metric.risk', legend: 'geointel.metric.riskLegend' },
+  { key: 'density', label: 'geointel.metric.density', legend: 'geointel.metric.densityLegend' },
+  { key: 'urban', label: 'geointel.metric.urban', legend: 'geointel.metric.urbanLegend' },
+  { key: 'bivar', label: 'geointel.metric.bivar', legend: 'geointel.metric.bivarLegend', bivariate: true },
 ];
+
+/**
+ * 3x3 key for the crime-rate × urbanisation choropleth. Reading it: right =
+ * more crime per lakh, up = more urbanised, so the top-right corner is the
+ * "urban and crime-heavy" class and the bottom-right is the outlier worth
+ * asking about — high crime rate without the urbanisation to explain it.
+ */
+export function BivariateLegend({ className = '' }) {
+  const t = useT();
+  return (
+    <div className={`flex items-end gap-1.5 shrink-0 ${className}`}>
+      <span className="grid grid-cols-3 gap-px" role="img" aria-label={t('geointel.metric.bivarAria')}>
+        {[2, 1, 0].map((u) => BIVARIATE_PALETTE[u].map((c, r) => (
+          <span key={`${u}-${r}`} className="h-2.5 w-2.5" style={{ background: c }} />
+        )))}
+      </span>
+      <span className="flex flex-col gap-0.5 text-[8px] text-muted leading-tight">
+        <span>↑ {t('geointel.metric.bivarUrban')}</span>
+        <span>→ {t('geointel.metric.bivarRate')}</span>
+      </span>
+    </div>
+  );
+}
 
 export function metricDef(key) {
   return CHORO_METRICS.find((m) => m.key === key) || CHORO_METRICS[0];
@@ -26,14 +53,21 @@ export function LegendItems({ light = false, metricKey = 'cases' }) {
   const legend = t(m.legend);
   return (
     <>
-      <span className="flex items-center gap-1.5">
-        <span
-          className="h-1.5 w-14 rounded-full"
-          style={{ background: legendGradient(!!m.diverging, light) }}
-          aria-hidden="true"
-        />
-        {m.diverging ? t('geointel.metric.diverging', { legend }) : legend}
-      </span>
+      {m.bivariate ? (
+        <span className="flex items-center gap-1.5">
+          <BivariateLegend />
+          <span className="hidden lg:inline">{legend}</span>
+        </span>
+      ) : (
+        <span className="flex items-center gap-1.5">
+          <span
+            className="h-1.5 w-14 rounded-full"
+            style={{ background: legendGradient(!!m.diverging, light) }}
+            aria-hidden="true"
+          />
+          {m.diverging ? t('geointel.metric.diverging', { legend }) : legend}
+        </span>
+      )}
       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal" aria-hidden="true" /> {t('geointel.legend.lowRiskStation')}</span>
       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-signal" aria-hidden="true" /> {t('geointel.legend.highRiskStation')}</span>
       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber" aria-hidden="true" /> {t('geointel.legend.commissionerate')}</span>
@@ -41,6 +75,9 @@ export function LegendItems({ light = false, metricKey = 'cases' }) {
       <span className="flex items-center gap-1.5"><PulseDot /> {t('geointel.legend.anomalyDistrict')}</span>
       <span className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-amber" aria-hidden="true" /> {t('geointel.legend.patrolRoute')}</span>
       <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border-2 border-signal/70" aria-hidden="true" /> {t('geointel.legend.riskHalo')}</span>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-grid" style={{ background: GI_COLORS.hot99 }} aria-hidden="true" /> {t('geointel.legend.gridCell')}</span>
+      <span className="flex items-center gap-1.5"><span className="w-5 border-t border-primary/60" aria-hidden="true" /> {t('geointel.legend.catchLink')}</span>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-signal" aria-hidden="true" /> {t('geointel.legend.coverageGap')}</span>
     </>
   );
 }

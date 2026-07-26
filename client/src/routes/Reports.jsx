@@ -35,12 +35,28 @@ import {
   composeExecutiveSummary, loadExecOverride, saveExecOverride, wordCount,
 } from './reports/exec.js';
 import { CLASS_LEVELS, loadClassification, saveClassification } from './reports/classification.js';
+import { exportBriefJson } from './reports/exportJson.js';
+import { exportBriefHtml } from './reports/exportHtml.js';
+import { briefReference, bumpRevision, currentRevision } from './reports/reference.js';
+import {
+  loadPresets, savePreset, deletePreset,
+} from './reports/presets.js';
+import PresetsCard from './reports/PresetsCard.jsx';
+import { triageStats } from './reports/triagePerf.js';
 import { downloadBlob } from './alerts/csv.js';
 import { copyText } from './copilot/clipboard.js';
 import { fmtInt } from '../lib/format.js';
 import { useT, useNames } from '../lib/i18n.jsx';
 
 const PREPARED_KEY = 'dappa-brief-prepared-by';
+const BREAKS_KEY = 'dappa-brief-pagebreaks';
+const loadBreaks = () => {
+  try { return localStorage.getItem(BREAKS_KEY) === '1'; } catch { return false; }
+};
+const saveBreaks = (v) => {
+  try { localStorage.setItem(BREAKS_KEY, v ? '1' : '0'); } catch { /* private mode */ }
+};
+
 const loadPreparedBy = () => {
   try { return localStorage.getItem(PREPARED_KEY) || ''; } catch { return ''; }
 };
@@ -66,6 +82,8 @@ export default function Reports() {
   const [execDraft, setExecDraft] = useState(loadExecOverride);
   const [execCustom, setExecCustom] = useState(() => !!loadExecOverride());
   const [execOpen, setExecOpen] = useState(false);
+  const [pageBreaks, setPageBreaks] = useState(loadBreaks);
+  const [presets, setPresets] = useState(loadPresets);
   const isCustom = windowKey === CUSTOM_WINDOW;
   const custom = isCustom ? { from: customFrom, to: customTo } : undefined;
   const customOk = !isCustom || isValidCustomRange(custom);
@@ -102,7 +120,12 @@ export default function Reports() {
   if (preparedBy.trim()) printQs.set('by', preparedBy.trim());
   if (classification !== 'unclassified') printQs.set('class', classification);
   if (execCustom && execDraft.trim()) printQs.set('exec', execDraft.trim().slice(0, 1600));
+  if (pageBreaks) printQs.set('breaks', '1');
   const printSearch = `?${printQs.toString()}`;
+  // Document handle — derived from window + enabled sections + classification,
+  // so the preview, the print view and every export agree without plumbing.
+  const reference = briefReference(brief.win, enabledKeys, classification);
+  const revision = currentRevision(reference);
 
   // Live row counts shown on the section chips once the data settles.
   const chipCounts = brief.ready ? {
@@ -110,6 +133,9 @@ export default function Reports() {
     hotspots: (brief.hotspots.data || []).length,
     network: new Set((brief.network.data?.nodes || []).map((n) => n.communityId ?? '—')).size,
     forecast: (brief.risk.data || []).length,
+    triage: triageStats(brief)?.total || 0,
+    emerging: (brief.emerging?.data?.rising || []).length + (brief.emerging?.data?.falling || []).length,
+    socio: (brief.socio?.data?.indicators || []).filter((i) => i.r !== null && i.r !== undefined).length,
   } : {};
 
   const toggleSection = (key) => {
@@ -232,15 +258,102 @@ export default function Reports() {
     else toast.info(t('alerts.reports.toast.csvEmpty', { label }));
   };
 
+  const exportOpts = () => ({
+    order,
+    preparedBy: preparedBy.trim(),
+    execText: execCustom ? execDraft : undefined,
+    classification,
+    t,
+    tName,
+  });
+
+  const exportJson = () => {
+    const code = exportBriefJson(brief, sections, exportOpts());
+    bumpRevision(code);
+    toast.success(t('alerts.reports.toast.jsonDownloaded', { code }));
+  };
+
+  const exportHtml = () => {
+    const code = exportBriefHtml(brief, sections, exportOpts());
+    bumpRevision(code);
+    toast.success(t('alerts.reports.toast.htmlDownloaded', { code }));
+  };
+
+  const copyReference = async () => {
+    const ok = await copyText(reference);
+    if (ok) toast.success(t('alerts.reports.toast.refCopied'));
+    else toast.error(t('alerts.toast.copyFailed'));
+  };
+
+  const toggleBreaks = () => {
+    setPageBreaks((v) => {
+      saveBreaks(!v);
+      return !v;
+    });
+  };
+
+  /** Capture the entire builder configuration under a name. */
+  const savePresetNamed = (name) => {
+    setPresets(savePreset({
+      name,
+      windowKey,
+      from: customFrom,
+      to: customTo,
+      sections,
+      order,
+      classification,
+      preparedBy: preparedBy.trim(),
+      pageBreaks,
+    }));
+    toast.success(t('alerts.presets.toast.saved', { name }));
+  };
+
+  const applyPreset = (p) => {
+    setWindowKey(p.windowKey);
+    if (p.windowKey === CUSTOM_WINDOW && p.from && p.to) { setCustomFrom(p.from); setCustomTo(p.to); }
+    setSections(p.sections);
+    saveSections(p.sections);
+    setOrder(p.order);
+    saveOrder(p.order);
+    changeClassification(p.classification);
+    changePreparedBy(p.preparedBy || '');
+    setPageBreaks(p.pageBreaks);
+    saveBreaks(p.pageBreaks);
+    toast.info(t('alerts.presets.toast.applied', { name: p.name }));
+  };
+
+  const removePreset = (name) => {
+    setPresets(deletePreset(name));
+    toast.info(t('alerts.presets.toast.deleted', { name }));
+  };
+
   const weeklySource = weekly.data?.meta?.source;
 
   return (
     <div className="space-y-4 max-w-[1100px] mx-auto">
       <BriefPrintStyles />
-      <div>
-        <h1 className="page-title">{t('alerts.reports.title')}</h1>
-        <p className="page-subtitle">{t('alerts.reports.subtitle')}</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <h1 className="page-title">{t('alerts.reports.title')}</h1>
+          <p className="page-subtitle">{t('alerts.reports.subtitle')}</p>
+        </div>
+        <Tooltip label={t('alerts.reports.referenceTip')} className="ml-auto">
+          <button
+            type="button"
+            onClick={copyReference}
+            className="num min-h-[44px] rounded-lg border border-grid px-2.5 py-1 text-[11px] text-muted transition-colors hover:border-primary/50 hover:text-ink sm:min-h-[30px]"
+          >
+            {reference} · {t('alerts.reports.revision', { rev: revision })}
+          </button>
+        </Tooltip>
       </div>
+
+      <PresetsCard
+        presets={presets}
+        onApply={applyPreset}
+        onSave={savePresetNamed}
+        onDelete={removePreset}
+      />
 
       <Card>
         <div className="flex flex-wrap items-center gap-3">
@@ -353,6 +466,28 @@ export default function Reports() {
               onClick={exportMarkdown}
             >
               {t('alerts.reports.exportMd')}
+            </button>
+          </Tooltip>
+
+          <Tooltip label={t('alerts.reports.exportHtmlTip')}>
+            <button
+              type="button"
+              className="btn min-h-[44px] sm:min-h-0"
+              disabled={!brief.ready || enabledKeys.length === 0}
+              onClick={exportHtml}
+            >
+              {t('alerts.reports.exportHtml')}
+            </button>
+          </Tooltip>
+
+          <Tooltip label={t('alerts.reports.exportJsonTip')}>
+            <button
+              type="button"
+              className="btn min-h-[44px] sm:min-h-0"
+              disabled={!brief.ready || enabledKeys.length === 0}
+              onClick={exportJson}
+            >
+              {t('alerts.reports.exportJson')}
             </button>
           </Tooltip>
 
@@ -474,6 +609,27 @@ export default function Reports() {
           <button type="button" className={SMALL_BTN} onClick={() => exportCsv('alerts')}>{t('alerts.reports.alertsCsv')}</button>
           <button type="button" className={SMALL_BTN} onClick={() => exportCsv('hotspots')}>{t('alerts.reports.hotspotsCsv')}</button>
           <button type="button" className={SMALL_BTN} onClick={() => exportCsv('risk')}>{t('alerts.reports.riskCsv')}</button>
+          <button type="button" className={SMALL_BTN} onClick={() => exportCsv('emerging')}>{t('alerts.reports.emergingCsv')}</button>
+          <button type="button" className={SMALL_BTN} onClick={() => exportCsv('socio')}>{t('alerts.reports.socioCsv')}</button>
+          <button type="button" className={SMALL_BTN} onClick={() => exportCsv('triage')}>{t('alerts.reports.triageCsv')}</button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted mr-1">{t('alerts.reports.layout')}</span>
+          <Tooltip label={t('alerts.reports.pageBreaksTip')}>
+            <button
+              type="button"
+              aria-pressed={pageBreaks}
+              onClick={toggleBreaks}
+              className={`${SMALL_BTN} ${pageBreaks ? '!border-primary/60 !text-primary' : ''}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${pageBreaks ? 'bg-primary' : 'bg-muted/50'}`} aria-hidden="true" />
+              {t('alerts.reports.pageBreaks')}
+            </button>
+          </Tooltip>
+          <span className="text-[11px] text-muted">
+            {t('alerts.reports.sectionCount', { n: enabledKeys.length, total: DEFAULT_ORDER.length })}
+          </span>
         </div>
 
         {pdfNote && (
@@ -512,6 +668,7 @@ export default function Reports() {
             preparedBy={preparedBy.trim()}
             execText={execCustom ? execDraft : undefined}
             classification={classification}
+            pageBreaks={pageBreaks}
             style={{ minHeight: 0 }}
           />
         </div>

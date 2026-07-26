@@ -55,14 +55,59 @@ function flattenRow(row) {
   return flat;
 }
 
+// ZCQL truncates a single SELECT at 300 rows server-side, silently. Anything
+// that can exceed that (raw CaseMaster scans, GROUP BYs with more than 300
+// groups — 359 units x 6 months, 27 sub-heads x 12 months, the 23k-row
+// NetworkEdge table) MUST be read through queryPaged, which loops
+// `LIMIT offset,count` instead of asking for thousands at once.
+const ZCQL_PAGE = 300;
+const DEFAULT_MAX_ROWS = 6000;
+
 function createDatastore(client) {
-  return {
+  const ds = {
     /** Structured select. Returns flat plain-object rows. */
     async query(q) {
       const sql = buildZCQL(q);
       const rows = await client.execute(sql, q);
       return (rows || []).map(flattenRow);
     },
+
+    /**
+     * Paginated select: repeats the query with `LIMIT offset,pageSize` until a
+     * short page arrives or the row budget is spent. `q.limit.count`, when
+     * given, is treated as the caller's hard cap (never as a single-query
+     * limit). Returns { rows, pages, truncated } so callers can report an
+     * honest sampleSize instead of a silently clipped one.
+     */
+    async queryPaged(q, opts) {
+      const o = opts || {};
+      const pageSize = Math.max(1, Math.min(ZCQL_PAGE, o.pageSize || ZCQL_PAGE));
+      const budget = Math.max(1, o.maxRows || DEFAULT_MAX_ROWS);
+      const asked = q.limit && q.limit.count ? Math.max(1, q.limit.count) : budget;
+      const cap = Math.min(budget, asked);
+      const base = Math.max(0, (q.limit && q.limit.offset) || 0);
+      const rows = [];
+      let pages = 0;
+      let truncated = false;
+      for (;;) {
+        const want = Math.min(pageSize, cap - rows.length);
+        if (want <= 0) { truncated = true; break; }
+        // eslint-disable-next-line no-await-in-loop
+        const page = await ds.query(Object.assign({}, q, { limit: { offset: base + rows.length, count: want } }));
+        pages += 1;
+        rows.push(...page);
+        if (page.length < want) break;
+        if (pages > 200) { truncated = true; break; } // hard stop, never spin
+      }
+      return { rows, pages, truncated };
+    },
+
+    /** queryPaged, rows only. */
+    async queryAll(q, opts) {
+      const { rows } = await ds.queryPaged(q, opts);
+      return rows;
+    },
+
     /** Raw ZCQL (UPDATE/INSERT/special selects). */
     async raw(sql) {
       const rows = await client.execute(sql, null);
@@ -70,6 +115,7 @@ function createDatastore(client) {
     },
     buildZCQL
   };
+  return ds;
 }
 
 /** Real client backed by the Catalyst SDK (per-request app instance). */
@@ -254,4 +300,4 @@ function createStubClient(tables) {
   };
 }
 
-module.exports = { buildZCQL, createDatastore, createCatalystClient, createStubClient, applyRawWrite, flattenRow };
+module.exports = { buildZCQL, createDatastore, createCatalystClient, createStubClient, applyRawWrite, flattenRow, ZCQL_PAGE };

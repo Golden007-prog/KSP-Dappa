@@ -3,6 +3,7 @@
 // failures (private mode) degrade to in-memory state, never a crash.
 import { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { EXTRA_QUERY_KEYS } from './dataExtra.js';
 
 const PIN_KEY = 'dappa-dash-pins';
 const COLLAPSE_KEY = 'dappa-dash-collapsed';
@@ -67,10 +68,13 @@ export function usePanelPrefs() {
   return { pinned, collapsed, togglePin, toggleCollapse, collapseAll, expandAll, resetLayout };
 }
 
-/** Every react-query key root the dashboard renders from (refresh scope). */
+/** Every react-query key root the dashboard renders from (refresh scope).
+ *  The second block is owned by ./dataExtra.js — kept in sync there via
+ *  EXTRA_QUERY_KEYS so a new panel can never silently opt out of refresh. */
 export const DASH_QUERY_KEYS = [
   'kpis', 'geo-districts', 'trends-monthly', 'trends-category-share',
   'trends-seasonality', 'alerts', 'geo-hotspots', 'risk-stations', 'forecast',
+  ...EXTRA_QUERY_KEYS,
 ];
 
 /**

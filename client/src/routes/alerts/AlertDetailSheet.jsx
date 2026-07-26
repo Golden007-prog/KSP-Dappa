@@ -1,35 +1,54 @@
 // Alert detail sheet — the full picture for one anomaly in a bottom sheet
-// (opened from feed cards, board cards, or the `o` shortcut): z-score gauge,
-// expected-vs-observed mini bars, history sparkline, SLA state, narrative,
-// affected stations, every triage action, the alert-to-case drill, and a
-// "similar alerts" list (same district or crime head) that jumps in place.
+// (opened from feed cards, board cards, or the `o` shortcut).
+//
+// Three layers, in the order an investigator reads them:
+//   1. WHAT — severity, z, SLA, the observed-vs-expected bars and sparkline.
+//   2. WHY IT FIRED — the real 12-month AggMonthly series with its robust
+//      baseline (GET /alerts/:id), and a decomposition of the deviation itself
+//      (recovered σ, expected ±2σ band, approximate rarity, detection lag).
+//   3. WHY HERE — the district's socio-economic profile normalised to cases per
+//      lakh, so a spike in an 11-million-person city is not read like a spike
+//      in a rural district.
+// Then casework: note, owner, audit trail, every triage action, the
+// alert-to-case drill and a "similar alerts" list that jumps in place.
 import { Link } from 'react-router-dom';
 import Sheet from '../../components/Sheet.jsx';
 import Badge from '../../components/Badge.jsx';
+import Tooltip from '../../components/Tooltip.jsx';
 import Sparkline from './Sparkline.jsx';
 import ZGauge from './ZGauge.jsx';
 import MiniCompareBar from './MiniCompareBar.jsx';
 import SlaBadge from './SlaBadge.jsx';
+import AlertContextChart from './AlertContextChart.jsx';
+import ExplainPanel from './ExplainPanel.jsx';
+import SocioContext from './SocioContext.jsx';
+import TriageNotes from './TriageNotes.jsx';
 import { caseDrillHref } from './links.js';
 import { fmtNum, dateLabel } from '../../lib/format.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
+import { sevKey, SEV_TONE, direction, statusKey } from './severity.js';
 
-const SEV_TONE = { critical: 'red', high: 'red', medium: 'amber', low: 'neutral' };
 const BTN = 'btn !text-xs flex-1 justify-center min-h-[44px]';
 
 export default function AlertDetailSheet({
   alert: a, onClose, sla, stations, acked, snoozedUntil,
   onAck, ackPending, onSnooze, onUnsnooze, onCopy, similar = [], onJump,
+  // New (all optional — omitting them renders the previous sheet).
+  detail, socio, meta, owners = [], onNote, onOwner, onDismiss, onReopen,
 }) {
   const t = useT();
   const tName = useNames();
   if (!a) return null;
-  const sev = String(a.severity || 'medium').toLowerCase();
+  const sev = sevKey(a.severity) || 'medium';
+  const dir = direction(a);
+  const state = statusKey(a.status);
   const snoozed = Number(snoozedUntil) > Date.now();
   const drill = caseDrillHref(a);
   const head = tName('crimeHeads', a.crimeHeadId, a.headName) || t('alerts.anomaly');
   const district = tName('districts', a.districtId, a.districtName || a.districtId)
     || t('alerts.unknownDistrict');
+  const createdAt = detail?.data?.createdAt || a.createdAt;
+
   return (
     <Sheet
       open={!!a}
@@ -40,6 +59,12 @@ export default function AlertDetailSheet({
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge tone={acked || snoozed ? 'slate' : (SEV_TONE[sev] || 'neutral')} pulse={!acked && !snoozed}>{t(`alerts.sevLower.${sev}`)}</Badge>
           <Badge tone="slate" className="num">{t('alerts.card.z')} {fmtNum(a.zScore, 1)}</Badge>
+          {dir && (
+            <Badge tone={acked || snoozed ? 'slate' : (dir === 'up' ? 'red' : 'teal')}>
+              {t(dir === 'up' ? 'alerts.dir.up' : 'alerts.dir.down')}
+            </Badge>
+          )}
+          {state !== 'open' && <Badge tone="slate">{t(`alerts.status.${state}`)}</Badge>}
           {acked ? <Badge tone="teal">{t('alerts.card.acknowledged')}</Badge>
             : snoozed ? <Badge tone="slate">{t('alerts.detail.snoozed')}</Badge>
               : sla && <SlaBadge sla={sla} severity={a.severity} />}
@@ -56,6 +81,12 @@ export default function AlertDetailSheet({
             {t('alerts.spark.legend')}
           </p>
         </div>
+
+        {detail && <AlertContextChart query={detail} alertYm={String(a.periodStart || '').slice(0, 7)} />}
+
+        <ExplainPanel alert={a} createdAt={createdAt} />
+
+        {socio && <SocioContext query={socio} alert={a} />}
 
         {a.narrative && <p className="text-xs leading-relaxed text-muted">{a.narrative}</p>}
 
@@ -91,6 +122,24 @@ export default function AlertDetailSheet({
             <button type="button" className={BTN} onClick={() => onSnooze(a.alertId)}>{t('alerts.card.snooze24')}</button>
           ))}
         </div>
+        {(onDismiss || onReopen) && (
+          <div className="flex items-center gap-2">
+            {onDismiss && state !== 'dismissed' && (
+              <Tooltip label={t('alerts.card.dismissTip')} className="flex-1">
+                <button type="button" className={`${BTN} w-full`} onClick={() => onDismiss(a.alertId)}>
+                  {t('alerts.card.dismiss')}
+                </button>
+              </Tooltip>
+            )}
+            {onReopen && state !== 'open' && (
+              <Tooltip label={t('alerts.card.reopenTip')} className="flex-1">
+                <button type="button" className={`${BTN} w-full`} onClick={() => onReopen(a.alertId)}>
+                  {t('alerts.card.reopen')}
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {a.districtId && (
             <Link className={BTN} to={`/map?districtId=${encodeURIComponent(a.districtId)}`}>{t('alerts.card.viewOnMap')}</Link>
@@ -103,13 +152,23 @@ export default function AlertDetailSheet({
           <button type="button" className={BTN} onClick={() => onCopy(a)}>{t('common.action.copy')}</button>
         </div>
 
+        {meta && (
+          <TriageNotes
+            alertId={a.alertId}
+            meta={meta}
+            owners={owners}
+            onNote={onNote}
+            onOwner={onOwner}
+          />
+        )}
+
         {similar.length > 0 && (
           <div className="space-y-1.5 border-t border-grid/60 pt-3">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
               {t('alerts.detail.similar')}
             </p>
             {similar.map((s) => {
-              const key = String(s.severity || '').toLowerCase();
+              const key = sevKey(s.severity);
               return (
                 <button
                   key={String(s.alertId)}

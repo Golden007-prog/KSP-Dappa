@@ -12,17 +12,20 @@
 //                print watermark
 // Every heading, column and note is translated: the brief is an official
 // document, so a Kannada or Hindi reader gets a fully native page.
+import { cloneElement } from 'react';
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
 import { useLookups } from '../../lib/api.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
 import {
-  sevRank, selectOpenAlerts, selectTopHotspots, selectCommunities,
+  sevRank, sevKey, selectOpenAlerts, selectTopHotspots, selectCommunities,
   selectForecastRows, selectRiskRows, hotspotLabel,
 } from './select.js';
 import { DEFAULT_ORDER, normalizeOrder } from './briefSections.js';
 import { composeExecutiveSummary } from './exec.js';
 import { annexNotes } from './annex.js';
 import { classMeta, normalizeClass } from './classification.js';
+import { triageStats } from './triagePerf.js';
+import { briefReference } from './reference.js';
 
 const INK = '#111827';
 const MUTED = '#6b7280';
@@ -33,9 +36,9 @@ const AMBER = '#b45309';
 
 const hourFmt = (h) => (Number.isFinite(Number(h)) ? `${String(Number(h)).padStart(2, '0')}:00` : '—');
 
-function Section({ title, children }) {
+function Section({ title, children, breakBefore = false }) {
   return (
-    <section style={{ marginTop: 18, breakInside: 'avoid' }}>
+    <section style={{ marginTop: 18, breakInside: 'avoid', breakBefore: breakBefore ? 'page' : 'auto' }}>
       <h2 style={{
         fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
         color: AMBER, borderBottom: `1px solid ${BORDER}`, paddingBottom: 4, marginBottom: 8,
@@ -99,10 +102,13 @@ function Delta({ cur, prev, goodDown = true }) {
 
 export default function BriefContent({
   data, sections, style, order, density, preparedBy, execText, classification,
+  // pageBreaks: start every section on a fresh printed page (builder toggle,
+  // carried to /print/brief as ?breaks=1). Absent → previous flowing layout.
+  pageBreaks = false,
 }) {
   const t = useT();
   const tName = useNames();
-  const { win, kpis, prevKpis, alerts, hotspots, network, forecast, risk } = data;
+  const { win, kpis, prevKpis, alerts, hotspots, network, forecast, risk, socio, emerging } = data;
   const lookups = useLookups();
   const cls = normalizeClass(classification);
   const meta = classMeta(cls, t);
@@ -123,6 +129,7 @@ export default function BriefContent({
     return tName('districts', id, apiName || hit?.districtName || String(id || '')) || String(id || '—');
   };
 
+  const stats = triageStats(data);
   const openAlerts = selectOpenAlerts(data, 8);
   const topHotspots = selectTopHotspots(data, 6);
   const communities = selectCommunities(data, 5);
@@ -144,7 +151,11 @@ export default function BriefContent({
     risk.data ? t('alerts.brief.cov.stations', { n: fmtInt((risk.data || []).length) }) : null,
   ].filter(Boolean);
 
-  const enabledLabels = sectionOrder.filter(show).map((key) => t(`alerts.section.${key}`));
+  const enabledKeys = sectionOrder.filter(show);
+  const enabledLabels = enabledKeys.map((key) => t(`alerts.section.${key}`));
+  // Derived, never stored — the preview, the print view, the PDF, the Markdown
+  // and the JSON bundle all compute the same code from the same inputs.
+  const reference = briefReference(win, enabledKeys, cls);
 
   const SECTION_RENDERERS = {
     exec: () => {
@@ -233,7 +244,9 @@ export default function BriefContent({
             </thead>
             <tbody>
               {openAlerts.map((a) => {
-                const sevKey = String(a.severity || '').toLowerCase();
+                // Live rows carry the stored INTEGER severity band; sevKey
+                // decodes it (a raw String().toLowerCase() printed "3" here).
+                const key = sevKey(a.severity);
                 return (
                   <tr key={a.alertId}>
                     <td style={td}>{districtName(a.districtId, a.districtName)}</td>
@@ -242,7 +255,7 @@ export default function BriefContent({
                     <td style={tdNum}>{fmtInt(a.observed)} / {fmtInt(a.expected)}</td>
                     <td style={tdNum}>{fmtNum(a.zScore, 1)}</td>
                     <td style={{ ...td, color: sevRank(a.severity) >= 3 ? RED : INK, fontWeight: 600 }}>
-                      {sevKey ? t(`alerts.sevLower.${sevKey}`) : '—'}
+                      {key ? t(`alerts.sevLower.${key}`) : '—'}
                     </td>
                   </tr>
                 );
@@ -282,6 +295,161 @@ export default function BriefContent({
         </SectionBody>
       </Section>
     ),
+    // Triage performance — how the DESK is doing, not how the crime is doing.
+    triage: () => (
+      <Section title={t('alerts.brief.h.triage')} key="triage">
+        <SectionBody query={alerts} t={t} empty={stats ? '' : t('alerts.brief.empty.triage')}>
+          {stats && (
+            <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <StatBox label={t('alerts.brief.triage.total')} value={fmtInt(stats.total)} sub={t('alerts.brief.triage.totalSub')} />
+                <StatBox
+                  label={t('alerts.brief.triage.open')}
+                  value={fmtInt(stats.openCount)}
+                  color={stats.openCount > 0 ? RED : INK}
+                  sub={t('alerts.brief.triage.openSub')}
+                />
+                <StatBox
+                  label={t('alerts.brief.triage.handled')}
+                  value={fmtInt(stats.handled)}
+                  color={TEAL}
+                  sub={stats.handledPct === null ? '' : `${stats.handledPct.toFixed(0)}%`}
+                />
+                <StatBox
+                  label={t('alerts.brief.triage.sla')}
+                  value={stats.slaPct === null ? '—' : `${stats.slaPct.toFixed(0)}%`}
+                  color={stats.slaPct !== null && stats.slaPct < 80 ? RED : TEAL}
+                  sub={t('alerts.brief.triage.slaSub')}
+                />
+                <StatBox
+                  label={t('alerts.brief.triage.medianAge')}
+                  value={stats.medianOpenAgeDays === null ? '—' : t('alerts.brief.triage.days', { n: stats.medianOpenAgeDays })}
+                  sub={stats.maxOpenAgeDays === null ? '' : t('alerts.brief.triage.oldest', { n: stats.maxOpenAgeDays })}
+                />
+              </div>
+              <table style={{ width: '100%', minWidth: 420, borderCollapse: 'collapse', marginTop: 8 }}>
+                <thead>
+                  <tr>
+                    <th style={th}>{t('alerts.brief.col.status')}</th>
+                    <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.count')}</th>
+                    <th style={th}>{t('alerts.brief.col.severity')}</th>
+                    <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.count')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {['open', 'reviewed', 'ack', 'dismissed'].map((k, i) => {
+                    const sevRow = ['critical', 'high', 'medium', 'low'][i];
+                    return (
+                      <tr key={k}>
+                        <td style={td}>{t(`alerts.status.${k}`)}</td>
+                        <td style={tdNum}>{fmtInt(stats.byStatus[k] || 0)}</td>
+                        <td style={{ ...td, color: i < 2 ? RED : INK }}>{t(`alerts.sev.${sevRow}`)}</td>
+                        <td style={tdNum}>{fmtInt(stats.bySeverity[sevRow] || 0)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <Note>
+                {t('alerts.brief.triage.split', { surges: fmtInt(stats.surges), drops: fmtInt(stats.drops) })}
+              </Note>
+            </>
+          )}
+        </SectionBody>
+      </Section>
+    ),
+    // What is building under the week's spikes — sub-heads vs their own baseline.
+    emerging: () => {
+      const rising = (emerging?.data?.rising || []).slice(0, 6);
+      const falling = (emerging?.data?.falling || []).slice(0, 4);
+      const rows = [...rising, ...falling];
+      return (
+        <Section title={t('alerts.brief.h.emerging')} key="emerging">
+          <SectionBody query={emerging || { isLoading: false }} t={t} empty={rows.length ? '' : t('alerts.brief.empty.emerging')}>
+            <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={th}>{t('alerts.brief.col.subhead')}</th>
+                  <th style={th}>{t('alerts.brief.col.crimeHead')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.recent')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.baseline')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.growth')}</th>
+                  <th style={th}>{t('alerts.brief.col.trend')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const up = Number(r.growthPct) >= 0;
+                  return (
+                    <tr key={`${r.subHeadId}-${up ? 'r' : 'f'}`}>
+                      <td style={{ ...td, fontWeight: r.emerging ? 700 : 400 }}>{r.subHeadName || '—'}</td>
+                      <td style={td}>{tName('crimeHeads', r.headId, r.headName) || '—'}</td>
+                      <td style={tdNum}>{fmtNum(r.recentAvg, 1)}</td>
+                      <td style={tdNum}>{fmtNum(r.baselineAvg, 1)}</td>
+                      <td style={{ ...tdNum, color: up ? RED : TEAL, fontWeight: 600 }}>
+                        {fmtPct(Number(r.growthPct), { sign: true })}
+                      </td>
+                      <td style={td}>
+                        {t(up ? 'alerts.brief.trend.rising' : 'alerts.brief.trend.falling')}
+                        {r.emerging ? ` · ${t('alerts.brief.trend.flagged')}` : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <Note>
+              {emerging?.data?.anchorYm
+                ? t('alerts.brief.emergingWindow', { from: monthLabel(emerging.data.fromYm), to: monthLabel(emerging.data.anchorYm) })
+                : ''}
+            </Note>
+          </SectionBody>
+        </Section>
+      );
+    },
+    // The "why" layer: how district crime rate co-varies with each indicator.
+    socio: () => {
+      const inds = socio?.data?.indicators || [];
+      const usable = inds.filter((i) => i.r !== null && i.r !== undefined);
+      return (
+        <Section title={t('alerts.brief.h.socio')} key="socio">
+          <SectionBody query={socio || { isLoading: false }} t={t} empty={inds.length ? '' : t('alerts.brief.empty.socio')}>
+            <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={th}>{t('alerts.brief.col.indicator')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.r')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{t('alerts.brief.col.n')}</th>
+                  <th style={th}>{t('alerts.brief.col.strength')}</th>
+                  <th style={th}>{t('alerts.brief.col.directionCol')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inds.map((i) => {
+                  // Number(null) is 0, and printing "0.00" for an indicator the
+                  // server could not compute would read as "measured, no
+                  // relationship" — the opposite of the truth. Keep null null.
+                  const r = i.r === null || i.r === undefined ? NaN : Number(i.r);
+                  const strong = Number.isFinite(r) && Math.abs(r) >= 0.5;
+                  return (
+                    <tr key={i.key}>
+                      <td style={{ ...td, fontWeight: strong ? 700 : 400 }}>{i.label || i.key}</td>
+                      <td style={{ ...tdNum, color: !Number.isFinite(r) ? MUTED : r > 0 ? RED : TEAL }}>
+                        {Number.isFinite(r) ? fmtNum(r, 2) : '—'}
+                      </td>
+                      <td style={tdNum}>{fmtInt(i.n)}</td>
+                      <td style={td}>{i.strength || '—'}</td>
+                      <td style={{ ...td, color: MUTED }}>{i.direction || (i.note ? i.note : '—')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <Note>{usable.length ? t('alerts.brief.socioNote') : t('alerts.brief.socioNotComputable')}</Note>
+          </SectionBody>
+        </Section>
+      );
+    },
     network: () => (
       <Section title={t('alerts.brief.h.network')} key="network">
         <SectionBody query={network} t={t} empty={communities.length ? '' : t('alerts.brief.empty.network')}>
@@ -376,6 +544,7 @@ export default function BriefContent({
             <div>{t('alerts.brief.window')}: {win.label}</div>
             <div>{t('alerts.brief.generated')}: {dateLabel(new Date().toISOString().slice(0, 10))}</div>
             {preparedBy ? <div>{t('alerts.brief.preparedBy')}: <span style={{ color: INK }}>{preparedBy}</span></div> : null}
+            <div>{t('alerts.brief.reference')}: <span style={{ color: INK, fontVariantNumeric: 'tabular-nums' }}>{reference}</span></div>
           </div>
         </div>
         <p style={{ fontSize: 10, color: RED, marginTop: 6 }}>
@@ -396,7 +565,12 @@ export default function BriefContent({
 
       {noneOn && <Note>{t('alerts.brief.noneOn')}</Note>}
 
-      {sectionOrder.filter(show).map((key) => SECTION_RENDERERS[key]?.())}
+      {enabledKeys.map((key, i) => {
+        const el = SECTION_RENDERERS[key]?.();
+        // pageBreaks starts each section (bar the first) on a fresh page —
+        // cloning keeps the renderers above free of layout concerns.
+        return el && pageBreaks && i > 0 ? cloneElement(el, { breakBefore: true }) : el;
+      })}
 
       <footer style={{ marginTop: 24, paddingTop: 8, borderTop: `1px solid ${BORDER}`, fontSize: 10, color: MUTED, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <span>{t('alerts.brief.footerLeft')}</span>

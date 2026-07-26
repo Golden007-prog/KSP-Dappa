@@ -28,6 +28,8 @@ import { useT } from '../lib/i18n.jsx';
 import { RiskBadge, MoChips, useDistrictName } from './offenders/common.jsx';
 import CompareDrawer from './offenders/CompareDrawer.jsx';
 import MoMatrix from './offenders/MoMatrix.jsx';
+import CoOffendingPairs from './offenders/CoOffendingPairs.jsx';
+import AliasQueue from './offenders/AliasQueue.jsx';
 import { RiskBandStrip, MoTagChips, RecentRow } from './offenders/FilterStrips.jsx';
 import { readCompare, writeCompare, COMPARE_MAX } from './offenders/compareStore.js';
 import { readRecent, clearRecent } from './offenders/recentStore.js';
@@ -97,6 +99,9 @@ export default function Offenders() {
   const repeatOnly = repeatParam !== null ? repeatParam === '1' : storedRepeat !== '0';
   const watchOnly = searchParams.get('watch') === '1';
   const spanMulti = searchParams.get('span') === 'multi';
+  // Identity resolution only produced an alias set for ~12% of live profiles,
+  // so "carries an alias" is a genuinely selective review filter.
+  const aliasOnly = searchParams.get('alias') === '1';
   const { keys: watchKeys, toggle: toggleWatchKey } = useWatchlist();
 
   const [page, setPage] = useState(1);
@@ -148,6 +153,7 @@ export default function Offenders() {
       ...r,
       aliasCount: (r.aliases || []).length,
       districtCount: (r.districts || []).length,
+      moCount: (r.moTags || []).length,
     })),
     [offenders.data],
   );
@@ -169,12 +175,13 @@ export default function Offenders() {
   const matchesMo = (r) => !moSel.length || moSel.every((t) => (r.moTags || []).includes(t));
   const matchesWatch = (r) => !watchOnly || watchKeys.has(String(r.personKey));
   const matchesSpan = (r) => !spanMulti || (r.districts || []).length >= 2;
+  const matchesAlias = (r) => !aliasOnly || (r.aliases || []).length > 0;
 
   const filtered = useMemo(
     () => allRows.filter((r) => inBand(band, r.riskScore) && matchesSearch(r) && matchesMo(r)
-      && matchesWatch(r) && matchesSpan(r)),
+      && matchesWatch(r) && matchesSpan(r) && matchesAlias(r)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allRows, band, q, moParam, watchOnly, spanMulti, watchKeys],
+    [allRows, band, q, moParam, watchOnly, spanMulti, aliasOnly, watchKeys],
   );
 
   // Band distribution over everything EXCEPT the band filter itself, so the
@@ -182,20 +189,21 @@ export default function Offenders() {
   const bandCounts = useMemo(() => {
     const counts = { high: 0, med: 0, low: 0 };
     for (const r of allRows) {
-      if (!matchesSearch(r) || !matchesMo(r) || !matchesWatch(r) || !matchesSpan(r)) continue;
+      if (!matchesSearch(r) || !matchesMo(r) || !matchesWatch(r) || !matchesSpan(r) || !matchesAlias(r)) continue;
       const b = bandOf(r.riskScore);
       if (b) counts[b] += 1;
     }
     return counts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, q, moParam, watchOnly, spanMulti, watchKeys]);
+  }, [allRows, q, moParam, watchOnly, spanMulti, aliasOnly, watchKeys]);
 
   // MO-tag universe (top by frequency over the rows that pass search + band);
   // selected tags always stay visible so an active chip can be un-toggled.
   const moTags = useMemo(() => {
     const freq = new Map();
     for (const r of allRows) {
-      if (!matchesSearch(r) || !inBand(band, r.riskScore) || !matchesWatch(r) || !matchesSpan(r)) continue;
+      if (!matchesSearch(r) || !inBand(band, r.riskScore) || !matchesWatch(r) || !matchesSpan(r)
+        || !matchesAlias(r)) continue;
       for (const t of r.moTags || []) freq.set(t, (freq.get(t) || 0) + 1);
     }
     const top = [...freq.entries()]
@@ -207,15 +215,15 @@ export default function Offenders() {
     }
     return top;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, q, band, moParam, watchOnly, spanMulti, watchKeys]);
+  }, [allRows, q, band, moParam, watchOnly, spanMulti, aliasOnly, watchKeys]);
 
   // Matrix rows honor every filter EXCEPT the MO chips, so the co-occurrence
   // grid stays stable while a pair is being picked from it.
   const matrixRows = useMemo(
     () => allRows.filter((r) => inBand(band, r.riskScore) && matchesSearch(r)
-      && matchesWatch(r) && matchesSpan(r)),
+      && matchesWatch(r) && matchesSpan(r) && matchesAlias(r)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allRows, band, q, watchOnly, spanMulti, watchKeys],
+    [allRows, band, q, watchOnly, spanMulti, aliasOnly, watchKeys],
   );
 
   // KPI strip over the loaded slice (the server caps at FETCH_CAP by risk).
@@ -224,6 +232,7 @@ export default function Offenders() {
     high: allRows.filter((r) => Number(r.riskScore) >= 70).length,
     multi: allRows.filter((r) => (r.districts || []).length >= 2).length,
     watched: allRows.filter((r) => watchKeys.has(String(r.personKey))).length,
+    aliased: allRows.filter((r) => (r.aliases || []).length > 0).length,
   }), [allRows, watchKeys]);
 
   // Sort the WHOLE filtered slice (not just the visible page) so column sorts
@@ -243,7 +252,7 @@ export default function Offenders() {
     });
   }, [filtered, sort]);
 
-  useEffect(() => { setPage(1); }, [search, repeatOnly, districtName, band, moParam, sort, watchOnly, spanMulti]);
+  useEffect(() => { setPage(1); }, [search, repeatOnly, districtName, band, moParam, sort, watchOnly, spanMulti, aliasOnly]);
 
   // Clamp when the result set shrinks out-of-band (e.g. a refetch returns fewer
   // rows while a late page is open) — never strand the user on an empty page.
@@ -379,6 +388,18 @@ export default function Offenders() {
       render: (r) => <MoChips tags={r.moTags || []} />,
     },
     {
+      // MO breadth: how many distinct signature tags the pipeline mined for
+      // this person — a wide signature reads as a versatile repeat offender.
+      key: 'moCount',
+      label: t('network.table.colMoCount'),
+      sortable: true,
+      align: 'right',
+      width: 70,
+      render: (r) => (
+        <span className="num" title={(r.moTags || []).join(', ') || '—'}>{fmtInt((r.moTags || []).length)}</span>
+      ),
+    },
+    {
       key: 'riskScore',
       label: t('network.table.colRisk'),
       sortable: true,
@@ -481,6 +502,16 @@ export default function Offenders() {
           {t('network.off.crossDistrict')}
           <span className="num text-muted">{fmtInt(kpi.multi)}</span>
         </button>
+        <button
+          type="button"
+          className={`chip !py-1 min-h-[40px] whitespace-nowrap transition-colors hover:border-amber/50 ${aliasOnly ? '!border-amber text-amber' : ''}`}
+          onClick={() => setParams({ alias: aliasOnly ? '' : '1' })}
+          aria-pressed={aliasOnly}
+          title={t(aliasOnly ? 'network.off.aliasedOn' : 'network.off.aliasedOff')}
+        >
+          {t('network.off.aliased')}
+          <span className="num text-muted">{fmtInt(kpi.aliased)}</span>
+        </button>
       </FilterBar>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -575,7 +606,9 @@ export default function Offenders() {
             loading={offenders.isLoading}
             emptyMessage={t(watchOnly
               ? 'network.table.emptyWatch'
-              : moSel.length
+              : aliasOnly
+                ? 'network.table.emptyAlias'
+                : moSel.length
                 ? 'network.table.emptyMo'
                 : spanMulti
                   ? 'network.table.emptySpan'
@@ -596,6 +629,10 @@ export default function Offenders() {
       </Card>
 
       <MoMatrix rows={matrixRows} selected={moSel} onPickPair={pickMoPair} />
+
+      <CoOffendingPairs rowsByKey={rowsByKey} />
+
+      <AliasQueue rows={filtered} />
 
       {compare.length > 0 && (
         <div

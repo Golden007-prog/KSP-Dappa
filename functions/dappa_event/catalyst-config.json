@@ -3,7 +3,10 @@
     "name": "dappa_event",
     "stack": "node20",
     "type": "event",
-    "env_variables": {}
+    "env_variables": {
+      "FEATURE_PUSH": "off",
+      "PUSH_RECIPIENTS": ""
+    }
   },
   "execution": {
     "main": "index.js"

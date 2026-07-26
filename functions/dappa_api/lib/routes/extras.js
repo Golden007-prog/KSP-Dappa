@@ -30,7 +30,8 @@ const CAPABILITIES = [
       'Spatiotemporal clusters layering time-of-day bands over location',
       'Red-zone alerting when a crime category spikes vs its historical baseline'
     ],
-    endpoints: ['/summary/kpis', '/trends/monthly', '/trends/compare', '/trends/seasonality', '/trends/category-share', '/geo/districts', '/geo/stations', '/geo/incidents', '/geo/hotspots', '/alerts', '/alerts/summary', '/insight/emerging']
+    endpoints: ['/summary/kpis', '/trends/monthly', '/trends/compare', '/trends/seasonality', '/trends/category-share', '/geo/districts', '/geo/stations', '/geo/incidents', '/geo/hotspots', '/alerts', '/alerts/summary', '/insight/emerging'],
+    services: ['Data Store', 'Cache', 'Serverless Functions']
   },
   {
     id: 2,
@@ -44,7 +45,8 @@ const CAPABILITIES = [
       'Repeat offender profiles with aliases, districts spanned and MO tags',
       'Watchlist validation enriching person keys with live risk context'
     ],
-    endpoints: ['/network/graph', '/network/path', '/network/communities', '/offenders', '/offenders/:personKey', '/offenders/watch']
+    endpoints: ['/network/graph', '/network/path', '/network/communities', '/offenders', '/offenders/:personKey', '/offenders/watch', '/search/cases'],
+    services: ['NoSQL', 'Stratus', 'Data Store', 'Data Store full-text Search']
   },
   {
     id: 3,
@@ -58,7 +60,8 @@ const CAPABILITIES = [
       'Station-level 30-day predictive risk scores with named drivers',
       'Case-outcome probability model (A vs C final) with AUC reporting'
     ],
-    endpoints: ['/meta/socio', '/insight/socio-correlation', '/risk/stations', '/forecast', '/predict/outcome']
+    endpoints: ['/meta/socio', '/insight/socio-correlation', '/risk/stations', '/forecast', '/predict/outcome', '/ml/models'],
+    services: ['Data Store', 'QuickML', 'Zia AutoML', 'Cache']
   },
   {
     id: 4,
@@ -72,7 +75,8 @@ const CAPABILITIES = [
       'Emerging vs cooling category movers (last 3 months vs prior-9 baseline)',
       'Case-similarity linking (same pattern, hour proximity, geography)'
     ],
-    endpoints: ['/trends/seasonality', '/geo/hotspots', '/trends/category-share', '/insight/emerging', '/cases/:id/similar']
+    endpoints: ['/trends/seasonality', '/geo/hotspots', '/trends/category-share', '/insight/emerging', '/cases/:id/similar', '/search/cases'],
+    services: ['Data Store', 'Data Store full-text Search', 'Cache']
   },
   {
     id: 5,
@@ -86,7 +90,8 @@ const CAPABILITIES = [
       'Narrative MO extraction (weapon / vehicle / entry / approach vocabulary)',
       'Offender timelines across stations and districts'
     ],
-    endpoints: ['/network/communities', '/offenders/mo-patterns', '/ai/narrative', '/offenders/:personKey']
+    endpoints: ['/network/communities', '/offenders/mo-patterns', '/ai/narrative', '/offenders/:personKey', '/zia/ocr'],
+    services: ['NoSQL', 'Data Store', 'Zia Services']
   },
   {
     id: 6,
@@ -100,7 +105,8 @@ const CAPABILITIES = [
       'Logistic outcome model with QuickML flag path',
       'Deterministic NL copilot including "why is X rising" diagnostics'
     ],
-    endpoints: ['/alerts', '/forecast', '/predict/outcome', '/copilot/query', '/insight/socio-correlation', '/insight/emerging']
+    endpoints: ['/alerts', '/forecast', '/predict/outcome', '/copilot/query', '/insight/socio-correlation', '/insight/emerging', '/ml/models', '/zia/ocr', '/zia/translate', '/admin/circuit/nightly-refresh'],
+    services: ['QuickML LLM Serving', 'Zia Services', 'Zia AutoML', 'Circuits', 'Signals + Event Functions', 'Cron']
   }
 ];
 
@@ -213,10 +219,11 @@ function register(router) {
       const months = ymRange(fromYm, anchor);
       const where = [{ col: 'Ym', op: '>=', val: fromYm }, { col: 'Ym', op: '<=', val: anchor }];
       if (filters.districtId) where.push({ col: 'DistrictID', op: '=', val: filters.districtId });
-      const rows = await ctx.ds.query({
+      // 27 sub-heads x 12 months = 324 groups, past the 300-row ZCQL page.
+      const rows = await ctx.ds.queryAll({
         table: 'AggMonthly', columns: ['CrimeSubHeadID', 'Ym', 'SUM(CaseCount)'],
-        where, groupBy: ['CrimeSubHeadID', 'Ym']
-      });
+        where, groupBy: ['CrimeSubHeadID', 'Ym'], orderBy: { col: 'CrimeSubHeadID' }
+      }, { maxRows: 1200 });
       const subById = new Map(lk.subHeads.map((s) => [s.id, s]));
       const per = new Map();
       for (const r of rows) {
@@ -268,7 +275,9 @@ function register(router) {
     if (!from || !to) return fail(res, 400, 'BAD_REQUEST', 'Provide both from and to personKeys.');
     if (from === to) return fail(res, 400, 'BAD_REQUEST', 'from and to must be different persons.');
     const maxDepth = Math.max(1, Math.min(6, toNum(req.query.maxDepth, 6)));
-    const { graph, source } = await network.getGraph({}, { ds: ctx.ds, loaders: ctx.services.graphLoaders });
+    const { graph, source } = await network.getGraph({}, {
+      ds: ctx.ds, loaders: ctx.services.graphLoaders, cache: ctx.cache
+    });
     const nodeById = new Map(graph.nodes.map((n) => [String(n.id), n]));
     const missing = [from, to].filter((k) => !nodeById.has(k));
     if (missing.length) {
@@ -342,10 +351,23 @@ function register(router) {
     const ttl = ttlFor(req);
     const { value, cached } = await ctx.cache.wrap(cacheKey(req), ttl, nocache(req), async () => {
       const lk = await getLookups(ctx);
-      const [edges, profiles] = await Promise.all([
-        ctx.ds.query({ table: 'NetworkEdge', columns: ['PersonKeyA', 'PersonKeyB', 'Weight', 'CaseIDsJson', 'CommunityID'] }),
-        ctx.ds.query({ table: 'OffenderProfile', columns: ['PersonKey', 'CanonicalName', 'CaseCount', 'RiskScore', 'CommunityID', 'DistrictsJson', 'MOTagsJson'] })
+      // NetworkEdge is ~24k rows and OffenderProfile ~2k — both far past the
+      // 300-row ZCQL page. Page with a bounded budget (20 round trips) rather
+      // than either truncating silently or walking the whole table inside one
+      // request; `truncated` is reported so the number is never overclaimed.
+      const [edgePage, profilePage] = await Promise.all([
+        ctx.ds.queryPaged({
+          table: 'NetworkEdge', columns: ['PersonKeyA', 'PersonKeyB', 'Weight', 'CaseIDsJson', 'CommunityID'],
+          orderBy: { col: 'PersonKeyA' }
+        }, { maxRows: 6000 }),
+        ctx.ds.queryPaged({
+          table: 'OffenderProfile',
+          columns: ['PersonKey', 'CanonicalName', 'CaseCount', 'RiskScore', 'CommunityID', 'DistrictsJson', 'MOTagsJson'],
+          orderBy: { col: 'RiskScore', desc: true }
+        }, { maxRows: 3000 })
       ]);
+      const edges = edgePage.rows;
+      const profiles = profilePage.rows;
       const comms = new Map();
       const memberComm = new Map();
       for (const p of profiles) {
@@ -372,7 +394,7 @@ function register(router) {
         c.edges += 1;
         for (const id of parseJsonSafe(e.CaseIDsJson, [])) c.caseIds.add(id);
       }
-      return [...comms.entries()].map(([communityId, c]) => {
+      const communities = [...comms.entries()].map(([communityId, c]) => {
         const m = c.members.length;
         const ranked = c.members.slice().sort((a, b) => b.riskScore - a.riskScore);
         const districts = [...c.districts].sort();
@@ -390,8 +412,21 @@ function register(router) {
           members: ranked
         };
       }).sort((a, b) => b.memberCount - a.memberCount || a.communityId - b.communityId);
+      // The response DATA stays the plain array (contract); the scan census
+      // rides in meta so a bounded read can never read as a complete one.
+      return {
+        communities,
+        scan: {
+          edgesScanned: edges.length,
+          edgePages: edgePage.pages,
+          edgesTruncated: edgePage.truncated,
+          profilesScanned: profiles.length,
+          profilePages: profilePage.pages,
+          profilesTruncated: profilePage.truncated
+        }
+      };
     });
-    ok(res, value, { cached, ttlSec: ttl, count: value.length });
+    ok(res, value.communities, { cached, ttlSec: ttl, count: value.communities.length, scan: value.scan });
   }));
 
   // Recurring MO signature mining across offender profiles, flagging tags that
@@ -405,13 +440,14 @@ function register(router) {
       const lk = await getLookups(ctx);
       const where = [];
       if (district) where.push({ col: 'DistrictsJson', op: 'like', val: String(district) });
-      // ZCQL caps a single select around 300 rows; the highest-risk slice is
-      // the one that matters for MO mining, so order by risk before the cap.
-      const rows = await ctx.ds.query({
+      // ZCQL caps a single select at 300 rows; pageing widens the MO sample to
+      // the top 1200 by risk, which is the slice that matters for signature
+      // mining across a 2048-row offender table.
+      const rows = await ctx.ds.queryAll({
         table: 'OffenderProfile',
         columns: ['PersonKey', 'CanonicalName', 'MOTagsJson', 'DistrictsJson', 'CaseCount', 'RiskScore'],
-        where, orderBy: { col: 'RiskScore', desc: true }, limit: { count: 300 }
-      });
+        where, orderBy: { col: 'RiskScore', desc: true }
+      }, { maxRows: 1200 });
       const tally = new Map();
       for (const r of rows) {
         const tags = parseJsonSafe(r.MOTagsJson, []);

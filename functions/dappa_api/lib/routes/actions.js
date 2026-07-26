@@ -8,6 +8,7 @@ const { EXPECTED_ROW_COUNTS } = require('../constants');
 const copilot = require('../copilot');
 const quickml = require('../quickml');
 const zia = require('../zia');
+const mail = require('../mail');
 const { getFallbackState, fixtureNetworkGraph } = require('../fixture');
 const { toNum, round, ymAdd, pctDelta, parseJsonSafe } = require('../util');
 
@@ -20,16 +21,25 @@ const COMPLETENESS_COUNT_COLS = {
   NetworkEdge: 'COUNT(PersonKeyA)',
   ForecastMonthly: 'COUNT(Ym)',
   OffenderProfile: 'COUNT(PersonKey)',
-  District: 'COUNT(DistrictID)'
+  District: 'COUNT(DistrictID)',
+  ChargesheetDetails: 'COUNT(CSID)',
+  ComplainantDetails: 'COUNT(ComplainantID)',
+  ActSectionAssociation: 'COUNT(CaseMasterID)',
+  ArrestSurrender: 'COUNT(ArrestSurrenderID)',
+  AnomalyAlert: 'COUNT(AlertID)'
 };
 
 function register(router) {
   router.post('/predict/outcome', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const body = req.body || {};
+    // Serving chain: QuickML SDK -> QuickML deployment URL -> Zia AutoML ->
+    // the embedded logistic model. meta.source names whichever answered.
     const { result, source } = await quickml.predictOutcome(body, {
       flags: ctx.flags,
-      fetchImpl: ctx.services.fetchImpl
+      fetchImpl: ctx.services.fetchImpl,
+      quickmlClient: ctx.services.quickmlClient,
+      ziaAutoml: (features) => zia.automlPredict(features, { flags: ctx.flags, ziaClient: ctx.services.ziaClient })
     });
     ok(res, result, { source });
   }));
@@ -186,32 +196,13 @@ function register(router) {
     ok(res, { mode: 'print-css', printUrl: `/print/brief?window=${encodeURIComponent(window)}`, window }, { source: 'fallback-local' });
   }));
 
+  // Legacy digest endpoint — same behaviour, now sharing lib/mail.js with
+  // POST /admin/digest/send so the preview and the sent mail cannot drift.
   router.post('/notify/test-digest', asyncH(async (req, res) => {
     const ctx = req.ctx;
     if (!requireAdmin(req, res, ctx.flags)) return;
-    const alerts = await ctx.ds.query({
-      table: 'AnomalyAlert', columns: ['AlertID', 'Narrative', 'Severity'],
-      where: [{ col: 'Status', op: '=', val: 'OPEN' }],
-      orderBy: { col: 'Severity', desc: true }, limit: { count: 5 }
-    });
-    const preview = {
-      subject: `KSP DAPPA digest — ${alerts.length} active alert${alerts.length === 1 ? '' : 's'}`,
-      lines: alerts.map((a) => `[S${a.Severity}] ${a.Narrative}`)
-    };
-    if (ctx.flags.mail && ctx.services.mailer) {
-      try {
-        await ctx.services.mailer.send({
-          from: process.env.MAIL_FROM,
-          to: process.env.DIGEST_TO,
-          subject: preview.subject,
-          content: preview.lines.join('\n')
-        });
-        return ok(res, { sent: true, to: process.env.DIGEST_TO || null, preview }, { source: 'catalyst-mail' });
-      } catch (e) {
-        return ok(res, { sent: false, mode: 'error-fallback', preview }, { source: 'fallback-local' });
-      }
-    }
-    ok(res, { sent: false, mode: 'disabled', preview }, { source: 'fallback-local' });
+    const out = await mail.sendDigest(ctx, { limit: 5 });
+    ok(res, out, { source: out.source });
   }));
 
   // Admin data loader — inserts rows through the regular Data Store row API

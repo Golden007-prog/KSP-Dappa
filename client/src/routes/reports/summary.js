@@ -5,9 +5,11 @@
 // Data selection lives in select.js so this never disagrees with BriefContent.
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
 import { translate } from '../../lib/i18n.jsx';
-import { selectOpenAlerts, selectTopHotspots, selectForecastRows, selectRiskRows, hotspotLabel } from './select.js';
+import { selectOpenAlerts, selectTopHotspots, selectForecastRows, selectRiskRows, hotspotLabel, sevKey } from './select.js';
 import { composeExecutiveSummary } from './exec.js';
 import { classMeta } from './classification.js';
+import { triageStats } from './triagePerf.js';
+import { briefReference } from './reference.js';
 
 const en = (key, vars) => translate('en', key, vars);
 const passThrough = (_kind, _id, fallback) => fallback || '';
@@ -16,9 +18,11 @@ export function buildShareSummary(brief, sections = {}, { execText, classificati
   const on = (k) => sections[k] !== false;
   const { win } = brief;
   const classBanner = classMeta(classification, t).banner;
+  const enabled = Object.keys(sections).filter(on);
   const lines = [
     t('alerts.sum.title', { win: win.label, from: dateLabel(win.from), to: dateLabel(win.to) }),
     t('alerts.sum.org'),
+    t('alerts.sum.reference', { code: briefReference(win, enabled, classification) }),
     ...(classBanner ? [classBanner] : []),
     '',
   ];
@@ -49,9 +53,9 @@ export function buildShareSummary(brief, sections = {}, { execText, classificati
     if (top.length) {
       lines.push(t('alerts.sum.topAlerts'));
       top.forEach((a, i) => {
-        const sevKey = String(a.severity || '').toLowerCase();
+        const key = sevKey(a.severity);
         lines.push(`  ${i + 1}. ${t('alerts.sum.alertRow', {
-          sev: t(sevKey ? `alerts.sevLower.${sevKey}` : 'alerts.sevLower.none'),
+          sev: t(key ? `alerts.sevLower.${key}` : 'alerts.sevLower.none'),
           head: tName('crimeHeads', a.crimeHeadId, a.headName) || t('alerts.anomaly'),
           district: tName('districts', a.districtId, a.districtName || a.districtId) || '?',
           z: fmtNum(a.zScore, 1),
@@ -60,6 +64,29 @@ export function buildShareSummary(brief, sections = {}, { execText, classificati
         })}`);
       });
       lines.push('');
+    }
+  }
+
+  if (on('triage')) {
+    const st = triageStats(brief);
+    if (st) {
+      lines.push(t('alerts.sum.triage', {
+        n: fmtInt(st.total),
+        open: fmtInt(st.openCount),
+        sla: st.slaPct === null ? '—' : `${st.slaPct.toFixed(0)}%`,
+        drops: fmtInt(st.drops),
+      }), '');
+    }
+  }
+
+  if (on('emerging')) {
+    const rising = (brief.emerging?.data?.rising || []).filter((r) => r.emerging).slice(0, 3);
+    if (rising.length) {
+      lines.push(t('alerts.sum.emerging', {
+        list: rising.map((r) => t('alerts.sum.emergingItem', {
+          name: r.subHeadName, pct: fmtPct(Number(r.growthPct), { sign: true, digits: 0 }),
+        })).join(' · '),
+      }), '');
     }
   }
 

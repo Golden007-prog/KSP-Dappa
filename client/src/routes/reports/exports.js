@@ -6,6 +6,7 @@
 import { toCsv, downloadBlob } from '../alerts/csv.js';
 import { translate } from '../../lib/i18n.jsx';
 import { selectOpenAlerts, selectTopHotspots, selectRiskRows, hotspotLabel } from './select.js';
+import { triageStats } from './triagePerf.js';
 
 const en = (key, vars) => translate('en', key, vars);
 const passThrough = (_kind, _id, fallback) => fallback || '';
@@ -61,6 +62,70 @@ const SECTIONS = {
       unitName: s.unitName || s.unitId || '',
       drivers: Array.isArray(s.drivers) ? s.drivers.join('; ') : (s.drivers || ''),
     })),
+  },
+  // Rising + receding sub-heads, tagged so the two halves stay separable after
+  // the file leaves the app.
+  emerging: {
+    columns: (t) => [
+      { key: 'subHeadName', label: t('alerts.csvCol.crimeSubhead') },
+      { key: 'headName', label: t('alerts.csvCol.crimeHead') },
+      { key: 'recentAvg', label: t('alerts.csvCol.recentAvg') },
+      { key: 'baselineAvg', label: t('alerts.csvCol.baselineAvg') },
+      { key: 'growthPct', label: t('alerts.csvCol.growthPct') },
+      { key: 'trend', label: t('alerts.csvCol.trend') },
+      { key: 'flagged', label: t('alerts.csvCol.flagged') },
+    ],
+    rows: (brief, t, tName) => {
+      const d = brief.emerging?.data || {};
+      const map = (list, trend) => (list || []).map((r) => ({
+        ...r,
+        headName: tName('crimeHeads', r.headId, r.headName || '') || r.headName || '',
+        trend: t(`alerts.brief.trend.${trend}`),
+        flagged: r.emerging ? t('alerts.brief.trend.flagged') : '',
+      }));
+      return [...map(d.rising, 'rising'), ...map(d.falling, 'falling')];
+    },
+  },
+  // Correlation table exactly as the brief prints it, including the honest
+  // "not computable" note for indicators without enough district variance.
+  socio: {
+    columns: (t) => [
+      { key: 'label', label: t('alerts.csvCol.indicator') },
+      { key: 'key', label: t('alerts.csvCol.indicatorKey') },
+      { key: 'r', label: t('alerts.csvCol.r') },
+      { key: 'n', label: t('alerts.csvCol.n') },
+      { key: 'strength', label: t('alerts.csvCol.strength') },
+      { key: 'direction', label: t('alerts.csvCol.directionCol') },
+      { key: 'note', label: t('alerts.csvCol.note') },
+    ],
+    rows: (brief) => (brief.socio?.data?.indicators || []).map((i) => ({
+      ...i,
+      label: i.label || i.key,
+      r: i.r === null || i.r === undefined ? '' : i.r,
+    })),
+  },
+  // Triage/SLA performance as one wide row — designed to append across weeks.
+  triage: {
+    columns: (t) => [
+      { key: 'window', label: t('alerts.csvCol.window') },
+      { key: 'total', label: t('alerts.csvCol.alertsTotal') },
+      { key: 'openCount', label: t('alerts.csvCol.open') },
+      { key: 'handled', label: t('alerts.csvCol.handled') },
+      { key: 'slaPct', label: t('alerts.csvCol.slaPct') },
+      { key: 'medianOpenAgeDays', label: t('alerts.csvCol.medianAge') },
+      { key: 'maxOpenAgeDays', label: t('alerts.csvCol.oldestAge') },
+      { key: 'surges', label: t('alerts.csvCol.surges') },
+      { key: 'drops', label: t('alerts.csvCol.drops') },
+    ],
+    rows: (brief) => {
+      const s = triageStats(brief);
+      if (!s) return [];
+      return [{
+        ...s,
+        window: `${brief.win.from} → ${brief.win.to}`,
+        slaPct: s.slaPct === null ? '' : Math.round(s.slaPct * 10) / 10,
+      }];
+    },
   },
 };
 

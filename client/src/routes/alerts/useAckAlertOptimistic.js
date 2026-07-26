@@ -6,10 +6,16 @@
 // the cache instead of refetching the snapshot (which would silently flip the
 // card back to open) and tell the user it won't persist. Lives here (not
 // lib/api.js) because the optimistic + toast behavior is route policy.
+//
+// Cache patching moved to statusCache.js so the corpus loader's object-shaped
+// cache stays in step with the legacy array-shaped one.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '../../lib/api.js';
 import { useToast } from '../../components/ToastProvider.jsx';
 import { useT } from '../../lib/i18n.jsx';
+import {
+  setStatusInCaches, restoreAlertCaches, invalidateAlertCaches,
+} from './statusCache.js';
 
 const isDemoStatic = (res) => !!(res?.meta?.demoStatic || res?.data?.demoStatic);
 
@@ -21,16 +27,11 @@ export default function useAckAlertOptimistic() {
     mutationFn: (alertId) => apiPost(`/alerts/${encodeURIComponent(alertId)}/ack`, {}),
     onMutate: async (alertId) => {
       await qc.cancelQueries({ queryKey: ['alerts'] });
-      const snapshots = qc.getQueriesData({ queryKey: ['alerts'] });
-      qc.setQueriesData({ queryKey: ['alerts'] }, (rows) => (
-        Array.isArray(rows)
-          ? rows.map((a) => (String(a.alertId) === String(alertId) ? { ...a, status: 'ACK' } : a))
-          : rows
-      ));
-      return { snapshots };
+      await qc.cancelQueries({ queryKey: ['alerts-corpus'] });
+      return { snapshots: setStatusInCaches(qc, alertId, 'ACK') };
     },
     onError: (err, _alertId, ctx) => {
-      for (const [key, data] of ctx?.snapshots || []) qc.setQueryData(key, data);
+      restoreAlertCaches(qc, ctx?.snapshots);
       if (err?.status === 403 || err?.code === 'AUTH_REQUIRED') {
         toast.info(t('alerts.toast.ackReadOnly'));
       } else {
@@ -47,8 +48,11 @@ export default function useAckAlertOptimistic() {
     onSettled: (res) => {
       // Demo-static: skip the alerts refetch — the snapshot still lists the
       // alert as OPEN and would silently undo the acknowledged state.
-      if (!isDemoStatic(res)) qc.invalidateQueries({ queryKey: ['alerts'] });
-      qc.invalidateQueries({ queryKey: ['kpis'] });
+      if (isDemoStatic(res)) {
+        qc.invalidateQueries({ queryKey: ['kpis'] });
+        return;
+      }
+      invalidateAlertCaches(qc);
     },
   });
 }

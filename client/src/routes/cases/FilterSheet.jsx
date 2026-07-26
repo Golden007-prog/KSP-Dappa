@@ -62,8 +62,15 @@ export default function FilterSheet({ open, onClose, values, setMany, onClearAll
     .filter((u) => !values.districtId || u.districtId === values.districtId)
     .map((u) => ({ value: u.unitId, label: u.unitName }));
   const heads = (lk?.crimeHeads || []).map((h) => ({ value: h.crimeHeadId, label: tName('crimeHeads', h.crimeHeadId, h.headName) }));
+  // /meta/lookups returns subheads keyed `headId`, which normalizeLookups does
+  // not map onto crimeHeadId — so `s.crimeHeadId` is '' for every row and this
+  // select used to offer all 27 subheads whatever head was chosen. The id
+  // convention (head × 100 + n, verified across all 27 rows) is the reliable
+  // parent link until api.js reads `headId`.
   const subHeads = (lk?.crimeSubHeads || [])
-    .filter((s) => !values.crimeHeadId || s.crimeHeadId === values.crimeHeadId)
+    .filter((s) => !values.crimeHeadId
+      || s.crimeHeadId === values.crimeHeadId
+      || Math.floor(Number(s.crimeSubHeadId) / 100) === Number(values.crimeHeadId))
     .map((s) => ({ value: s.crimeSubHeadId, label: tName('crimeSubHeads', s.crimeSubHeadId, s.subHeadName) }));
   const statuses = (lk?.statuses || []).map((s) => ({ value: s.id, label: tName('statuses', s.id, s.name) }));
   const gravities = (lk?.gravities || []).map((g) => ({ value: g.id, label: tName('gravities', g.id, g.name) }));

@@ -4,6 +4,7 @@
 // Pure helpers plus a ticking-clock hook; nothing here talks to the API.
 import { useEffect, useState } from 'react';
 import { translate } from '../../lib/i18n.jsx';
+import { sevKey } from './severity.js';
 
 /** Fallback translator for callers that have no hook in scope (tests, plain JS). */
 const en = (key, vars) => translate('en', key, vars);
@@ -21,7 +22,9 @@ export const slaPolicyText = (t = en) => t('alerts.sla.policy');
 
 /** SLA state for one alert. firstSeen: ms epoch (absent → clock starts now). */
 export function slaFor(alert, firstSeen, now = Date.now()) {
-  const sev = String(alert?.severity || '').toLowerCase();
+  // Live rows carry the stored INTEGER band, not a word — decode before the
+  // policy lookup or every alert silently inherits the 24h default.
+  const sev = sevKey(alert?.severity);
   const hours = SLA_HOURS[sev] ?? DEFAULT_SLA_HOURS;
   const start = Number(firstSeen) || now;
   const due = start + hours * 3600000;

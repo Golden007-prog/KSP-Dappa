@@ -3,6 +3,7 @@
 // The Catalyst SDK is initialized per request; every Catalyst-only capability
 // is wrapped so local `node` runs and tests degrade to fallbacks, never crash.
 
+const fs = require('fs');
 const catalyst = require('zcatalyst-sdk-node');
 const { createApp } = require('./lib/app');
 const { logJson } = require('./lib/util');
@@ -45,12 +46,74 @@ const cache = createCache({
   }
 });
 
+/** Lazily resolve a Catalyst service handle; a missing service must never
+ * throw at wiring time (the fallback chains handle absence). */
+function svc(capp, get) {
+  try {
+    return get(capp);
+  } catch (e) {
+    return null;
+  }
+}
+
 function servicesFactory(req) {
   const capp = initCatalyst(req);
   if (capp && !segmentSource) segmentSource = capp;
   if (!capp) return {};
+  const stratusBucket = () => capp.stratus().bucket(process.env.STRATUS_BUCKET || 'dappa');
+  const folderId = String(process.env.FILESTORE_FOLDER_ID || '').trim();
   return {
-    ziaClient: capp.zia(),
+    ziaClient: svc(capp, (a) => a.zia()),
+    quickmlClient: svc(capp, (a) => a.quickML()),
+
+    // Data Store full-text Search — results keyed by table name.
+    search: {
+      execute: async (query) => capp.search().executeSearchQuery(query)
+    },
+
+    // Catalyst Authentication (User Management).
+    auth: {
+      currentUser: async () => capp.userManagement().getCurrentUser(),
+      allUsers: async () => capp.userManagement().getAllUsers()
+    },
+
+    // Push Notifications, web channel.
+    push: {
+      web: async (message, recipients) => capp.pushNotification().web().sendNotification(message, recipients)
+    },
+
+    // File Store — needs a console-created folder; absent folderId disables the link.
+    filestore: folderId ? {
+      folderId,
+      upload: async ({ name, filePath }) => capp.filestore().folder(folderId)
+        .uploadFile({ code: fs.createReadStream(filePath), name }),
+      download: async (fileId) => capp.filestore().folder(folderId).downloadFile(fileId)
+    } : null,
+
+    // Stratus bucket used for archived brief artefacts.
+    artifactBucket: {
+      put: async (key, body, contentType) => stratusBucket().putObject(key, body, contentType ? { contentType } : undefined),
+      get: async (key) => {
+        const obj = await stratusBucket().getObject(key);
+        return typeof obj === 'string' ? obj : obj && obj.toString ? obj.toString() : null;
+      },
+      signedUrl: async (key) => {
+        const signed = await stratusBucket().generatePreSignedUrl(key, 'GET');
+        return (signed && (signed.signature || signed.url)) || null;
+      }
+    },
+
+    // Circuits — the circuit itself is drawn in the console, so its id is env-supplied.
+    circuit: {
+      execute: async (name, input) => capp.circuit().execute(process.env.CIRCUIT_ID, name, input),
+      status: async (execId) => capp.circuit().status(process.env.CIRCUIT_ID, execId)
+    },
+
+    // Connections (OAuth) — credentials are used in-process and never returned.
+    connections: {
+      credentials: async (linkName) => capp.connections().getConnectionCredentials(linkName)
+    },
+
     graphLoaders: {
       // NoSQL snapshot: item 'graph' in table 'dappa_network' holding the JSON.
       nosql: async () => {
@@ -81,8 +144,13 @@ function servicesFactory(req) {
       }
     },
     mailer: {
-      send: async ({ from, to, subject, content }) => capp.email().sendMail({
-        from_email: from, to_email: to, subject, content, html_mode: false
+      // `to` accepts a string (legacy callers) or an array of addresses.
+      send: async ({ from, to, subject, content, htmlMode }) => capp.email().sendMail({
+        from_email: from,
+        to_email: Array.isArray(to) ? to : [to].filter(Boolean),
+        subject,
+        content,
+        html_mode: Boolean(htmlMode)
       })
     }
   };
