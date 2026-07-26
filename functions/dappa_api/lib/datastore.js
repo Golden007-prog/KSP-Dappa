@@ -26,7 +26,15 @@ function buildZCQL(q) {
         const vals = (c.val || []).map(esc).join(', ');
         return `${c.col} IN (${vals || 'NULL'})`;
       }
-      if (c.op === 'like') return `${c.col} LIKE ${esc(`%${c.val}%`)}`;
+      // ZCQL wildcards are * and ? — NOT SQL's % and _
+      // (docs.catalyst.zoho.com/en/cloud-scale/help/zcql/where). Verified on the
+      // live 45k-row store: BriefFacts LIKE '%theft%' matches 0 rows while
+      // LIKE '*theft*' matches 9,312. A literal % in the term is dropped rather
+      // than escaped — ZCQL has no escape syntax for it.
+      if (c.op === 'like') {
+        const term = String(c.val ?? '').replace(/[%_]/g, '');
+        return `${c.col} LIKE ${esc(`*${term}*`)}`;
+      }
       return `${c.col} ${c.op} ${esc(c.val)}`;
     });
     sql += ` WHERE ${parts.join(' AND ')}`;
@@ -135,7 +143,18 @@ function createCatalystClient(getApp) {
 
 function cmp(rowVal, op, val) {
   if (op === 'in') return (val || []).some((v) => String(rowVal) === String(v));
-  if (op === 'like') return String(rowVal === undefined ? '' : rowVal).toLowerCase().includes(String(val).toLowerCase());
+  // Mirror ZCQL's wildcard semantics (* and ?), not SQL's, so the stub cannot
+  // pass a query the real Data Store would answer differently — the '%'
+  // wildcard bug lived for weeks precisely because this stub accepted it.
+  if (op === 'like') {
+    const hay = String(rowVal === undefined || rowVal === null ? '' : rowVal).toLowerCase();
+    // Apply exactly what buildZCQL emits: strip SQL wildcards, wrap in *…*,
+    // then honour ZCQL's * / ? inside the term. Stub and live must agree.
+    const term = String(val ?? '').toLowerCase().replace(/[%_]/g, '');
+    const rx = new RegExp('^' + `*${term}*`.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+    return rx.test(hay);
+  }
   const bothNum = rowVal !== null && rowVal !== '' && !isNaN(Number(rowVal)) && !isNaN(Number(val));
   const a = bothNum ? Number(rowVal) : String(rowVal === undefined || rowVal === null ? '' : rowVal);
   const b = bothNum ? Number(val) : String(val === undefined || val === null ? '' : val);
