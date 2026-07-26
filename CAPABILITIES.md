@@ -20,18 +20,33 @@ components on top of the previously audited build.*
 | # | Capability | Features | Bar | Verdict | Margin |
 |---|---|---:|---:|---|---:|
 | **C1** | Advanced Visualization | **240** | 100 | ✅ **PASS** | +140 |
-| **C2** | Criminological Network & Link Analysis | **105** | 100 | ✅ **PASS** (marginal) | +5 |
+| **C2** | Criminological Network & Link Analysis | **139** | 100 | ✅ **PASS** | +39 |
 | **C3** | Sociological & AI-Driven Predictive Dashboards | **167** | 100 | ✅ **PASS** | +67 |
 | **C4** | Pattern & Trend Discovery | **173** | 100 | ✅ **PASS** | +73 |
-| **C5** | Network & Behavioural Analysis | **85** | 100 | ❌ **SHORT BY 15** | −15 |
+| **C5** | Network & Behavioural Analysis | **121** | 100 | ✅ **PASS** | +21 |
 | **C6** | AI/ML-Driven Intelligence | **125** | 100 | ✅ **PASS** | +25 |
 
-Two entries deserve a caveat before anything else. **C2 clears the bar by five
-features, which is inside the noise of any classification exercise** — and one
-third of its capability statement (victim nodes, recurring-location nodes) is
-still not implemented at all; see [§ C2](#c2). **C5 is genuinely short.** The
-previous audit put C5 at 45 against a −55 gap; the recent work closed roughly
-40 of those 55, which is real progress and still not enough.
+**All six capabilities now clear the bar.** The two gaps this document reported
+in its previous revision have been closed by targeted work rather than by
+reclassifying what already existed:
+
+- **C5 85 → 121** (+33 client features, +3 endpoints). Organised-crime crew
+  scoring, a learned MO vocabulary, MO evolution over time, behavioural
+  change detection and offender peer cohorts — the five items the shortfall
+  named. See the design note in [§ C5](#c5): the live graph contains exactly
+  one community, so scoring *per CommunityID* would have produced a single
+  meaningless row; crews are derived from shared rare modus operandi instead,
+  with co-offending edges used as corroboration rather than as the clustering
+  basis.
+- **C2 105 → 139** (+31 client features, +3 endpoints). Victim entities and
+  recurring-location entities — the third of C2's capability statement that
+  was previously unimplemented — plus multi-hop path ranking, temporal link
+  evolution and common-neighbour link prediction over the real 23,833-edge
+  graph.
+
+Counting method is unchanged and still hand classification, so treat every
+figure as ±8. That tolerance no longer changes any verdict: the narrowest
+margin is now C5 at +21.
 
 ### What changed since the last audit
 
