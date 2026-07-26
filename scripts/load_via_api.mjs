@@ -23,11 +23,13 @@ const CHUNK = 200;
 const T = {
   SocioEconomic: { DistrictID:'i', Population:'i', UrbanPct:'d', LiteracyPct:'d', PerCapitaIncomeIdx:'d' },
   AggMonthly: { DistrictID:'i', UnitID:'i', CrimeHeadID:'i', CrimeSubHeadID:'i', CaseCount:'i', HeinousCount:'i' },
-  AnomalyAlert: { AlertID:'i', DistrictID:'i', UnitID:'i', CrimeHeadID:'i', Observed:'i', Expected:'d', ZScore:'d', Severity:'i' },
+  // AlertID / ClusterID are STRING ids from the pipeline ('A0001', 'H001') —
+  // the schema checklist mis-declared them Int. Left uncoerced on purpose.
+  AnomalyAlert: { DistrictID:'i', UnitID:'i', CrimeHeadID:'i', Observed:'i', Expected:'d', ZScore:'d', Severity:'i' },
   OffenderProfile: { CaseCount:'i', DegreeCentrality:'d', RiskScore:'d' },
   NetworkEdge: { Weight:'i' },
   StationRisk: { UnitID:'i', Horizon:'i', RiskScore:'d' },
-  HotspotCluster: { ClusterID:'i', CrimeHeadID:'i', CentroidLat:'d', CentroidLng:'d', RadiusM:'d', CaseCount:'i', HourBandStart:'i', HourBandEnd:'i', Intensity:'d', DistrictID:'i' },
+  HotspotCluster: { CrimeHeadID:'i', CentroidLat:'d', CentroidLng:'d', RadiusM:'d', CaseCount:'i', HourBandStart:'i', HourBandEnd:'i', Intensity:'d', DistrictID:'i' },
   ForecastMonthly: { DistrictID:'i', CrimeHeadID:'i', Actual:'i', Predicted:'d', Lo:'d', Hi:'d' },
   CaseAnomaly: { CaseMasterID:'i', Score:'d' },
   Victim: { VictimMasterID:'i', CaseMasterID:'i', AgeYear:'i', GenderID:'i' },
