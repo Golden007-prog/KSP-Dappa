@@ -1,0 +1,169 @@
+1
+00:00:00,000 --> 00:00:04,193
+Across Karnataka, crime records sit in
+silos.
+
+2
+00:00:04,193 --> 00:00:12,580
+A repeat offender changes one letter of
+his name, crosses a district line, and disappears.
+
+3
+00:00:12,580 --> 00:00:14,070
+The data exists.
+
+4
+00:00:14,070 --> 00:00:16,400
+The intelligence doesn't.
+
+5
+00:00:16,400 --> 00:00:18,125
+KSP DAPPA changes that.
+
+6
+00:00:18,125 --> 00:00:29,300
+Built on Zoho Catalyst, it turns
+forty-five thousand FIR records — modelled on the official Karnataka Police schema — into one live intelligence hub.
+
+7
+00:00:29,300 --> 00:00:38,199
+A Python pipeline precomputes everything
+heavy — hotspots, forecasts, anomaly alerts, the co-accused network.
+
+8
+00:00:38,199 --> 00:00:39,832
+Data Store holds it.
+
+9
+00:00:39,832 --> 00:00:43,016
+One Node API serves it in milliseconds.
+
+10
+00:00:43,016 --> 00:00:46,200
+Caste and religion never enter a model.
+
+11
+00:00:46,200 --> 00:00:50,056
+Live KPI tiles; anomaly districts pulse
+red.
+
+12
+00:00:50,056 --> 00:00:56,191
+Where a table isn't fully loaded, we show
+a dash — not a wrong number.
+
+13
+00:00:56,191 --> 00:01:01,800
+The sixth tile forecasts next month, with
+a confidence interval.
+
+14
+00:01:01,800 --> 00:01:05,632
+GeoIntel ranks every hotspot in the state.
+
+15
+00:01:05,632 --> 00:01:08,461
+Click one, the map flies to it.
+
+16
+00:01:08,461 --> 00:01:14,300
+Press space, and months of crime drift
+animate across Karnataka.
+
+17
+00:01:14,300 --> 00:01:24,105
+The network explorer maps who offends
+together — nearly twenty-four thousand co-accused links across two thousand people.
+
+18
+00:01:24,105 --> 00:01:28,400
+Open a person: the aliases no spreadsheet
+could join.
+
+19
+00:01:28,400 --> 00:01:31,070
+Ask DAPPA speaks plain language.
+
+20
+00:01:31,070 --> 00:01:34,991
+Top five districts for vehicle theft this
+year?
+
+21
+00:01:34,991 --> 00:01:40,748
+A chart answers in under a second — and
+shows the exact query it ran.
+
+22
+00:01:40,748 --> 00:01:43,167
+Every AI answer is auditable.
+
+23
+00:01:43,167 --> 00:01:52,418
+Predict scores case status from a live
+QuickML model — and publishes its real accuracy beside it, even when that number is weak.
+
+24
+00:01:52,418 --> 00:01:56,538
+Zia reads the FIR narrative and pulls out
+entities, live.
+
+25
+00:01:56,538 --> 00:02:00,730
+And the interface switches to Kannada or
+Hindi, instantly.
+
+26
+00:02:00,730 --> 00:02:05,500
+ಇದು ಕರ್ನಾಟಕಕ್ಕಾಗಿ (this is for Karnataka)
+— this is for Karnataka.
+
+27
+00:02:05,500 --> 00:02:08,425
+One Zoho Catalyst project, end to end.
+
+28
+00:02:08,425 --> 00:02:14,199
+Web Client Hosting serves the app; an
+Advanced I/O function serves the API.
+
+29
+00:02:14,199 --> 00:02:19,742
+Data Store holds forty-five thousand
+records; Stratus holds every brief.
+
+30
+00:02:19,742 --> 00:02:25,900
+QuickML and Zia answer the AI calls —
+every response names the engine behind it.
+
+31
+00:02:25,900 --> 00:02:27,240
+Just the start.
+
+32
+00:02:27,240 --> 00:02:38,322
+Today, synthetic FIRs; tomorrow, CCTNS —
+same schema, column for column, with jurisdiction-scoped access and an audit trail.
+
+33
+00:02:38,322 --> 00:02:41,897
+Circuits orchestrates the nightly chain.
+
+34
+00:02:41,897 --> 00:02:44,667
+Ask DAPPA out loud, in Kannada.
+
+35
+00:02:44,667 --> 00:02:45,867
+KSP DAPPA.
+
+36
+00:02:45,867 --> 00:02:48,223
+From records to foresight.
+
+37
+00:02:48,223 --> 00:02:54,634
+Built end to end on Zoho Catalyst, for the
+KSP Datathon twenty twenty-six.
+

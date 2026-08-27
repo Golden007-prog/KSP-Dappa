@@ -19,9 +19,13 @@ CLAUDE.md
 AGENTS.md
 memory/
 
-# internal working docs, strategy kit & organizer material — local only
-docs/
-client/CONTRACT.md
+# docs/: engineering docs are tracked; the strategy kit, agent master prompts,
+# organizer material (ER diagram + its text extract), media and decks stay local.
+docs/0*_*.md
+docs/Police_FIR_ER_Diagram.pdf
+docs/ER_TEXT_EXTRACT.txt
+docs/media/
+docs/screenshots/deck-preview/
 *.pptx
 
 pipeline/.fixture/
@@ -44,4 +48,16 @@ pipeline/.import_batch/
 # Shell artefacts: agent runs occasionally leave files whose names are
 # fragments of code ("(r.Actual", "{const", "$t"). No real source file in this
 # repo has a character outside [A-Za-z0-9._/-], so ignore anything that does.
+# scripts/check_tree_hygiene.mjs is the enforcing guard (pre-commit + CI).
 *[(){}$`'"!?,+|<>=*]*
+
+# demo video: only script/ (the produced narration + timeline) is tracked;
+# renders, b-roll, voice-over, spend logs and working files stay local.
+video/logs/
+video/tmp/
+video/screen/
+video/broll/
+video/cards/
+video/vo/
+video/music/
+video/out/

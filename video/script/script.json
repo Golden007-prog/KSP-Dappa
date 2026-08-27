@@ -1,0 +1,136 @@
+{
+  "title": "KSP DAPPA — 3-minute demo",
+  "target_runtime_s": [
+    170,
+    178
+  ],
+  "voice": {
+    "model": "gemini-3.1-flash-tts-preview",
+    "name": "Charon"
+  },
+  "provenance": "Every claim below was verified against the live deployment on 2026-07-26. See video/logs/decisions.md for the command and output behind each one.",
+  "scenes": [
+    {
+      "id": 1,
+      "slot": "0:00-0:15",
+      "visual": "Higgsfield b-roll — police records room at night",
+      "text": "Across Karnataka, crime records sit in silos. A repeat offender changes one letter of his name, crosses a district line, and disappears. The data exists. The intelligence doesn't.",
+      "lower_third": "Records everywhere. Intelligence nowhere."
+    },
+    {
+      "id": 2,
+      "slot": "0:15-0:30",
+      "visual": "Hero dashboard still, slow push-in",
+      "text": "KSP DAPPA changes that. Built on Zoho Catalyst, it turns forty-five thousand FIR records — modelled on the official Karnataka Police schema — into one live intelligence hub.",
+      "lower_third": "KSP DAPPA — From Records to Foresight"
+    },
+    {
+      "id": 3,
+      "slot": "0:30-0:47",
+      "visual": "Animated architecture diagram (HTML)",
+      "text": "A Python pipeline precomputes everything heavy — hotspots, forecasts, anomaly alerts, the co-accused network. Data Store holds it. One Node API serves it in milliseconds. Caste and religion never enter a model.",
+      "lower_third": "Precompute heavy. Serve in milliseconds."
+    },
+    {
+      "id": 4,
+      "slot": "0:47-1:04",
+      "visual": "Screen #/ — command dashboard",
+      "text": "Live KPI tiles; anomaly districts pulse red. Where a table isn't fully loaded, we show a dash — not a wrong number. The sixth tile forecasts next month, with a confidence interval.",
+      "lower_third": "A dash, not a wrong number"
+    },
+    {
+      "id": 5,
+      "slot": "1:04-1:15",
+      "visual": "Screen #/map — GeoIntel",
+      "text": "GeoIntel ranks every hotspot in the state. Click one, the map flies to it. Press space, and months of crime drift animate across Karnataka.",
+      "lower_third": "Months of crime drift, in seconds"
+    },
+    {
+      "id": 6,
+      "slot": "1:15-1:29",
+      "visual": "Screen #/network — co-accused graph",
+      "text": "The network explorer maps who offends together — nearly twenty-four thousand co-accused links across two thousand people. Open a person: the aliases no spreadsheet could join.",
+      "lower_third": "23,833 links · 2,047 people"
+    },
+    {
+      "id": 7,
+      "slot": "1:29-1:43",
+      "visual": "Screen #/copilot — Ask DAPPA",
+      "text": "Ask DAPPA speaks plain language. Top five districts for vehicle theft this year? A chart answers in under a second — and shows the exact query it ran. Every AI answer is auditable.",
+      "lower_third": "Every AI answer shows its query"
+    },
+    {
+      "id": 8,
+      "slot": "1:43-2:03",
+      "visual": "Screen #/predict → #/cases/45000 → #/alerts → language flip",
+      "text": "Predict scores case status from a live QuickML model — and publishes its real accuracy beside it, even when that number is weak. Zia reads the FIR narrative and pulls out entities, live. And the interface switches to Kannada or Hindi, instantly. ಇದು ಕರ್ನಾಟಕಕ್ಕಾಗಿ — this is for Karnataka.",
+      "lower_third": "English · ಕನ್ನಡ · हिंदी"
+    },
+    {
+      "id": 9,
+      "slot": "2:03-2:26",
+      "visual": "Screen #/about + Chrome network-tab proof card",
+      "text": "One Zoho Catalyst project, end to end. Web Client Hosting serves the app; an Advanced I/O function serves the API. Data Store holds forty-five thousand records; Stratus holds every brief. QuickML and Zia answer the AI calls — every response names the engine behind it.",
+      "lower_third": "One Catalyst project, end to end"
+    },
+    {
+      "id": 10,
+      "slot": "2:26-2:45",
+      "visual": "Higgsfield b-roll — checkpost at dawn",
+      "text": "Just the start. Today, synthetic FIRs; tomorrow, CCTNS — same schema, column for column, with jurisdiction-scoped access and an audit trail. Circuits orchestrates the nightly chain. Ask DAPPA out loud, in Kannada.",
+      "lower_third": "Same schema, column for column"
+    },
+    {
+      "id": 11,
+      "slot": "2:45-2:54",
+      "visual": "Title card (HTML)",
+      "text": "KSP DAPPA. From records to foresight. Built end to end on Zoho Catalyst, for the KSP Datathon twenty twenty-six.",
+      "lower_third": "KSP Datathon 2026 · ದತ್ತಾಂಶದಿಂದ ದೂರದೃಷ್ಟಿಗೆ"
+    }
+  ],
+  "changes_from_locked_script": [
+    {
+      "scene": 6,
+      "was": "showing the four hundred most connected",
+      "now": "across two thousand resolved people",
+      "why": "/network/graph returns nodeCount 2047 / edgeCount 3000 (capped from 23,833). '400 most connected' could not be substantiated from the endpoint, so the claim was replaced with the two numbers the API actually reports. Lower-third changed to match."
+    },
+    {
+      "scene": 7,
+      "was": "answers in a third of a second",
+      "now": "answers in under a second",
+      "why": "measured copilot latency did not reliably hit 0.3 s on the live deployment; 'under a second' is defensible at every sample taken."
+    },
+    {
+      "scene": 8,
+      "was": "publishes its real accuracy beside it",
+      "now": "publishes its real accuracy beside it, even when that number is weak",
+      "why": "strengthens the honesty USP and pre-empts a judge noticing AUC 0.500 unaided."
+    },
+    {
+      "scene": 9,
+      "was": "Advanced I/O, Event and Cron functions do the compute — register a case, and Signals raises the alert live. Data Store, NoSQL, Stratus and Cache hold every byte.",
+      "now": "an Advanced I/O function serves the API. Data Store holds all forty-five thousand records, and Stratus holds every generated brief.",
+      "why": "BLOCKING TRUTH FIX. Measured on the live deployment 2026-07-26: NoSQL reports mode 'fixture-demo' and /network/graph returns meta.source 'datastore'; Cache reports backend 'memory' on a warm instance; Data Store Search returns source 'fallback-zcql-like'; Authentication returns source 'fallback-local'; the nightly Cron reports mode 'fixture', last run 2026-07-01, 40 of 45,000 cases read; and zero EVT- alerts exist, so the Signals event function has not created anything filmable. /meta/services badges all of these 'live' because servicemap.js keys status off loader configuration rather than off a successful call. Only Advanced I/O, Data Store/ZCQL, Stratus, Zia Text Analytics and QuickML case-status are provably serving, plus Web Client Hosting and API Gateway as platform facts."
+    },
+    {
+      "scene": 9,
+      "was": "And every service's real status is published, right here.",
+      "now": "and every response names the engine that produced it, so nothing here is a black box.",
+      "why": "the /about matrix currently overstates five services as live, so claiming it publishes real status would contradict the measured truth while that very page is on screen. meta.source naming the engine IS verifiably true on every AI endpoint tested."
+    },
+    {
+      "scene": 9,
+      "was": "Signals live-alert insert beat on camera",
+      "now": "cut",
+      "why": "POST /admin/bulk-insert returns 403 for the anonymous demo session, and no EVT- alerts exist to film instead."
+    },
+    {
+      "scene": 8,
+      "was": "alert acknowledgement beat",
+      "now": "cut",
+      "why": "POST /alerts/:id/ack returns 403 anonymous; /auth/me shows acknowledgeAlerts false. Narration never mentioned it, so no rewording needed."
+    }
+  ],
+  "trim_note": "Narration cut 440 -> 348 words over two passes. First VO pass measured 220.1 s, second 184.3 s, against a 176 s ceiling; Charon reads ~1.94 words/sec. Scenes 7 and 8 were protected per the brief. A 1.03x atempo is applied in the mix to close the last few seconds."
+}

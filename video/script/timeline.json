@@ -1,0 +1,62 @@
+{
+  "marks": [
+    {
+      "scene": 1,
+      "start": 0.0,
+      "dur": 16.4
+    },
+    {
+      "scene": 2,
+      "start": 16.4,
+      "dur": 12.9
+    },
+    {
+      "scene": 3,
+      "start": 29.3,
+      "dur": 16.9
+    },
+    {
+      "scene": 4,
+      "start": 46.2,
+      "dur": 15.6
+    },
+    {
+      "scene": 5,
+      "start": 61.8,
+      "dur": 12.5
+    },
+    {
+      "scene": 6,
+      "start": 74.3,
+      "dur": 14.1
+    },
+    {
+      "scene": 7,
+      "start": 88.4,
+      "dur": 14.767
+    },
+    {
+      "scene": 8,
+      "start": 103.167,
+      "dur": 22.333
+    },
+    {
+      "scene": 9,
+      "start": 125.5,
+      "dur": 20.4
+    },
+    {
+      "scene": 10,
+      "start": 145.9,
+      "dur": 18.767
+    },
+    {
+      "scene": 11,
+      "start": 164.667,
+      "dur": 9.967
+    }
+  ],
+  "vo_total_s": 174.7,
+  "picture_total_s": 174.63,
+  "atempo": 1.03
+}
