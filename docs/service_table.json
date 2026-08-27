@@ -6,12 +6,13 @@
     "reachableFromCode": 23,
     "liveNow": 15,
     "flagGated": 0,
-    "consolePending": 13,
+    "consolePending": 11,
     "withFallback": 26,
     "byStatus": {
       "live": 9,
-      "console-pending": 13,
+      "console-pending": 11,
       "active": 4,
+      "unavailable": 2,
       "platform": 2
     }
   },
@@ -218,8 +219,8 @@
       "key": "circuits",
       "name": "Circuits (multi-step orchestration)",
       "category": "orchestration",
-      "status": "console-pending",
-      "statusReason": "flag on but CIRCUIT_ID not set",
+      "status": "unavailable",
+      "statusReason": "Circuits is documented as not available in the IN data centre (docs/CATALYST_SERVICE_RESEARCH.md §3); the in-process fallback serves",
       "invocation": "lib/circuits.js — circuit().execute(CIRCUIT_ID, 'dappa_nightly_refresh')",
       "flag": "FEATURE_CIRCUIT",
       "requires": [
@@ -275,8 +276,8 @@
       "key": "zia-automl",
       "name": "Zia AutoML (tabular)",
       "category": "ai",
-      "status": "console-pending",
-      "statusReason": "flag on but ZIA_AUTOML_MODEL_ID not set",
+      "status": "unavailable",
+      "statusReason": "Zia AutoML is documented as not available in the IN data centre (docs/CATALYST_SERVICE_RESEARCH.md §5); the in-process fallback serves",
       "invocation": "lib/zia.js automlPredict() — zia().automl(ZIA_AUTOML_MODEL_ID, features)",
       "flag": "FEATURE_ZIA_AUTOML",
       "requires": [

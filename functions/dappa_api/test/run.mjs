@@ -133,8 +133,11 @@ check('buildZCQL LIMIT page 3 start row', buildZCQL({ table: 'T', limit: { offse
   check('mail is flag-gated with the flag off', mailRow && mailRow.status === 'flag-gated' && mailRow.flag === 'FEATURE_MAIL');
   const onRows = buildServiceMap({ flags: { mail: true, circuit: true }, services: {} });
   check('flag on without config reads console-pending',
-    onRows.find((r) => r.key === 'mail').status === 'console-pending'
-    && onRows.find((r) => r.key === 'circuits').status === 'console-pending');
+    onRows.find((r) => r.key === 'mail').status === 'console-pending');
+  check('IN-DC-unavailable services never read console-pending, whatever the flag (D-019)',
+    onRows.find((r) => r.key === 'circuits').status === 'unavailable'
+    && onRows.find((r) => r.key === 'zia-automl').status === 'unavailable'
+    && /IN data centre/.test(onRows.find((r) => r.key === 'circuits').statusReason));
 }
 
 // Pure helpers behind the new service paths.
@@ -1442,9 +1445,11 @@ for (const utterance of CANNED_UTTERANCES) {
   // The coverage matrix must now report these as active, not flag-gated.
   const wServices = await get('/meta/services', W);
   const byKey = new Map(wServices.json.data.services.map((r) => [r.key, r]));
-  check('WIRED service map reports mail/push/circuits active',
+  check('WIRED service map reports mail/push/connections active',
     byKey.get('mail').status === 'active' && byKey.get('push-notifications').status === 'active'
-    && byKey.get('circuits').status === 'active' && byKey.get('connections').status === 'active');
+    && byKey.get('connections').status === 'active');
+  check('WIRED service map still reports circuits unavailable in the IN DC (a CIRCUIT_ID cannot exist here)',
+    byKey.get('circuits').status === 'unavailable');
   check('WIRED service map reports File Store live', byKey.get('file-store').status === 'live');
   check('WIRED service map still marks console-only services pending',
     byKey.get('pipelines').status === 'console-pending' && byKey.get('domain-mappings').status === 'console-pending');

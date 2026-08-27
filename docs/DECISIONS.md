@@ -152,4 +152,23 @@ shortfall named as missing exist in code (behaviour.js, crews.js); the count
 fell because the rule got stricter, not because anything was removed. The
 Round-2 backlog assigns new work to the thinnest capabilities first.
 
+**D-018 · ChargesheetDetails finished by a keyed top-up, not a re-import (team, 27 Aug 2026).**
+The table held CSID 1–12,600 of 31,655 (verified in the ZCQL console:
+COUNT 12,600, MIN 1, MAX 12,600). `catalyst ds:import` appends, so re-running
+the full CSV would have duplicated 12,600 rows; the CSV was filtered to
+CSID > 12,600 (19,055 rows) and imported once. The CLI now stops at a Stratus
+bucket prompt, which the helper answers on stdin. `/healthz?nocache=1` reports
+31,655 / 31,655 and every table at 100 %; `FORCE_FIXTURE_TABLES` (D-016) is no
+longer needed for this table.
+
+**D-019 · Circuits and Zia AutoML are reclassified as unavailable in the IN data centre (team, 27 Aug 2026).**
+Phase-2 research (`docs/CATALYST_SERVICE_RESEARCH.md` §3, §5) found both
+services documented as not offered to IN-DC users; this project runs on
+`.catalystserverless.in`. Leaving them "console-pending" would imply a step
+exists. The service map now carries a distinct `unavailable` status with the
+research citation, the code paths and flags stay (call shapes verified against
+the SDK typings), and the in-process fallbacks serve: sequential nightly steps
+via the `dappa_nightly` cron function, and the embedded logistic outcome model.
+Console-pending count on the tracked configuration: 13 → 11.
+
 <!-- Append new decisions here: **D-00N · Title (owner, date).** Decision + why. -->

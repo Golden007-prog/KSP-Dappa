@@ -168,20 +168,19 @@ request and falls through to ZCQL `LIKE` until the console marks the columns.
 
 > **Set on `dappa_api`:** nothing · **Flip:** `FEATURE_SEARCH` is already on
 
-## 12. Circuits — `dappa_nightly_refresh`
+## 12. Circuits — not available in the IN data centre (no console step)
 
-1. Console → **Serverless ▸ Circuits** → **Create Circuit** → name
-   `dappa_nightly_refresh`.
-2. Add the steps as discrete function invocations of `dappa_api`'s circuit
-   handler in this order: `aggregate` → `hotspots` → `forecasts` →
-   `anomalies` → `network` → `notify` (each retryable; `lib/circuits.js`
-   maps the step name to the in-process worker).
-3. Save; copy the **Circuit ID** from the circuit's detail page.
-
-> **Set on `dappa_api`:** `CIRCUIT_ID=<circuit id>` · **Flip:**
-> `FEATURE_CIRCUIT` is already on. `POST /admin/circuit/nightly-refresh` then
-> returns the execution id and `GET /admin/circuit/:executionId` the per-step
-> status.
+The Catalyst documentation lists Circuits as available only in the US data
+centre ("EU, AU, IN, JP, SA or CA" users are excluded — three Circuits pages
+carry the sentence; see `docs/CATALYST_SERVICE_RESEARCH.md` §3). This project
+runs on `.catalystserverless.in`, so `dappa_nightly_refresh` cannot be created
+here and `CIRCUIT_ID` stays empty by design. `lib/circuits.js` keeps the exact
+`circuit().execute / status / abort` call shape; the identical
+aggregate → detect-anomalies → notify steps run sequentially in-process and
+the nightly refresh is the `dappa_nightly` **Cron** function (§7). The service
+table reports the row as **unavailable in IN DC** rather than console-pending.
+Zia AutoML (tabular) is in the same position (§5 of the research); the
+embedded logistic outcome model serves `/predict/outcome`.
 
 ## 13. Zia — Face Analytics + Identity Scanner (face identification, Phase 6)
 

@@ -24,6 +24,14 @@ function envSet(name) {
 }
 
 /** flag-driven status with an env prerequisite. */
+// Services the Catalyst documentation lists as not offered in the IN data
+// centre (this project runs on .catalystserverless.in). The code path stays,
+// the flag stays off, and the row says so instead of pretending a console
+// step could flip it.
+function unavailableInDc(name, source) {
+  return { status: 'unavailable', statusReason: `${name} is documented as not available in the IN data centre (${source}); the in-process fallback serves` };
+}
+
 function gated(on, requires) {
   const missing = (requires || []).filter((n) => !envSet(n));
   if (!on) return { status: 'flag-gated', statusReason: 'feature flag off (fallback path serving)' };
@@ -175,7 +183,7 @@ function buildServiceMap(ctx) {
     flag: 'FEATURE_CIRCUIT',
     requires: ['CIRCUIT_ID'],
     endpoints: ['/admin/circuit/nightly-refresh', '/admin/circuit/:executionId']
-  }, gated(f.circuit, ['CIRCUIT_ID'])));
+  }, unavailableInDc('Circuits', 'docs/CATALYST_SERVICE_RESEARCH.md §3')));
 
   add({
     key: 'authentication',
@@ -242,7 +250,7 @@ function buildServiceMap(ctx) {
     flag: 'FEATURE_ZIA_AUTOML',
     requires: ['ZIA_AUTOML_MODEL_ID'],
     endpoints: ['/predict/outcome', '/ml/models']
-  }, gated(f.ziaAutoml, ['ZIA_AUTOML_MODEL_ID'])));
+  }, unavailableInDc('Zia AutoML', 'docs/CATALYST_SERVICE_RESEARCH.md §5')));
 
   add(Object.assign({
     key: 'quickml-pipelines',
