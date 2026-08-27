@@ -17,10 +17,6 @@ export default {
   'nav.collapseAria': 'ನ್ಯಾವಿಗೇಶನ್ ಸಂಕುಚಿಸಿ',
   'sidebar.version': 'ಕೆಎಸ್‌ಪಿ ಡೇಟಾಥಾನ್ 2026 · v0.1',
 
-  'health.checking': 'ಪರಿಶೀಲನೆ',
-  'health.down': 'API ಸ್ಥಗಿತ',
-  'health.tooltip': 'Catalyst API ಸ್ಥಿತಿ: {state}',
-  'health.aria': 'API ಸ್ಥಿತಿ: {state}',
   'clock.ist': 'ಭಾರತೀಯ ಪ್ರಮಾಣಿತ ಸಮಯ',
 
   'refresh.label': 'ಎಲ್ಲಾ ದತ್ತಾಂಶ ನವೀಕರಿಸಿ',
@@ -50,7 +46,7 @@ export default {
 
   'more.title': 'ಇನ್ನಷ್ಟು ನೋಟಗಳು',
   'more.aria': 'ಇನ್ನಷ್ಟು ನೋಟಗಳು',
-  'more.language': 'Language · ಭಾಷೆ · भाषा',
+  'more.language': 'Language · ಭಾಷೆ',
 
   'install.done': 'ಡ್ಯಾಪ್ಪಾ ಸ್ಥಾಪನೆಯಾಗಿದೆ — ಯಾವುದೇ ಆ್ಯಪ್‌ನಂತೆ ತೆರೆಯಿರಿ.',
 

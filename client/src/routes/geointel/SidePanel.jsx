@@ -118,7 +118,7 @@ function SeasonalityStrip({ days, matrix, max }) {
         const label = dayLabel(t, days[d]);
         return (
           <div key={days[d] || d} className="flex items-center gap-1.5">
-            {/* w-8 (not w-6): Kannada/Devanagari weekday stems need the extra px */}
+            {/* w-8 (not w-6): Kannada weekday stems need the extra px */}
             <span className="w-8 text-[8px] text-muted shrink-0 truncate">{label}</span>
             <div className="flex-1 grid gap-px" style={{ gridTemplateColumns: 'repeat(24, minmax(0, 1fr))' }}>
               {row.map((v, h) => (

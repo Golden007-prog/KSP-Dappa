@@ -40,7 +40,7 @@ const CSS = `
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; background: #f3f4f6; color: #111827;
-  font: 13px/1.5 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Nirmala UI", "Noto Sans Kannada", "Noto Sans Devanagari", sans-serif; }
+  font: 13px/1.5 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Nirmala UI", "Noto Sans Kannada", sans-serif; }
 main { max-width: 210mm; margin: 0 auto; background: #fff; padding: 16mm 14mm; box-shadow: 0 1px 12px rgba(0,0,0,.12); }
 h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
 h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #b45309;

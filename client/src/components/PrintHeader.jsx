@@ -32,7 +32,7 @@ export default function PrintHeader({ viewName = 'View' }) {
     lookups.data,
     { t, tName },
   );
-  const stamp = new Intl.DateTimeFormat(lang === 'hi' ? 'hi-IN' : lang === 'kn' ? 'kn-IN' : 'en-IN', {
+  const stamp = new Intl.DateTimeFormat(lang === 'kn' ? 'kn-IN' : 'en-IN', {
     timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short',
   }).format(new Date());
 

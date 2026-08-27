@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// check_i18n.mjs — key-parity gate for the trilingual UI.
+// check_i18n.mjs — key-parity gate for the bilingual UI.
 //
-// Every namespace under client/src/locales/en must exist in kn and hi with the
-// SAME key set. A missing key silently falls back to English at runtime, which
+// Every namespace under client/src/locales/en must exist in kn with the SAME
+// key set. A missing key silently falls back to English at runtime, which
 // is the right failure mode for a live demo but hides an untranslated screen
 // from the team — this makes it visible.
 //
@@ -14,7 +14,7 @@ import { pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const LOCALES = path.join(ROOT, 'client', 'src', 'locales');
-const LANGS = ['en', 'kn', 'hi'];
+const LANGS = ['en', 'kn'];
 const quiet = process.argv.includes('--quiet');
 
 /** Flatten one namespace module into dotted keys (data.js nests id maps). */
@@ -48,20 +48,17 @@ const namespaces = [...new Set(Object.values(dicts).flatMap((d) => Object.keys(d
 
 // 'data' (district / crime-head names) has no English file by design: English
 // names come straight from /meta/lookups, so tName() returns the API string.
-// kn and hi must still mirror each other exactly.
+// It only has to exist and be non-empty.
 const NO_EN_BASE = new Set(['data']);
 
 for (const ns of namespaces) {
   if (NO_EN_BASE.has(ns)) {
     const kn = Object.keys(dicts.kn[ns] || {});
-    const hi = Object.keys(dicts.hi[ns] || {});
-    const onlyKn = kn.filter((k) => !hi.includes(k));
-    const onlyHi = hi.filter((k) => !kn.includes(k));
-    if (onlyKn.length || onlyHi.length) {
+    if (!kn.length) {
       problems += 1;
-      console.error(`DATA MISMATCH ${ns}: kn-only ${onlyKn.length}, hi-only ${onlyHi.length}`);
+      console.error(`DATA MISSING  ${ns}: kn has no reference names`);
     } else if (!quiet) {
-      console.log(`  data namespace: ${kn.length} reference names in kn and hi (English comes from the API)`);
+      console.log(`  data namespace: ${kn.length} reference names in kn (English comes from the API)`);
     }
     continue;
   }
@@ -72,7 +69,7 @@ for (const ns of namespaces) {
     continue;
   }
   const enKeys = Object.keys(en);
-  for (const lang of ['kn', 'hi']) {
+  for (const lang of ['kn']) {
     const other = dicts[lang][ns];
     if (!other) {
       console.error(`MISSING FILE  ${lang}/${ns}.js (en has ${enKeys.length} keys)`);
@@ -98,4 +95,4 @@ if (problems) {
   console.error(`i18n FAILED — ${problems} parity problem(s).`);
   process.exit(1);
 }
-console.log('i18n OK — every English key has a Kannada and Hindi counterpart.');
+console.log('i18n OK — every English key has a Kannada counterpart.');

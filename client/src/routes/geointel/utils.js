@@ -169,7 +169,7 @@ export function hourInBand(start, end, h) {
 
 /**
  * Display name for a hotspot cluster. The server label ('Chain snatching
- * cluster 4') is English-only, so in kn/hi we fall back to the translated
+ * cluster 4') is English-only, so in Kannada we fall back to the translated
  * crime-head name via tName — which returns `base` verbatim under English.
  */
 export function hotspotName(h, tName, fallback = '') {

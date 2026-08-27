@@ -2,7 +2,7 @@
 // routes/Dashboard.jsx and routes/dashboard/**. Keys are addressed as
 // t('dashboard.<key>'); the loader adds the prefix from the filename.
 //
-// English is the source of truth AND the fallback: kn/hi must carry the exact
+// English is the source of truth AND the fallback: kn must carry the exact
 // same key set (see the parity check in the build notes). Generic buttons and
 // states deliberately live in the 'common' namespace, not here.
 export default {

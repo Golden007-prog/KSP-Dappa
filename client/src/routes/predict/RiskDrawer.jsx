@@ -27,8 +27,8 @@ export default function RiskDrawer({ open, row, rows, onClose, onOpenMap }) {
   const { t, lang } = useI18n();
   const toast = useToast();
 
-  // English ordinal suffixes ("88th") have no counterpart in Kannada or Hindi,
-  // where the percentile reads as a plain number.
+  // English ordinal suffixes ("88th") have no counterpart in Kannada, where
+  // the percentile reads as a plain number.
   const percentile = (n) => (lang === 'en' ? ordinal(n) : fmtInt(Math.round(n)));
 
   const ctx = useMemo(() => {

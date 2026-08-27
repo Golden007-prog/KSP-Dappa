@@ -29,7 +29,6 @@ export default {
 
   'shell.search': 'Search or jump to…',
   'shell.commandPalette': 'Command palette',
-  'shell.live': 'Live',
   'shell.offline': 'Offline',
   'shell.degraded': 'Degraded',
   'shell.updatedJustNow': 'updated just now',
@@ -55,7 +54,6 @@ export default {
   'lang.changed': 'Language set to {lang}',
   'lang.en': 'English',
   'lang.kn': 'ಕನ್ನಡ',
-  'lang.hi': 'हिन्दी',
 
   'action.apply': 'Apply',
   'action.cancel': 'Cancel',

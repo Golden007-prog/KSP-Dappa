@@ -689,7 +689,7 @@
 662. URL-persisted shared filters (district / crime head / date-range presets) carried across routes by all nav links, with Clear button
 663. Active-filter chips row with per-chip clearing, labels resolved via lookups
 664. Saved filter views: save/apply/delete named filter combos from the FilterBar Views sheet
-665. Live API health pill polling every 60s (Live / Checking / API down); dot-only variant on mobile
+665. Topbar API health pill — RETIRED 27 Aug 2026 (removed along with the Hindi locale; /healthz is still read by the About page provenance panel)
 666. Live active-alerts count badge (clamped at 99+) on Alerts nav items, pulse dots on collapsed sidebar and mobile More tab
 667. Document title sync per route with (N) active-alert prefix
 668. Offline/online connectivity banner with transient back-online confirmation

@@ -1,4 +1,4 @@
-// Language switch — English · ಕನ್ನಡ · हिन्दी. State lives in LanguageProvider
+// Language switch — English · ಕನ್ನಡ. State lives in LanguageProvider
 // (lib/i18n.jsx), which persists to localStorage, sets <html lang> and swaps
 // the number/date formatting locale.
 // Each option renders in its OWN script so the choice is legible to a reader

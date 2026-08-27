@@ -1,5 +1,5 @@
 // Alerts triage console + Weekly Intelligence Brief (Reports / PrintBrief).
-// English is the source of truth: kn/hi carry the SAME key set. Keys are flat
+// English is the source of truth: kn carries the SAME key set. Keys are flat
 // and namespaced by filename, so 'title' below answers t('alerts.title').
 export default {
   // ── /alerts — page chrome ────────────────────────────────────────────────

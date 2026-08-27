@@ -1,6 +1,6 @@
 // /about — challenge-coverage matrix.
 //
-// The six scored capability areas keep their trilingual titles and summaries
+// The six scored capability areas keep their translated (en + kn) titles and summaries
 // from the copilot namespace (they were written for this page and are already
 // translated). What is new is the evidence layered on top, straight from
 // GET /meta/challenge: the highlights the backend claims for each area, the

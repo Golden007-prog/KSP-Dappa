@@ -7,8 +7,8 @@
 import { useUiStore } from '../../lib/store.js';
 import { useT } from '../../lib/i18n.jsx';
 
-// Labels/hints are translation keys — the chip text must stay short in all
-// three scripts, so the wording lives in locales/<lang>/geointel.js.
+// Labels/hints are translation keys — the chip text must stay short in both
+// scripts, so the wording lives in locales/<lang>/geointel.js.
 const LAYERS = [
   { key: 'choropleth', label: 'geointel.layers.choropleth' },
   { key: 'heat', label: 'geointel.layers.heat' },

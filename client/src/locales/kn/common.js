@@ -28,7 +28,6 @@ export default {
 
   'shell.search': 'ಹುಡುಕಿ ಅಥವಾ ನೇರವಾಗಿ ಹೋಗಿ…',
   'shell.commandPalette': 'ಕಮಾಂಡ್ ಪ್ಯಾಲೆಟ್',
-  'shell.live': 'ಲೈವ್',
   'shell.offline': 'ಆಫ್‌ಲೈನ್',
   'shell.degraded': 'ಕುಂಠಿತ',
   'shell.updatedJustNow': 'ಈಗಷ್ಟೇ ನವೀಕರಿಸಲಾಗಿದೆ',
@@ -54,7 +53,6 @@ export default {
   'lang.changed': 'ಭಾಷೆ {lang} ಗೆ ಬದಲಾಗಿದೆ',
   'lang.en': 'English',
   'lang.kn': 'ಕನ್ನಡ',
-  'lang.hi': 'हिन्दी',
 
   'action.apply': 'ಅನ್ವಯಿಸಿ',
   'action.cancel': 'ರದ್ದುಗೊಳಿಸಿ',

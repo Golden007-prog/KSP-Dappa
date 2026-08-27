@@ -21,7 +21,7 @@ import { fmtCompact, fmtNum } from '../../lib/format.js';
 import { useI18n } from '../../lib/i18n.jsx';
 
 // `slug` keeps the CSV filename stable across languages (slug() would drop a
-// Kannada/Devanagari label entirely); labelKey/shortKey resolve at render time.
+// Kannada label entirely); labelKey/shortKey resolve at render time.
 const METRICS = [
   { key: 'urbanPct', labelKey: 'urbanPct', shortKey: 'urbanPctShort', slug: 'urban' },
   { key: 'literacyPct', labelKey: 'literacyPct', shortKey: 'literacyPctShort', slug: 'literacy' },

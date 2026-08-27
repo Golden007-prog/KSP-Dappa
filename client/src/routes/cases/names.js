@@ -3,7 +3,7 @@
 //
 // The /cases list payload carries names only — no lookup ids
 // (functions/dappa_api/lib/routes/cases.js listRow) — while the shared data
-// dictionaries (locales/{kn,hi}/data.js) are keyed by id. So we build a
+// dictionary (locales/kn/data.js) is keyed by id. So we build a
 // name→id reverse index from /meta/lookups once and hand the id to tName().
 // English is a pass-through, and an unresolved name falls back to itself, so a
 // lookup miss degrades to the API string rather than to a blank cell.

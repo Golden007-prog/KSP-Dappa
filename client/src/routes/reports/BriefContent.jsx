@@ -11,7 +11,7 @@
 //                repeating print footer text, and (confidential) a diagonal
 //                print watermark
 // Every heading, column and note is translated: the brief is an official
-// document, so a Kannada or Hindi reader gets a fully native page.
+// document, so a Kannada reader gets a fully native page.
 import { cloneElement } from 'react';
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../../lib/format.js';
 import { useLookups } from '../../lib/api.js';

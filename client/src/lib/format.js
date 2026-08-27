@@ -1,4 +1,4 @@
-// KSP DAPPA — shared value formatters, locale-aware (English · ಕನ್ನಡ · हिन्दी).
+// KSP DAPPA — shared value formatters, locale-aware (English · ಕನ್ನಡ).
 //
 // The active locale is module state set by LanguageProvider (setFormatLocale)
 // rather than a per-call argument: these helpers are called from ~150 files and
@@ -9,15 +9,14 @@
 // not 4,523,678). ICU's kn-IN locale groups in Western thousands and its
 // compact notation says "ಮಿ" (million), neither of which matches how Kannada
 // newspapers or KSP reports write numbers, so Kannada borrows en-IN grouping
-// and uses hand-written ಸಾವಿರ / ಲಕ್ಷ / ಕೋಟಿ suffixes. hi-IN gets both right
-// natively (45,23,678 and "45.2 लाख") and is used as-is.
+// and uses hand-written ಸಾವಿರ / ಲಕ್ಷ / ಕೋಟಿ suffixes.
 import { format, parse } from 'date-fns';
 
 let activeLang = 'en';
 
 /** Locale used for number/date output. Called by LanguageProvider. */
 export function setFormatLocale(lang) {
-  activeLang = ['en', 'kn', 'hi'].includes(lang) ? lang : 'en';
+  activeLang = ['en', 'kn'].includes(lang) ? lang : 'en';
   intFmt = null; compactFmt = null; // rebuilt lazily on next use
 }
 
@@ -25,14 +24,15 @@ export function getFormatLocale() {
   return activeLang;
 }
 
-/** Number-grouping locale: Kannada falls back to en-IN for lakh/crore groups. */
+/** Number-grouping locale: en-IN for both languages — Kannada borrows its
+ * lakh/crore grouping (see above), so there is nothing to switch on. */
 function numberLocale() {
-  return activeLang === 'hi' ? 'hi-IN' : 'en-IN';
+  return 'en-IN';
 }
 
-/** Date locale: all three have correct ICU month/weekday names. */
+/** Date locale: both have correct ICU month/weekday names. */
 function dateLocale() {
-  return activeLang === 'kn' ? 'kn-IN' : activeLang === 'hi' ? 'hi-IN' : 'en-IN';
+  return activeLang === 'kn' ? 'kn-IN' : 'en-IN';
 }
 
 let intFmt = null;
@@ -52,7 +52,7 @@ const KN_UNITS = [
   [1000, 'ಸಾವಿರ'],
 ];
 
-/** 4523678 → '45.2L' (en) · '45.2 ಲಕ್ಷ' (kn) · '45.2 लाख' (hi). */
+/** 4523678 → '45.2L' (en) · '45.2 ಲಕ್ಷ' (kn). */
 export function fmtCompact(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '—';
@@ -86,7 +86,7 @@ export function fmtPct(v, { digits = 1, sign = false, fraction = false } = {}) {
   return `${s}${n.toFixed(digits)}%`;
 }
 
-/** '2026-07' → 'Jul 26' · 'ಜುಲೈ 26' · 'जुल॰ 26'. Falls back to the input. */
+/** '2026-07' → 'Jul 26' · 'ಜುಲೈ 26'. Falls back to the input. */
 export function monthLabel(ym) {
   const s = String(ym ?? '');
   if (activeLang === 'en') {

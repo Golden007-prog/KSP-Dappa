@@ -101,7 +101,7 @@ export default function Trends() {
   const monthNames = useMemo(() => monthShortNames(t), [t]);
   const dayLabel = useMemo(() => (label, i) => dayName(label, i, t), [t]);
   // /trends/monthly series arrive keyed by head NAME only, so the reference id
-  // (and with it the Kannada/Hindi name) has to come back via the lookup list.
+  // (and with it the Kannada name) has to come back via the lookup list.
   const lookups = useLookups();
   const headIdByName = useMemo(() => new Map(
     (lookups.data?.crimeHeads || []).map((h) => [h.headName, h.crimeHeadId]),

@@ -37,7 +37,7 @@ function endedAgo(iso, t) {
   return t('alerts.card.endedMonths', { n: Math.round(days / 30) });
 }
 
-const LOCALE = { en: 'en-IN', kn: 'kn-IN', hi: 'hi-IN' };
+const LOCALE = { en: 'en-IN', kn: 'kn-IN' };
 const snoozeLabel = (ts) => {
   try {
     return new Date(ts).toLocaleString(LOCALE[getFormatLocale()] || 'en-IN', {

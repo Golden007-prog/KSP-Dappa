@@ -1,5 +1,5 @@
 // Case Explorer (/cases) + FIR detail (/cases/:id) strings.
-// Source of truth for the key set — kn/cases.js and hi/cases.js mirror it 1:1.
+// Source of truth for the key set — kn/cases.js mirrors it 1:1.
 // Generic buttons/states (Retry, Clear, Apply, Loading…) come from `common`.
 export default {
   // ——— explorer page shell ———

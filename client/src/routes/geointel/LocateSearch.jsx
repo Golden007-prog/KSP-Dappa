@@ -5,7 +5,7 @@
 // empty box shows the last five picks (localStorage). Keyboard: ↑/↓ move,
 // Enter picks, Esc closes. Dependency-free (no portal — sits inside a map
 // overlay pill). `inputId` lets the route's '/' shortcut focus this input.
-// Under kn/hi the unit list shows translated names but still matches the
+// Under kn the unit list shows translated names but still matches the
 // English spelling too, so a Latin-keyboard search keeps working.
 import { useMemo, useRef, useState } from 'react';
 import { CITY_UNIT_IDS, UNITS, unitInfo } from '../../lib/districtGeoMap.js';
@@ -41,7 +41,7 @@ export default function LocateSearch({ stations = [], onPickUnit, onPickStation,
       kind: 'unit',
       id: `u-${u.unitId}`,
       label: tName('districts', u.unitId, u.name),
-      // Latin spelling stays searchable even when the label is in kn/hi.
+      // Latin spelling stays searchable even when the label is in Kannada.
       alt: u.name,
       sub: CITY_UNIT_IDS.includes(u.unitId) ? t('geointel.locate.cityUnit') : t('geointel.locate.policeDistrict'),
       payload: u,

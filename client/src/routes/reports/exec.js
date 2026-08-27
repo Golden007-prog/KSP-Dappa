@@ -3,7 +3,7 @@
 // identical), plus the officer-edited override persisted in localStorage.
 // The composed text degrades gracefully: any section that hasn't loaded (or
 // errored) simply contributes no sentence. Every sentence is a translated
-// template so the printed brief reads natively in all three languages.
+// template so the printed brief reads natively in both languages.
 import { fmtInt, fmtNum, dateLabel, monthLabel } from '../../lib/format.js';
 import { translate } from '../../lib/i18n.jsx';
 import {
@@ -54,7 +54,8 @@ export function composeExecutiveSummary(brief, t = en, tName = passThrough) {
     }
     const det = Number(k.detectionRate);
     if (Number.isFinite(det)) s += t('alerts.exec.detection', { pct: det.toFixed(1) });
-    // Sentence terminator is per-language: '.' in English/Kannada, danda in Hindi.
+    // Sentence terminator comes from the dictionary (alerts.exec.stop) so a locale
+    // can swap it — a danda, for instance — without touching this code.
     parts.push(`${s}${t('alerts.exec.stop')}`);
   }
 
@@ -81,7 +82,7 @@ export function composeExecutiveSummary(brief, t = en, tName = passThrough) {
     const sub = tName('crimeHeads', hs.crimeHeadId, hs.subHeadName);
     // Non-empty only when tName resolved a translated head, i.e. hotspotLabel
     // composed the label and already names the crime head — so the English
-    // parenthetical is kept and the kn/hi duplicate is dropped.
+    // parenthetical is kept and the Kannada duplicate is dropped.
     const composedHead = tName('crimeHeads', hs.crimeHeadId, '');
     parts.push(t('alerts.exec.hotspot', {
       label: hotspotLabel(hs, t, tName),

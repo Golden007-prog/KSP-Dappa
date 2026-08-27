@@ -26,7 +26,7 @@ export function selectOpenAlerts(brief, n = 8) {
 
 /** Display label for one hotspot cluster.
  * The API label is free English text ("Vehicle Theft cluster 7"), so it is used
- * verbatim in English. In Kannada/Hindi tName resolves the crime head and we
+ * verbatim in English. In Kannada tName resolves the crime head and we
  * compose "<head> — <cluster N>" instead, keeping the printed brief in script.
  * tName returns '' for English (and for ids absent from the map), which is the
  * signal to fall back to the API label. */

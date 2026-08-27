@@ -340,17 +340,15 @@ html[data-motion='reduce'] { scroll-behavior: auto !important; }
   a { color: #111827 !important; text-decoration: none !important; }
 }
 
-/* Indic script tuning — Kannada and Devanagari carry taller ascenders/matras
+/* Indic script tuning — Kannada carries taller ascenders/matras
    than Latin, so the Inter-tuned default leading clips them in dense tables and
    chips. Applied on the root by html[lang]; Tailwind utilities still win per
    element. `contents` keeps the i18n remount wrapper layout-neutral. */
-html[lang='kn'] body,
-html[lang='hi'] body {
+html[lang='kn'] body {
   line-height: 1.65;
 }
-html[lang='kn'] .num,
-html[lang='hi'] .num {
-  /* keep tabular figures Latin-tuned: Indian digits stay Latin in all three
+html[lang='kn'] .num {
+  /* keep tabular figures Latin-tuned: Indian digits stay Latin in both
      locales, and stat columns must still align */
   line-height: 1.4;
 }

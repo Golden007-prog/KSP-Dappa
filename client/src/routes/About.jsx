@@ -27,7 +27,7 @@
 // namespace under `about.*`; everything added for the introspection panels
 // lives in the `about` namespace. Product names (Catalyst services,
 // libraries), file paths, table names, endpoint paths, env vars and key glyphs
-// stay verbatim in all three languages — translating them would make the page
+// stay verbatim in both languages — translating them would make the page
 // unusable to a judge checking the submission against Catalyst. Text that the
 // API itself returns (service reasons, model names, capability highlights) is
 // English wherever it appears, and the page says so.

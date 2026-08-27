@@ -774,7 +774,7 @@ happens.
 | Check | Command | Result on 26 Jul 2026 |
 |---|---|---|
 | Endpoint contracts (all 66 routes, auth, privacy guardrail) | `node functions/dappa_api/test/run.mjs` | **623 passed, 0 failed** |
-| Trilingual key parity | `node scripts/check_i18n.mjs` | **4,590 English keys × kn + hi, all present** |
+| Bilingual key parity (English · Kannada) | `node scripts/check_i18n.mjs` | **5,285 English keys × kn, all present** (re-measured 27 Aug 2026 after Hindi was retired) |
 | Live smoke test against a deployment | `node scripts/smoke_test.mjs <BASE_URL>` | run before the demo |
 | Data completeness per table vs expected | `GET /server/dappa_api/api/v1/healthz?nocache=1` | `ChargesheetDetails` 39.8%, others full |
 | Caste/religion never reaches the UI or an export | contract suite — privacy guardrail case on `GET /cases/:id` | passing |
@@ -794,8 +794,8 @@ are internal helpers of other exports in the same file); the contract suite run;
 the data volumes checked against `pipeline/out/*.csv`; and the deployed feature
 flags read from `catalyst-config.json`.
 
-The app is **207 client components across 52,200 lines** (excluding the ~14,000
-lines of trilingual locale data) plus a **7,046-line Catalyst function set**. The
+The app is **207 client components across 52,200 lines** (excluding the ~12,300
+lines of bilingual locale data) plus a **7,046-line Catalyst function set**. The
 counts in this document are not inflated relative to the code.
 
 *Last audited against the repository state of 26 July 2026.*

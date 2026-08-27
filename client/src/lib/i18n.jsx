@@ -1,4 +1,4 @@
-// Trilingual UI (English · ಕನ್ನಡ · हिन्दी) — zero-dependency i18n core.
+// Bilingual UI (English · ಕನ್ನಡ) — zero-dependency i18n core.
 //
 // Dictionaries live in src/locales/<lang>/<namespace>.js and are picked up
 // automatically by import.meta.glob, so a route owner adds a namespace file
@@ -11,7 +11,7 @@
 // file fails the BUILD instead of white-screening a judge mid-demo.
 //
 // Script support is font-stack-only (tailwind.config.js) — Nirmala UI on
-// Windows, Noto Sans Kannada/Devanagari on Android/Linux, Sangam MN on Apple.
+// Windows, Noto Sans Kannada on Android/Linux, Kannada Sangam MN on Apple.
 // No webfont downloads: the organizer rules forbid external network calls and
 // per-glyph fallback keeps Latin text on Inter regardless of language.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
@@ -20,14 +20,13 @@ import { setFormatLocale } from './format.js';
 export const LANGS = [
   { code: 'en', label: 'English', native: 'English', short: 'EN' },
   { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ', short: 'ಕ' },
-  { code: 'hi', label: 'Hindi', native: 'हिन्दी', short: 'हि' },
 ];
 export const LANG_CODES = LANGS.map((l) => l.code);
 const STORAGE_KEY = 'dappa-lang';
 
 const modules = import.meta.glob('../locales/*/*.js', { eager: true });
 
-/** { en: {'dashboard.title': '…'}, kn: {…}, hi: {…} } */
+/** { en: {'dashboard.title': '…'}, kn: {…} } */
 const DICTS = (() => {
   const out = {};
   for (const code of LANG_CODES) out[code] = {};

@@ -1,7 +1,7 @@
 // App shell — police intelligence command center.
 // Desktop (md+): collapsible grouped sidebar + translucent sticky topbar
 // (command-palette trigger, IST clock, refresh-with-freshness, copy-link,
-// live API health pill, theme + density controls).
+// theme + density controls).
 // Mobile (<md): slim topbar + 5-tab bottom bar (Dashboard · GeoIntel · Cases ·
 // Predict · More) where More opens a bottom sheet with the remaining routes
 // plus Theme (dark/light/auto) / density / reduce-motion controls.
@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient, useIsFetching } from '@tanstack/react-query';
-import { apiGet, useHealthz, useKpis, useLookups } from '../lib/api.js';
+import { apiGet, useKpis, useLookups } from '../lib/api.js';
 import { filterSearchString, describeFilters, FILTER_KEYS } from '../lib/filters.js';
 import { useUiStore } from '../lib/store.js';
 import { useI18n, useT } from '../lib/i18n.jsx';
@@ -242,30 +242,6 @@ function AlertCountBadge({ count }) {
       <PulseDot />
       {count > 99 ? '99+' : count}
     </span>
-  );
-}
-
-function HealthPill() {
-  const t = useT();
-  const health = useHealthz();
-  const state = health.isError ? 'down' : health.isPending ? 'checking' : 'live';
-  const styles = {
-    live: { dot: 'teal', cls: 'border-teal/40 text-teal', text: t('common.shell.live') },
-    checking: { dot: 'amber', cls: 'border-grid text-muted', text: t('shell.health.checking') },
-    down: { dot: 'red', cls: 'border-signal/40 text-signal', text: t('shell.health.down') },
-  }[state];
-  // dot-only below sm so mobile still gets a liveness signal
-  return (
-    <Tooltip label={t('shell.health.tooltip', { state: styles.text })} position="bottom">
-      <span
-        role="status"
-        aria-label={t('shell.health.aria', { state: styles.text })}
-        className={`inline-flex items-center gap-1.5 rounded-full border bg-panel/60 px-2 sm:px-2.5 py-1 text-[11px] font-medium ${styles.cls}`}
-      >
-        <PulseDot color={styles.dot} />
-        <span className="hidden sm:inline">{styles.text}</span>
-      </span>
-    </Tooltip>
   );
 }
 
@@ -1018,7 +994,6 @@ export default function Layout() {
                 {ICONS.link}
               </button>
             </Tooltip>
-            <HealthPill />
             <LanguageToggle className="hidden lg:inline-flex" variant="compact" />
             <DensityToggle className="hidden md:inline-flex" />
             {zen && (

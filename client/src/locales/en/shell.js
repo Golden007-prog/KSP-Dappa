@@ -25,11 +25,6 @@ export default {
   'nav.collapseAria': 'Collapse navigation',
   'sidebar.version': 'KSP Datathon 2026 · v0.1',
 
-  // ---- API health pill ----
-  'health.checking': 'Checking',
-  'health.down': 'API down',
-  'health.tooltip': 'Catalyst API health: {state}',
-  'health.aria': 'API health: {state}',
   'clock.ist': 'Indian Standard Time',
 
   // ---- refresh / freshness ----
@@ -64,7 +59,7 @@ export default {
   // ---- mobile More sheet ----
   'more.title': 'More views',
   'more.aria': 'More views',
-  'more.language': 'Language · ಭಾಷೆ · भाषा',
+  'more.language': 'Language · ಭಾಷೆ',
 
   'install.done': 'DAPPA installed — launch it from your apps like any native tool.',
 
