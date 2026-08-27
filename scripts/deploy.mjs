@@ -16,6 +16,14 @@
 //
 // Keys present in .env.deploy but absent from catalyst-config.json are added;
 // values are never printed.
+//
+// Two more things the plain CLI gets wrong for this repo:
+//   - client/dist/demo holds ~1,500 static JSON fixtures for the GitHub Pages
+//     demo; the Catalyst web-client zip sanitizer rejects that many files
+//     (ZIPSANITIZER_FILES_COUNT_EXCEEDED), so the folder is moved aside for
+//     the duration of the deploy and restored afterwards.
+//   - `catalyst deploy` exits 0 even when one target fails with an HTTP error,
+//     so the output is scanned and a failed target fails this script.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -56,11 +64,27 @@ if (dryRun) process.exit(0);
 
 for (const k of injected) env[k] = secrets[k];
 fs.writeFileSync(CONFIG, JSON.stringify(config, null, 2) + '\n');
+const DEMO = path.join(ROOT, 'client/dist/demo');
+const DEMO_ASIDE = path.join(ROOT, 'client/.dist-demo-aside');
+let demoMoved = false;
 let status = 1;
 try {
-  const r = spawnSync('catalyst', ['deploy', ...passthrough], { cwd: ROOT, stdio: 'inherit', shell: true });
+  if (fs.existsSync(DEMO)) {
+    if (fs.existsSync(DEMO_ASIDE)) fs.rmSync(DEMO_ASIDE, { recursive: true, force: true });
+    fs.renameSync(DEMO, DEMO_ASIDE);
+    demoMoved = true;
+    console.log('deploy: client/dist/demo moved aside (Pages-only fixtures, not part of the Catalyst client)');
+  }
+  const r = spawnSync('catalyst', ['deploy', ...passthrough], { cwd: ROOT, encoding: 'utf8', shell: true });
+  const out = (r.stdout || '') + (r.stderr || '');
+  process.stdout.write(out);
   status = r.status == null ? 1 : r.status;
+  if (/HTTP Error|DEPLOYMENT FAILED|ZIPSANITIZER|No components deployed/i.test(out) && status === 0) {
+    console.error('deploy: a target reported an error although the CLI exited 0 — treating as failed');
+    status = 1;
+  }
 } finally {
+  if (demoMoved) fs.renameSync(DEMO_ASIDE, DEMO);
   fs.writeFileSync(CONFIG, original);
   const check = fs.readFileSync(CONFIG, 'utf8');
   if (check !== original) { console.error('deploy: FAILED to restore catalyst-config.json — do not commit it'); process.exit(2); }

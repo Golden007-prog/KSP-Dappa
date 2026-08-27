@@ -31,8 +31,7 @@ const ALLOW = {
   ],
   client: [
     '.gitignore', '.vite', 'CONTRACT.md', 'dist', 'index.html', 'node_modules', 'package-lock.json', 'package.json',
-    'postcss.config.js', 'public', 'src', 'tailwind.config.js', 'vite.config.js',
-  ],
+    'postcss.config.js', 'public', 'src', 'tailwind.config.js', 'vite.config.js',, '.dist-demo-aside'],
   'functions/dappa_api': [
     '.env', '.env.deploy', '.gitignore', 'assets', 'catalyst-config.json', 'index.js', 'lib', 'node_modules', 'package-lock.json', 'package.json', 'test',
   ],

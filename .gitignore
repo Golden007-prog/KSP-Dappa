@@ -63,3 +63,6 @@ video/cards/
 video/vo/
 video/music/
 video/out/
+
+# transient: scripts/deploy.mjs moves client/dist/demo here during a Catalyst deploy
+client/.dist-demo-aside/
