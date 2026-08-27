@@ -119,3 +119,35 @@ and CI step; move the Playwright dependency under `video/`. 1.4 Promote to
 Production (console), re-point `APP_BASE_URL`. 1.5 Finish the Hindi retirement
 (zia.js glossary/langs, servicemap wording, screenshot, deck script). Plus:
 blank and rotate `QUICKML_STATUS_ENDPOINT_KEY`; add a CI test job.
+
+## 9. Tag calibration (Phase 1.1, 27 Aug 2026)
+
+Every `FEATURES.md` entry was tagged under the Round-2 counting rule by six
+independent passes (135 entries each) and the post-July additions were
+catalogued from `git diff 87bd651..HEAD` (143 proposed, 94 admitted after
+sampling). Four skeptics then sampled the result without seeing each other:
+
+| Sample | Entries | Disagreements | Rate | Direction |
+|---|---:|---:|---:|---|
+| infra-A (every 9th `[infra]` entry) | 61 | 1 | 1.6 % | one per-case lag analytic (126) wrongly infra — its three siblings (125, 174, 175) corrected with it |
+| infra-B (offset sample of `[infra]`) | 61 | 0 | 0 % | none |
+| scored-A (every 6th scored entry) | 60 | 10 | 16.7 % | 8 double-counts → infra, 2 under-tags (532, 902) |
+| scored-B (offset sample of scored) | 59 | 10 | 16.9 % | 7 double-counts → infra, 3 under-tags (566, 789, 476), 1 wrong capability (164) |
+
+The double-counts shared one shape — a selector, filter, cross-filter,
+deep-link, playback control, provenance badge, methodology text or shared
+component inheriting the tag of the analytic it sits next to — so a full
+sweep of all 345 scored entries looked for exactly that class (3 finders,
+one adversarial verifier each). 24 proposals, 24 confirmed, all demoted. Three
+components built on 26 July (`SocioBoard.jsx`, `SocioContext.jsx`, the
+GeoIntel density/urban/bivariate modes) were found to be in neither audit
+and were added as entries 903-905.
+
+Net effect on the derived counts (before calibration → after):
+C1 142 → 134 · C2 87 → 81 · C3 86 → 81 · C4 89 → 85 · C5 46 → 44 · C6 61 → 52;
+scored entries 355 → 324 (33 backend-only), infrastructure 546 → 580,
+attributions 511 → 477. The residual error after calibration is unknown but
+the sampled rate in the demoted direction was ~13 % before the sweep, so the
+±8 tolerance stated in CAPABILITIES.md is a floor, not a guarantee — which is
+why the document rounds nothing up.
+

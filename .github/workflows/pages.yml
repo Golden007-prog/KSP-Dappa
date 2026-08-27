@@ -19,7 +19,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Every gate the Round-2 plan names runs before anything is published:
+  # tree hygiene, the 800-check API contract suite, the i18n parity gate,
+  # the generated-service-table check and the capability-count consistency
+  # check. A red gate blocks the Pages deploy.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/dappa_api/package-lock.json
+      - name: Tree hygiene (no stray shell-artefact files)
+        run: node scripts/check_tree_hygiene.mjs
+      - name: Install API dependencies
+        working-directory: functions/dappa_api
+        run: npm ci
+      - name: API contract suite
+        working-directory: functions/dappa_api
+        run: npm test
+      - name: i18n key parity (English ↔ Kannada)
+        run: node scripts/check_i18n.mjs --quiet
+      - name: README service table matches servicemap.js
+        run: node scripts/gen_service_table.mjs --check
+      - name: CONTRACTS.md endpoint and flag tables match the code
+        run: node scripts/gen_contracts.mjs --check
+      - name: Capability counts agree across CAPABILITIES.md / README / FEATURES
+        run: node scripts/check_capabilities.mjs
+
   build-and-deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages

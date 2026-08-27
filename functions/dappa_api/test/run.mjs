@@ -140,10 +140,11 @@ check('buildZCQL LIMIT page 3 start row', buildZCQL({ table: 'T', limit: { offse
 // Pure helpers behind the new service paths.
 {
   check('glossary translates a domain term to Kannada', glossaryLookup('Chain Snatching', 'kn') === 'ಸರ ಕಳ್ಳತನ');
-  check('glossary translates a domain term to Hindi', glossaryLookup('Vehicle Theft', 'hi') === 'वाहन चोरी');
+  check('glossary translates a second domain term to Kannada', glossaryLookup('Vehicle Theft', 'kn') === 'ವಾಹನ ಕಳ್ಳತನ');
+  check('glossary has no Hindi values (locale retired 27 Aug 2026)', glossaryLookup('Vehicle Theft', 'hi') === null);
   check('glossary misses return null (never a guess)', glossaryLookup('quantum widget', 'kn') === null);
-  check('glossary carries kn AND hi for every entry',
-    Object.values(TRANSLATION_GLOSSARY).every((v) => v.kn && v.hi && v.kn !== v.hi));
+  check('glossary carries a Kannada value for every entry and no Hindi leftovers',
+    Object.values(TRANSLATION_GLOSSARY).every((v) => v.kn && v.hi === undefined));
   check('glossary covers all 8 crime heads',
     ['crimes against body', 'crimes against women', 'property crimes', 'economic offences', 'cyber crimes', 'public order', 'narcotics', 'others']
       .every((k) => TRANSLATION_GLOSSARY[k]));
@@ -982,7 +983,7 @@ for (const utterance of CANNED_UTTERANCES) {
   check('translate never invents a translation', items[2].ok === false && items[2].engine === 'passthrough'
     && items[2].translated === 'quantum widget');
   const trHi = await post('/zia/translate', { text: 'Vehicle Theft', target: 'hi' });
-  check('translate to Hindi', trHi.json.data.items[0].translated === 'वाहन चोरी' && trHi.json.data.target === 'hi');
+  check('translate: an unsupported target (hi) falls back to Kannada', trHi.json.data.target === 'kn' && trHi.json.data.items[0].translated === 'ವಾಹನ ಕಳ್ಳತನ');
   const trDefault = await post('/zia/translate', { text: 'Murder' });
   check('translate defaults to Kannada', trDefault.json.data.target === 'kn' && trDefault.json.data.items[0].translated === 'ಕೊಲೆ');
   const trMany = await post('/zia/translate', { texts: Array.from({ length: 51 }, () => 'Theft') });
@@ -1591,8 +1592,8 @@ server.close();
     && fxCircuit.json.data.steps.every((s) => s.status === 'success'));
   const fxOcr = await post('/zia/ocr', { text: 'gold chain snatched by two persons on a two-wheeler' }, null, DOWN);
   check('FIXTURE ocr fallback works', fxOcr.status === 200 && fxOcr.json.data.moTags.length > 0);
-  const fxTr = await post('/zia/translate', { text: 'Robbery', target: 'hi' }, null, DOWN);
-  check('FIXTURE translate works from the glossary', fxTr.status === 200 && fxTr.json.data.items[0].translated === 'लूट');
+  const fxTr = await post('/zia/translate', { text: 'Robbery', target: 'kn' }, null, DOWN);
+  check('FIXTURE translate works from the glossary', fxTr.status === 200 && fxTr.json.data.items[0].translated === 'ದರೋಡೆ');
   const fxMe = await get('/auth/me', DOWN);
   check('FIXTURE auth/me stays anonymous-readable', fxMe.status === 200 && fxMe.json.data.anonymous === true);
   resetArtifacts();

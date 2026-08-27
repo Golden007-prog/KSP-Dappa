@@ -9,11 +9,23 @@ upgrade fallbacks to live Catalyst AI, never to unblock the demo.
 CLI login lands on) → sign in as `basuoikantik@gmail.com` → project
 **Project-Rainfall** (id `50643000000013024`, org `60079891305`).
 
-**Setting env vars on `dappa_api`** (referenced by every step below):
-Console → Project-Rainfall → left nav **Develop ▸ Functions** → click
-**dappa_api** → **Configuration** (gear) tab → **Environment Variables** →
-**+ Add** → enter key/value → **Save**. If a changed value does not take effect
-on the next request, redeploy once: `catalyst deploy` from the repo root.
+**Setting env vars on `dappa_api`** (referenced by every step below). Two
+places must agree, because `catalyst deploy` ships the tracked
+`functions/dappa_api/catalyst-config.json` verbatim and would blank whatever
+the console holds:
+
+1. Put the real value in `functions/dappa_api/.env.deploy` (gitignored,
+   `KEY=value` per line) and deploy with `node scripts/deploy.mjs` — the
+   wrapper injects the values for the duration of the deploy and restores the
+   tracked file. **Never** paste a real value into `catalyst-config.json`.
+2. Optionally also set it in the console for immediate effect without a
+   redeploy: Console → Project-Rainfall → left nav **Develop ▸ Functions** →
+   **dappa_api** → **Configuration** (gear) → **Environment Variables** →
+   **+ Add** → **Save**. The next deploy must still carry the value (step 1).
+
+Since 27 Aug 2026 the key names below match what `lib/quickml.js`,
+`lib/zia.js` and `lib/servicemap.js` actually read (`requires` fields);
+`CATALYST_QUICKML_KEY`, which no code reads, is gone.
 
 ---
 
@@ -33,8 +45,11 @@ on the next request, redeploy once: `catalyst deploy` from the repo root.
    Screenshot → `docs/screenshots/console_quickml_metrics.png` (deck slide 12).
 7. **Deploy** the trained version → copy the **endpoint URL** and **API key**.
 
-> **Set on `dappa_api`:** `QUICKML_OUTCOME_URL=<endpoint URL>`,
-> `CATALYST_QUICKML_KEY=<API key>` · **Flip:** `FEATURE_QUICKML=on`
+> **Set on `dappa_api`:** `QUICKML_ENDPOINT_KEY=<deployment endpoint key>` (SDK
+> path) or `QUICKML_OUTCOME_URL=<endpoint URL>` (REST path), plus
+> `QUICKML_API_KEY=<API key>` · **Flip:** `FEATURE_QUICKML=on`.
+> The case-status Random Forest already deployed on 26 Jul is served through
+> `QUICKML_STATUS_ENDPOINT_KEY`, which lives in `.env.deploy` only.
 
 ## 2. QuickML — LLM Serving + RAG (Ask-DAPPA copilot)
 
@@ -48,8 +63,9 @@ on the next request, redeploy once: `catalyst deploy` from the repo root.
    key from step 1 is reused).
 5. Screenshot the deployed endpoint page → `docs/screenshots/console_quickml_llm.png`.
 
-> **Set on `dappa_api`:** `QUICKML_LLM_URL=<endpoint URL>` (key: reuse
-> `CATALYST_QUICKML_KEY`) · **Flip:** `FEATURE_QUICKML_LLM=on`
+> **Set on `dappa_api`:** `QUICKML_LLM_URL=<endpoint URL>` and
+> `QUICKML_API_KEY=<API key>` (the same key as step 1 unless a separate one is
+> issued) · **Flip:** `FEATURE_QUICKML_LLM=on`
 > (copilot badge switches from "Deterministic parser" to "QuickML LLM · RAG")
 
 ## 3. Zia Text Analytics (NER/keywords/sentiment on BriefFacts)
@@ -137,11 +153,81 @@ on the next request, redeploy once: `catalyst deploy` from the repo root.
 
 > **Set on `dappa_api`:** nothing · **Flip:** nothing
 
+## 11. Data Store — mark the search columns full-text searchable
+
+`lib/search.js` calls `search().executeSearchQuery` on every `/search/cases`
+request and falls through to ZCQL `LIKE` until the console marks the columns.
+
+1. Console → Project-Rainfall → **Cloud Scale ▸ Data Store** → table
+   **CaseMaster** → column settings → mark **BriefFacts**, **CrimeNo**,
+   **CaseNo** as *Searchable* (full-text).
+2. Same for **OffenderProfile**: **CanonicalName**, **AliasesJson**,
+   **MOTagsJson**.
+3. `GET /search/cases?q=chain` — `meta.source` changes from `zcql-like` to the
+   search engine.
+
+> **Set on `dappa_api`:** nothing · **Flip:** `FEATURE_SEARCH` is already on
+
+## 12. Circuits — `dappa_nightly_refresh`
+
+1. Console → **Serverless ▸ Circuits** → **Create Circuit** → name
+   `dappa_nightly_refresh`.
+2. Add the steps as discrete function invocations of `dappa_api`'s circuit
+   handler in this order: `aggregate` → `hotspots` → `forecasts` →
+   `anomalies` → `network` → `notify` (each retryable; `lib/circuits.js`
+   maps the step name to the in-process worker).
+3. Save; copy the **Circuit ID** from the circuit's detail page.
+
+> **Set on `dappa_api`:** `CIRCUIT_ID=<circuit id>` · **Flip:**
+> `FEATURE_CIRCUIT` is already on. `POST /admin/circuit/nightly-refresh` then
+> returns the execution id and `GET /admin/circuit/:executionId` the per-step
+> status.
+
+## 13. Zia — Face Analytics + Identity Scanner (face identification, Phase 6)
+
+1. Console → left nav **Zia** → **Face Analytics** → Enable (detection,
+   landmarks, age/emotion/gender — used only as the input quality gate).
+2. Console → **Zia** → **Identity Scanner** → Enable **E-KYC face comparison**
+   (1:1 comparison of two images with a confidence score; all data centres).
+   Document processing (Aadhaar/PAN) is **not** enabled — DAPPA never reads
+   identity documents.
+3. Console → **Cloud Scale ▸ Stratus** → bucket `dappa` → folder
+   `face-gallery/` (generated, synthetic faces only).
+
+> **Set on `dappa_api`:** nothing · **Flip:** `FEATURE_FACE=on`
+
+## 14. Production environment
+
+`catalyst deploy` from the CLI always targets **Development**. Production is
+a console-created environment, and — per the Catalyst docs — only **code and
+metadata** migrate: Data Store tables come across **empty**, Cache and File
+Store contents do not move, and resources cannot be created inside
+Production afterwards.
+
+1. Console → project header → **Deploy to Production** → Settings ▸
+   Environments ▸ Deployments → **Deploy** → *Yes, Proceed* (requires a payment
+   method; the Basic plan is active since 25 Aug 2026).
+2. Load the data into Production: `node scripts/bulk_load.js --production`
+   (resumable, `catalyst ds:import --production` per table), then
+   `node scripts/verify_load.mjs --production --counts-only`.
+3. Set the Production function's env vars (same list as Development) — the
+   migration copies configuration, but confirm each value in **Functions ▸
+   dappa_api ▸ Configuration** under the *Production* environment switch.
+4. Re-point `APP_BASE_URL` to
+   `https://project-rainfall-60079891305.catalystserverless.in/app`, redeploy
+   to Development with `node scripts/deploy.mjs`, then **Deploy to Production**
+   again so the code change migrates.
+5. `node scripts/warmup.mjs https://project-rainfall-60079891305.catalystserverless.in`
+   and `node scripts/smoke_test.mjs <same URL>`; walk every route in an
+   incognito window.
+
+> **Set on `dappa_api`:** `APP_BASE_URL=<production /app URL>` · **Flip:** nothing
+
 ---
 
 ## After flipping any flag
 
-1. Redeploy if needed: `catalyst deploy`.
+1. Redeploy if needed: `node scripts/deploy.mjs` (wraps `catalyst deploy`).
 2. Re-run the smoke suite against the deployed URL:
    `node scripts/smoke_test.mjs <URL>` — every endpoint must stay green; a
    flipped flag changes `meta.source` from `fallback-local` to live, never the

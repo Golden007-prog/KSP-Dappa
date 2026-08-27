@@ -54,6 +54,8 @@ export default {
   'lang.changed': 'Language set to {lang}',
   'lang.en': 'English',
   'lang.kn': 'ಕನ್ನಡ',
+  'voice.listen': 'Read aloud ({lang})',
+  'voice.stop': 'Stop reading',
 
   'action.apply': 'Apply',
   'action.cancel': 'Cancel',

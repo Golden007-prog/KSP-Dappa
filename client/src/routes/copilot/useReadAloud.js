@@ -1,15 +1,22 @@
-// /copilot — answer read-aloud via the SpeechSynthesis API (offline, no
-// network). `supported` is false where the API is missing — the Listen button
-// simply doesn't render there. One utterance at a time: starting a new answer
-// cancels the previous one, and unmount cancels everything so speech never
-// outlives the screen.
+// Read-aloud via the browser SpeechSynthesis API (offline, no network; see
+// lib/voice.js and docs/DECISIONS.md D-014). `supported` is true only when the
+// device has a voice for the ACTIVE UI language — Kannada UI needs a kn-IN
+// voice, English UI an English voice — so a caller hides its button rather
+// than reading Kannada text with an English voice. One utterance at a time:
+// starting a new one cancels the previous, and unmount cancels everything so
+// speech never outlives the screen.
 import { useCallback, useEffect, useState } from 'react';
+import { useI18n } from '../../lib/i18n.jsx';
+import { hasSynthesis, speechLangFor, watchVoice } from '../../lib/voice.js';
 
 const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
-const CAN_SPEAK = !!synth && typeof window !== 'undefined' && typeof window.SpeechSynthesisUtterance === 'function';
 
 export default function useReadAloud() {
+  const { lang } = useI18n();
+  const [voice, setVoice] = useState(null);
   const [speakingId, setSpeakingId] = useState(null);
+
+  useEffect(() => watchVoice(lang, setVoice), [lang]);
 
   const stop = useCallback(() => {
     try { synth?.cancel(); } catch { /* noop */ }
@@ -18,15 +25,16 @@ export default function useReadAloud() {
 
   /** Toggle reading `text` for message `id`: same id stops, new id switches. */
   const toggle = useCallback((id, text) => {
-    if (!CAN_SPEAK) return;
+    if (!hasSynthesis() || !voice) return;
     if (speakingId === id) {
       stop();
       return;
     }
     try { synth.cancel(); } catch { /* noop */ }
     const u = new window.SpeechSynthesisUtterance(String(text || ''));
-    u.lang = 'en-IN';
-    u.rate = 1.03;
+    u.voice = voice;
+    u.lang = voice.lang || speechLangFor(lang);
+    u.rate = lang === 'kn' ? 0.95 : 1.03;
     const clear = () => setSpeakingId((cur) => (cur === id ? null : cur));
     u.onend = clear;
     u.onerror = clear;
@@ -36,11 +44,11 @@ export default function useReadAloud() {
     } catch {
       setSpeakingId(null);
     }
-  }, [speakingId, stop]);
+  }, [speakingId, stop, voice, lang]);
 
   useEffect(() => () => {
     try { synth?.cancel(); } catch { /* noop */ }
   }, []);
 
-  return { supported: CAN_SPEAK, speakingId, toggle, stop };
+  return { supported: hasSynthesis() && !!voice, voiceName: voice ? voice.name : null, speechLang: speechLangFor(lang), speakingId, toggle, stop };
 }

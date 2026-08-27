@@ -58,7 +58,7 @@ export default {
   'send.label': 'ಕೇಳಿ',
   'send.pending': 'ಯೋಚಿಸುತ್ತಿದೆ…',
 
-  'voice.startTip': 'ಧ್ವನಿಯಿಂದ ಕೇಳಿ (en-IN)',
+  'voice.startTip': 'ಧ್ವನಿಯಿಂದ ಕೇಳಿ ({lang})',
   'voice.stopTip': 'ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ (Esc)',
   'voice.startAria': 'ಧ್ವನಿ ಇನ್‌ಪುಟ್ ಆರಂಭಿಸಿ',
   'voice.stopAria': 'ಧ್ವನಿ ಇನ್‌ಪುಟ್ ನಿಲ್ಲಿಸಿ',

@@ -590,7 +590,7 @@ export default function Copilot() {
           )}
           <form onSubmit={submit} className="flex items-center gap-2">
             {speech.supported && (
-              <Tooltip label={t(speech.listening ? 'copilot.voice.stopTip' : 'copilot.voice.startTip')}>
+              <Tooltip label={t(speech.listening ? 'copilot.voice.stopTip' : 'copilot.voice.startTip', { lang: speech.speechLang })}>
                 <button
                   type="button"
                   onClick={() => (speech.listening ? speech.stop() : speech.start())}

@@ -20,9 +20,10 @@ Visualization Platform."*
 
 ## Highlights
 
-- **808 cataloged features.** Every user-visible capability is enumerated in
-  [`FEATURES.md`](FEATURES.md) — an audit-generated catalog covering all nine
-  areas of the app.
+- **905 cataloged features, 324 of them analytic.** Every user-visible
+  capability is enumerated in [`FEATURES.md`](FEATURES.md), each tagged with the
+  scored capabilities it serves or marked infrastructure; the counts below are
+  derived from those tags and checked in CI.
 - **Official ER schema, verbatim.** Every table, key, and the structured
   `CrimeNo` format (`1-digit category · 4-digit district · 4-digit station ·
   4-digit year · 5-digit serial`) from the organizer-supplied ER diagram is
@@ -32,8 +33,11 @@ Visualization Platform."*
   ID (faithful to the real schema); DAPPA links "Ravi Kumar", "Ravi Kumar B"
   and "R Kumar" across districts into one Offender-360 profile with an MO
   signature — the "impossible in isolated Excel sheets" moment, made visible.
-- **Catalyst-native maximalism.** 15+ Catalyst services doing real work; no
-  external AI, hosting, database, or auth service anywhere.
+- **Catalyst-native maximalism.** 28 Catalyst services mapped by
+  `GET /meta/services`, 23 with a real call site; on the deployed build 9 are
+  live and 5 more are active behind a flag (checked 27 Aug 2026 — the rest
+  name the console step that flips them); no external AI, hosting, database,
+  or auth service anywhere.
 - **Demo-proof AI.** Heavy analytics (DBSCAN hotspots, Louvain communities,
   Holt-Winters forecasts) are precomputed into Data Store tables; live AI
   (QuickML, Zia, LLM/RAG copilot) sits behind feature flags with
@@ -103,44 +107,71 @@ the numbered feature list from [`FEATURES.md`](FEATURES.md), and an honest count
 
 | Capability | Features | Bar |
 |---|---:|---|
-| C1 · Advanced Visualization | 186 | ✅ clears 100 |
-| C2 · Criminological Network & Link Analysis | 62 | ❌ short by 38 |
-| C3 · Sociological & AI-Driven Predictive Dashboards | 119 | ✅ clears 100 |
-| C4 · Pattern & Trend Discovery | 106 | ✅ clears 100 |
-| C5 · Network & Behavioural Analysis | 45 | ❌ short by 55 |
-| C6 · AI/ML-Driven Intelligence | 85 | ❌ short by 15 |
+| C1 · Advanced Visualization | 134 | ✅ clears 100 |
+| C2 · Criminological Network & Link Analysis | 81 | ❌ short by 19 |
+| C3 · Sociological & AI-Driven Predictive Dashboards | 81 | ❌ short by 19 |
+| C4 · Pattern & Trend Discovery | 85 | ❌ short by 15 |
+| C5 · Network & Behavioural Analysis | 44 | ❌ short by 56 |
+| C6 · AI/ML-Driven Intelligence | 52 | ❌ short by 48 |
 
-Three capabilities clear the 100-feature bar and three do not; the gaps are
-named in [§ Shortfalls](CAPABILITIES.md#shortfalls). Of the 808 cataloged
-features, 398 back a scored capability and 410 are enabling infrastructure
-(app shell, error handling, print plumbing, i18n) that is deliberately
-**excluded** from these counts. Nothing is counted twice in silence: the full
-[overlap matrix](CAPABILITIES.md#overlap) and the 14
-[backend-only endpoints](CAPABILITIES.md#backend-only) are published so every
-number can be re-derived rather than taken on trust.
+One capability clears the 100-feature bar under the Round-2 counting rules and
+five do not; each gap is named in [§ Shortfall](CAPABILITIES.md#shortfall).
+Of the 905 cataloged features, 324 deliver analytic or visual substance
+(477 attributions across the six capabilities) and 580 are enabling
+infrastructure (app shell, filters, exports, error handling, print plumbing,
+i18n) that is deliberately **excluded** from these counts. Nothing is counted
+twice in silence: the full [overlap matrix](CAPABILITIES.md#overlap) and the
+33 [backend-only endpoints](CAPABILITIES.md#backend-only) are published, and
+`node scripts/check_capabilities.mjs` re-derives every number from the catalog
+tags so it can be checked rather than taken on trust. These figures are lower
+than the July scorecard because the rule is stricter, not because anything
+was removed — see [§ What changed](CAPABILITIES.md#what-changed-since-the-last-audit).
 
 ## Catalyst services used
 
-| # | Service | Use in DAPPA |
-|---|---|---|
-| 1 | Web Client Hosting / Slate | React SPA hosting (same-origin `/server` → zero CORS) |
-| 2 | Functions — Advanced I/O | `dappa_api` Express REST API |
-| 3 | Functions — Cron/Job | `dappa_nightly` Python analytics refresh |
-| 4 | Signals + Event Functions | New-FIR insert → incremental aggregate + anomaly check |
-| 5 | Data Store (+ ZCQL) | Official ER schema + 8 analytics tables |
-| 6 | NoSQL | Network graph snapshots; copilot RAG context |
-| 7 | Stratus | Raw datasets, GeoJSON, generated PDF briefs |
-| 8 | Cache | KPI/choropleth aggregates (ms-level dashboard) |
-| 9 | QuickML (tabular) | Random-Forest case-status classifier, trained on all 45,000 live `CaseMaster` rows and published as an endpoint (**live**; measured AUC 0.500 — see the caveat in `CAPABILITIES.md`) |
-| 10 | QuickML LLM Serving + RAG | "Ask DAPPA" natural-language copilot |
-| 11 | Zia Text Analytics | NER/keywords/sentiment → MO tags from `BriefFacts` |
-| 12 | SmartBrowz | Weekly Intelligence Brief PDF |
-| 13 | Catalyst Mail | Anomaly alert digests |
-| 14 | Authentication | Officer login + public read-only demo mode |
-| 15 | API Gateway | Routing/throttling in front of `dappa_api` |
-| 16 | Pipelines (CI/CD) | Auto build-and-deploy from `main` |
+The table below is generated from [`functions/dappa_api/lib/servicemap.js`](functions/dappa_api/lib/servicemap.js)
+by `node scripts/gen_service_table.mjs`; the contract suite fails if it drifts.
+Every row names the call site, so a judge can open the file and the endpoint.
 
-Stretch (roadmap): Circuits, ConvoKraft.
+<!-- SERVICES:START — generated by scripts/gen_service_table.mjs from functions/dappa_api/lib/servicemap.js; do not edit by hand -->
+**28 Catalyst services** are mapped by `GET /meta/services`; **23** have a real call site in this repository. Against the tracked configuration: 9 live, 4 active behind a flag, 2 platform, 0 flag-gated, 13 console-pending. The deployed truth is always the live endpoint — the `/about` page renders it.
+
+| # | Service | Category | Status | How DAPPA calls it | Console step / flag |
+|---|---|---|---|---|---|
+| 1 | Serverless Functions | compute | live | functions/dappa_api — Express app exported from index.js | — |
+| 2 | Signals + Event Functions | compute | live | functions/dappa_event — AggMonthly upsert + z-check + AnomalyAlert insert | — |
+| 3 | Cron / Job Scheduling | compute | live | functions/dappa_nightly — nightly analytics refresh (Python 3.12) | — |
+| 4 | AppSail (managed runtime) | compute | console-pending | — (no call site) | not used — the API runs as an advanced-I/O function; no code path can enable AppSail |
+| 5 | AppSail (custom OCI runtime) | compute | console-pending | — (no call site) | not used — no custom container is part of this submission |
+| 6 | Signals cross-app event bus | compute | console-pending | — (no call site) | only the in-project CaseMaster signal is bound; a cross-app subscription is a console step |
+| 7 | Data Store | data | live | lib/datastore.js — buildZCQL + zcql().executeZCQLQuery, paged at 300 rows | — |
+| 8 | Data Store full-text Search | data | live | lib/search.js — search().executeSearchQuery over CaseMaster + OffenderProfile | `FEATURE_SEARCH` |
+| 9 | NoSQL | data | live | index.js graphLoaders.nosql — nosql().getTable('dappa_network').fetchItem() | — |
+| 10 | Stratus (object store) | data | live | index.js — stratus().bucket('dappa').putObject/getObject/generatePreSignedUrl | — |
+| 11 | File Store | data | console-pending | lib/artifacts.js — filestore().folder(id).uploadFile/downloadFile | FILESTORE_FOLDER_ID not set (create the folder in the console) |
+| 12 | Cache | data | live | lib/cache.js — cache().segment('dappa').put/getValue | — |
+| 13 | Catalyst Mail | messaging | console-pending | lib/mail.js — email().sendMail({from_email,to_email,subject,content}) | flag on but MAIL_FROM, DIGEST_TO not set |
+| 14 | Push Notifications | messaging | active (flag on) | lib/push.js — pushNotification().web().sendNotification(message, recipients) | `FEATURE_PUSH` |
+| 15 | Circuits (multi-step orchestration) | orchestration | console-pending | lib/circuits.js — circuit().execute(CIRCUIT_ID, 'dappa_nightly_refresh') | flag on but CIRCUIT_ID not set |
+| 16 | Zia Services (text analytics) | ai | active (flag on) | lib/zia.js — zia().getNERPrediction/getKeywordExtraction/getSentimentAnalysis | `FEATURE_ZIA` |
+| 17 | Zia Services (OCR / scanners) | ai | active (flag on) | lib/zia.js — zia().extractOpticalCharacters(readStream, {language}) | `FEATURE_ZIA_OCR` |
+| 18 | Zia Services (translation / speech) | ai | console-pending | lib/zia.js translate() — POSTs ZIA_TRANSLATE_URL (no zcatalyst-sdk-node binding in v3.4.0) | flag on but ZIA_TRANSLATE_URL not set |
+| 19 | Zia AutoML (tabular) | ai | console-pending | lib/zia.js automlPredict() — zia().automl(ZIA_AUTOML_MODEL_ID, features) | flag on but ZIA_AUTOML_MODEL_ID not set |
+| 20 | QuickML (no-code ML pipelines) | ai | console-pending | lib/quickml.js — quickML().predict(QUICKML_STATUS_ENDPOINT_KEY, CaseMaster columns) for case status; QUICKML_ENDPOINT_KEY / deployment URL for the A-vs-C outcome model | flag on but QUICKML_STATUS_ENDPOINT_KEY not set |
+| 21 | QuickML LLM Serving + RAG | ai | console-pending | lib/routes/actions.js — POSTs QUICKML_LLM_URL with the copilot question | flag on but QUICKML_LLM_URL not set |
+| 22 | SmartBrowz (PDF / screenshots) | ai | active (flag on) | index.js smartbrowz.renderBrief — smartbrowz().convertToPdf(printUrl) then Stratus put + pre-signed URL | `FEATURE_SMARTBROWZ` |
+| 23 | Catalyst Authentication | platform | live | lib/auth.js — userManagement().getCurrentUser() / getAllUsers() | `FEATURE_AUTH` |
+| 24 | Connections (OAuth) | platform | console-pending | lib/routes/services.js — connections().getConnectionCredentials(CONNECTION_LINK_NAME) | flag on but CONNECTION_LINK_NAME not set |
+| 25 | Slate / Web Client Hosting | platform | platform | client/dist deployed as the project web client (catalyst deploy) | — |
+| 26 | API Gateway | platform | platform | app mounts both /api/v1 and /server/dappa_api/api/v1 so either routing shape resolves | — |
+| 27 | Domain Mappings | platform | console-pending | — (no call site) | console-only step; the app runs on the default Catalyst domain |
+| 28 | Pipelines (CI/CD) | platform | console-pending | — (no call site) | deployment is driven by catalyst deploy; a Pipeline is a console/repo integration step |
+
+*Status vocabulary:* **live** — called on the default request path; **active** — flag on and configured; **flag-gated** — code path exists, flag off; **console-pending** — needs a console step no code can perform (the reason names it); **platform** — the project runs on it without an SDK call from the function.
+<!-- SERVICES:END -->
+
+Not yet used, honestly: **ConvoKraft** (a guided-dialogue alternative to the
+Ask DAPPA copilot) is on the roadmap; nothing in the code calls it.
 
 ## Quickstart
 
@@ -182,37 +213,74 @@ node scripts/smoke_test.mjs http://localhost:3000
 ### 4. Deploy
 
 ```bash
-cd client && npm run build && cd ..
-catalyst deploy                            # functions + web client
+cd client && npm run build:catalyst && cd ..
+node scripts/deploy.mjs                    # catalyst deploy with secrets injected from
+                                           # functions/dappa_api/.env.deploy (never committed)
 node scripts/warmup.mjs <deployed URL>     # prime the cache
 node scripts/smoke_test.mjs <deployed URL> # full smoke suite (must be green)
 ```
 
-Live Catalyst AI (QuickML, LLM/RAG, Zia, SmartBrowz, Mail) is enabled through
-Catalyst-console procedures (documented in the team's local runbook); until
-then every feature runs on its documented local fallback.
+`node scripts/deploy.mjs` exists because `catalyst deploy` ships the tracked
+`catalyst-config.json` verbatim: every credential in that file is an empty
+string in git, and the wrapper fills them from an untracked `.env.deploy` for
+the duration of the deploy only. Console steps for each live Catalyst service
+(QuickML, LLM/RAG, Zia, SmartBrowz, Mail, Circuits, Search columns, Production)
+are in [`docs/CONSOLE_SETUP.md`](docs/CONSOLE_SETUP.md); until a step is done
+the service reports `console-pending` on `GET /meta/services` and its
+documented fallback serves.
+
+Once per clone, enable the commit gate (tree hygiene + generated tables):
+
+```bash
+git config core.hooksPath scripts/hooks
+```
 
 ## Environment variables
 
 Set on the `dappa_api` function (console → Functions → dappa_api →
-Configuration); `.env.example` mirrors this table. All flags default **off** —
-the app is fully functional on fallbacks.
+Configuration, or locally in `functions/dappa_api/.env.deploy` for
+`scripts/deploy.mjs`). The table is generated from `lib/servicemap.js` and
+`lib/flags.js` by `node scripts/gen_service_table.mjs`. Every `FEATURE_*` flag
+ships **on** in the tracked config; a flag whose prerequisite is still empty
+reports `console-pending` and the fallback serves — nothing errors.
 
-| Variable | Meaning |
+<!-- ENV:START — generated by scripts/gen_service_table.mjs; do not edit by hand -->
+| Variable | Kind | Controls | Default / where it is set |
+|---|---|---|---|
+| `FEATURE_SEARCH` | flag | Data Store full-text Search — off → ZCQL LIKE across the same columns, merged and deduped | default on; tracked config `on` |
+| `FEATURE_FILESTORE` | flag | File Store — off → Stratus bucket, then an in-process memory store | default on; tracked config `on` |
+| `FILESTORE_FOLDER_ID` | prerequisite | File Store; empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `FEATURE_MAIL` | flag | Catalyst Mail — off → the fully rendered digest is returned as `preview` and logged | default off; tracked config `on` |
+| `MAIL_FROM` | prerequisite | Catalyst Mail; empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `DIGEST_TO` | prerequisite | Catalyst Mail; empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `FEATURE_PUSH` | flag | Push Notifications — off → no-op that logs the payload and returns it as `preview` | default off; tracked config `on` |
+| `FEATURE_CIRCUIT` | flag | Circuits (multi-step orchestration) — off → the identical aggregate -> detect-anomalies -> notify steps run sequentially in-process | default off; tracked config `on` |
+| `CIRCUIT_ID` | prerequisite | Circuits (multi-step orchestration); empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `FEATURE_ZIA` | flag | Zia Services (text analytics) — off → deterministic MO-vocabulary + TF extractor | default off; tracked config `on` |
+| `FEATURE_ZIA_OCR` | flag | Zia Services (OCR / scanners) — off → analyse caller-supplied text with ocrAvailable:false | default off; tracked config `on` |
+| `FEATURE_ZIA_TRANSLATE` | flag | Zia Services (translation / speech) — off → pinned English↔Kannada domain glossary; unknown strings pass through untranslated | default off; tracked config `on` |
+| `ZIA_TRANSLATE_URL` | prerequisite | Zia Services (translation / speech); empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `FEATURE_ZIA_AUTOML` | flag | Zia AutoML (tabular) — off → the embedded logistic outcome model | default off; tracked config `on` |
+| `ZIA_AUTOML_MODEL_ID` | prerequisite | Zia AutoML (tabular); empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `FEATURE_QUICKML` | flag | QuickML (no-code ML pipelines) — off → the embedded logistic outcome model (A vs C only — case status has no local twin) | default off; tracked config `on` |
+| `QUICKML_STATUS_ENDPOINT_KEY` | prerequisite | QuickML (no-code ML pipelines); empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `FEATURE_QUICKML_LLM` | flag | QuickML LLM Serving + RAG — off → deterministic copilot parser over live ZCQL aggregates | default off; tracked config `on` |
+| `QUICKML_LLM_URL` | prerequisite | QuickML LLM Serving + RAG; empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `FEATURE_SMARTBROWZ` | flag | SmartBrowz (PDF / screenshots) — off → print-CSS route the browser prints itself | default off; tracked config `on` |
+| `FEATURE_AUTH` | flag | Catalyst Authentication — off → anonymous demo identity, with the admin token as the elevation path | default on; tracked config `on` |
+| `FEATURE_CONNECTIONS` | flag | Connections (OAuth) — off → reports the missing connection instead of calling out; no feature depends on it | default off; tracked config `on` |
+| `CONNECTION_LINK_NAME` | prerequisite | Connections (OAuth); empty ⇒ `console-pending` | console step (see docs/CONSOLE_SETUP.md); set via `.env.deploy` |
+| `QUICKML_STATUS_ENDPOINT_KEY` | prerequisite | QuickML case-status Random Forest endpoint (`POST /predict/case-status`) | published endpoint key; set via `.env.deploy`, never committed |
+<!-- ENV:END -->
+
+| Variable (not service-bound) | Meaning |
 |---|---|
-| `PUBLIC_DEMO` | `true` (default) = read-only anonymous access for judges; admin actions gated |
-| `FEATURE_QUICKML` | `on` = score `POST /predict/outcome` via the deployed QuickML endpoint; off = embedded logistic-regression coefficients (`meta.source:"fallback-local"`) |
-| `QUICKML_STATUS_ENDPOINT_KEY` | Published QuickML endpoint key for the case-status Random Forest; serves `POST /predict/case-status` |
-| `ORG_ID` | Catalyst org id, mirrored into `X_ZOHO_CATALYST_ORG_ID` at boot because the SDK needs it to send `CATALYST-ORG` to QuickML (that name is a reserved deployment key) |
-| `QUICKML_OUTCOME_URL` | QuickML tabular model endpoint URL |
-| `QUICKML_API_KEY` | API key for QuickML endpoints |
-| `FEATURE_QUICKML_LLM` | `on` = copilot uses QuickML LLM Serving + RAG; off = deterministic NL→ZCQL parser |
-| `QUICKML_LLM_URL` | QuickML LLM Serving endpoint URL |
-| `FEATURE_ZIA` | `on` = Zia Text Analytics on FIR narratives; off = local regex/TF-IDF extractor |
-| `FEATURE_SMARTBROWZ` | `on` = SmartBrowz renders the weekly-brief PDF; off = print-CSS route |
-| `FEATURE_MAIL` | `on` = Catalyst Mail digests enabled |
-| `MAIL_FROM` | Verified from-address for Catalyst Mail |
-| `DIGEST_TO` | Recipient for the alert digest |
+| `PUBLIC_DEMO` | `true` (default) = read-only anonymous access for judges; admin actions gated behind a Catalyst session or the admin token |
+| `ORG_ID` | Catalyst org id, mirrored into `X_ZOHO_CATALYST_ORG_ID` at boot because the SDK needs it to send `CATALYST-ORG` to QuickML |
+| `APP_BASE_URL` | Public base URL of the web client; SmartBrowz renders the printable brief from it |
+| `STRATUS_BUCKET` | Stratus bucket holding the graph snapshot, rendered briefs and archived artefacts |
+| `AI_TIMEOUT_MS` | Per-call timeout for every live AI service before the fallback answers (default 4000) |
+| `FORCE_FIXTURE_TABLES` | Comma-separated tables to answer from the bundled fixture while a load is incomplete (empty in normal operation) |
 | `DAPPA_SCALE` | Generator scale knob (default 45000 cases) |
 | `DAPPA_OUT` | Pipeline input/output dir (default `pipeline/out`) |
 | `VITE_API_BASE` | Client dev override for the API base (default `/server/dappa_api/api/v1`) |
@@ -222,7 +290,12 @@ the app is fully functional on fallbacks.
 Base path: `/server/dappa_api/api/v1`. Envelope: `{"ok":true,"data":…,"meta":…}`
 (errors: `{"ok":false,"error":{code,message}}`). Common filters
 `from,to,districtId,unitId,crimeHeadId,crimeSubHeadId,gravityId`; pagination
-`page`/`perPage` (≤200).
+`page`/`perPage` (≤200). The API registers **74 distinct routes**; the ones
+below are the analytic core, and the full list with the service each one
+exercises (`/meta/services`, `/search/cases`, `/zia/*`, `/ml/models`,
+`/admin/circuit/*`, `/auth/*`, `/notify/*`, `/reports/artifacts`…) is in
+[`docs/CONTRACTS.md`](docs/CONTRACTS.md). Every route is exercised by the
+contract suite (`npm test` in `functions/dappa_api`, 800+ checks).
 
 | Endpoint | Purpose |
 |---|---|
@@ -258,14 +331,20 @@ Base path: `/server/dappa_api/api/v1`. Envelope: `{"ok":true,"data":…,"meta":�
 ## Repository layout
 
 ```
-client/            React 18 + Vite + Tailwind SPA (dark command-center UI)
+client/            React 18 + Vite + Tailwind SPA (command-center UI, English · ಕನ್ನಡ)
 functions/
-  dappa_api/       Advanced I/O function — Node 20 + Express REST API
+  dappa_api/       Advanced I/O function — Node 20 + Express REST API (74 routes) + contract suite
+  dappa_event/     Event function — CaseMaster insert signal → AggMonthly upsert + z-check
   dappa_nightly/   Cron/Job function — Python analytics refresh
 pipeline/          generate.py (synthetic ER data) + analytics.py (derived intel)
 data/geo/          Karnataka districts GeoJSON (23 KB, 30 features)
-scripts/           bulk_load.js · verify_load.mjs · smoke_test.mjs · warmup.mjs
-FEATURES.md        Audit-generated catalog of all 808 user-visible features
+scripts/           bulk_load.js · verify_load.mjs · smoke_test.mjs · warmup.mjs · deploy.mjs ·
+                   gen_service_table.mjs · check_i18n.mjs · check_tree_hygiene.mjs · hooks/
+docs/              DECISIONS.md · ROADMAP.md · CONTRACTS.md · CONSOLE_SETUP.md · benchmarks/ ·
+                   screenshots/ · ROUND2_BASELINE.md (engineering docs; strategy kit stays local)
+video/script/      Narration, timeline and subtitles of the 3-minute demo video
+FEATURES.md        Catalog of user-visible features, tagged by scored capability
+CAPABILITIES.md    Audited map from the six scored capabilities to the features behind them
 ```
 
 ## License

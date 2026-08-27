@@ -227,7 +227,7 @@ function buildServiceMap(ctx) {
     name: 'Zia Services (translation / speech)',
     category: 'ai',
     invocation: 'lib/zia.js translate() — POSTs ZIA_TRANSLATE_URL (no zcatalyst-sdk-node binding in v3.4.0)',
-    fallback: 'pinned trilingual domain glossary (en/kn/hi); unknown strings pass through untranslated',
+    fallback: 'pinned English↔Kannada domain glossary; unknown strings pass through untranslated',
     flag: 'FEATURE_ZIA_TRANSLATE',
     requires: ['ZIA_TRANSLATE_URL'],
     endpoints: ['/zia/translate']

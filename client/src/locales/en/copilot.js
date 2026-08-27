@@ -63,7 +63,7 @@ export default {
   'send.label': 'Ask',
   'send.pending': 'Thinking…',
 
-  'voice.startTip': 'Ask by voice (en-IN)',
+  'voice.startTip': 'Ask by voice ({lang})',
   'voice.stopTip': 'Stop listening (Esc)',
   'voice.startAria': 'Start voice input',
   'voice.stopAria': 'Stop voice input',

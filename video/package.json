@@ -1,0 +1,8 @@
+{
+  "name": "ksp-dappa-video",
+  "private": true,
+  "description": "Playwright capture tooling for the demo video (video/tmp/*.mjs). Not part of the app.",
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}

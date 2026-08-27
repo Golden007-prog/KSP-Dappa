@@ -53,6 +53,8 @@ export default {
   'lang.changed': 'ಭಾಷೆ {lang} ಗೆ ಬದಲಾಗಿದೆ',
   'lang.en': 'English',
   'lang.kn': 'ಕನ್ನಡ',
+  'voice.listen': 'ಓದಿ ಕೇಳಿಸಿ ({lang})',
+  'voice.stop': 'ಓದುವುದನ್ನು ನಿಲ್ಲಿಸಿ',
 
   'action.apply': 'ಅನ್ವಯಿಸಿ',
   'action.cancel': 'ರದ್ದುಗೊಳಿಸಿ',

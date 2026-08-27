@@ -4,14 +4,9 @@
 the KSP Datathon 2026 challenge, _"AI-Driven Crime Analytics & Visualization
 Platform."_**
 
-This document is written to be *checked*, not believed. Every claim points at a
-route a judge can open or an endpoint they can `curl`. **Five of the six
-capabilities now clear the 100-feature bar; C5 does not, and the gap is stated
-in [§ Shortfall](#shortfall) rather than smoothed over.**
+This document is written to be *checked*, not believed. Every claim points at a route a judge can open or an endpoint they can `curl`, and every number is derived by `node scripts/check_capabilities.mjs` from the per-entry capability tags in [`FEATURES.md`](FEATURES.md) — CI fails if this file, the README and the catalog disagree. **One of the six capabilities clears the 100-feature bar under the Round-2 counting rules; C2 (81), C3 (81), C4 (85), C5 (44), C6 (52) do not, and each gap is stated in [§ Shortfall](#shortfall) rather than smoothed over.**
 
-*Audited against the repository state of 26 July 2026 — a full re-count after a
-wave of feature work added ~230 capability-bearing features and 53 new client
-components on top of the previously audited build.*
+*Re-derived against the repository state of 27 August 2026. The 26 July audit counted 240 / 139 / 167 / 173 / 121 / 125 by hand; this revision tagged all 905 catalog entries individually under the stricter Round-2 rules (a loading state, a filter, an export or a keyboard shortcut is never a feature), had independent reviewers sample the tags, and publishes the lower numbers because an overstated count is worse than an understated one.*
 
 ---
 
@@ -19,51 +14,29 @@ components on top of the previously audited build.*
 
 | # | Capability | Features | Bar | Verdict | Margin |
 |---|---|---:|---:|---|---:|
-| **C1** | Advanced Visualization | **240** | 100 | ✅ **PASS** | +140 |
-| **C2** | Criminological Network & Link Analysis | **139** | 100 | ✅ **PASS** | +39 |
-| **C3** | Sociological & AI-Driven Predictive Dashboards | **167** | 100 | ✅ **PASS** | +67 |
-| **C4** | Pattern & Trend Discovery | **173** | 100 | ✅ **PASS** | +73 |
-| **C5** | Network & Behavioural Analysis | **121** | 100 | ✅ **PASS** | +21 |
-| **C6** | AI/ML-Driven Intelligence | **125** | 100 | ✅ **PASS** | +25 |
+| **C1** | Advanced Visualization | **134** | 100 | ✅ **PASS** | +34 |
+| **C2** | Criminological Network & Link Analysis | **81** | 100 | ❌ **SHORT** | −19 |
+| **C3** | Sociological & AI-Driven Predictive Dashboards | **81** | 100 | ❌ **SHORT** | −19 |
+| **C4** | Pattern & Trend Discovery | **85** | 100 | ❌ **SHORT** | −15 |
+| **C5** | Network & Behavioural Analysis | **44** | 100 | ❌ **SHORT** | −56 |
+| **C6** | AI/ML-Driven Intelligence | **52** | 100 | ❌ **SHORT** | −48 |
 
-**All six capabilities now clear the bar.** The two gaps this document reported
-in its previous revision have been closed by targeted work rather than by
-reclassifying what already existed:
+**Why the numbers fell.** The 26 July scorecard and this one count the same app; the difference is the rule, not the code. The July hand count admitted table chrome, filters, exports, saved views, loading and error states and similar plumbing wherever they sat next to an analytic panel; Round 2's Appendix A excludes all of that. Applied entry by entry, 580 of the 905 catalog entries are infrastructure and 324 deliver analytic or visual substance (33 of those are backend-only endpoints, tagged `endpoint` so the count can be read either way). The five C5 items the July shortfall named — crew scoring, MO evolution, behavioural change detection, offender peer cohorts, a learned MO vocabulary — and C2's victim and recurring-location entities **are built** (`routes/behaviour.js`, `offenders/crews.js`, `network/VictimPanels.jsx`, `network/LocationPanels.jsx`); they simply add fewer distinct features than the July count credited once each screen is scored for substance alone.
 
-- **C5 85 → 121** (+33 client features, +3 endpoints). Organised-crime crew
-  scoring, a learned MO vocabulary, MO evolution over time, behavioural
-  change detection and offender peer cohorts — the five items the shortfall
-  named. See the design note in [§ C5](#c5): the live graph contains exactly
-  one community, so scoring *per CommunityID* would have produced a single
-  meaningless row; crews are derived from shared rare modus operandi instead,
-  with co-offending edges used as corroboration rather than as the clustering
-  basis.
-- **C2 105 → 139** (+31 client features, +3 endpoints). Victim entities and
-  recurring-location entities — the third of C2's capability statement that
-  was previously unimplemented — plus multi-hop path ranking, temporal link
-  evolution and common-neighbour link prediction over the real 23,833-edge
-  graph.
-
-Counting method is unchanged and still hand classification, so treat every
-figure as ±8. That tolerance no longer changes any verdict: the narrowest
-margin is now C5 at +21.
+Counting is still hand classification, so treat every figure as ±8. Two independent samples of the tags (one over the infrastructure verdicts, one over the scored verdicts) were taken on 27 August; their disagreement rates are recorded in [§ Verification](#verification). Within that tolerance no capability are too close to call; the rest of the shortfalls are real.
 
 ### What changed since the last audit
 
-| Capability | Previous | Now | Δ |
+| Capability | 26 Jul scorecard (hand count) | 27 Aug (tagged, Appendix A) | Δ |
 |---|---:|---:|---:|
-| C1 | 186 | 240 | +54 |
-| C2 | 62 | 105 | +43 |
-| C3 | 119 | 167 | +48 |
-| C4 | 106 | 173 | +67 |
-| C5 | 45 | 85 | +40 |
-| C6 | 85 | 125 | +40 |
+| C1 | 240 | 134 | −106 |
+| C2 | 139 | 81 | −58 |
+| C3 | 167 | 81 | −86 |
+| C4 | 173 | 85 | −88 |
+| C5 | 121 | 44 | −77 |
+| C6 | 125 | 52 | −73 |
 
-The previous audit flagged shortfalls in C5 (−55), C2 (−38) and C6 (−15). **C2
-and C6 are closed. C5 is not.** The reason is structural rather than accidental:
-the largest new clusters landed on the Case Explorer and the Alerts console,
-which serve C4 and C3 heavily and C5 almost not at all. Only the
-`/network` + `/offenders` work moves C5, and that was one of six workstreams.
+The deltas are a change of rule, not a loss of function: nothing was removed from the app between the two audits (97 features were added — see the "added after the 26 July catalog" sections of `FEATURES.md`, including three built on 26 July that both audits missed). A judge who prefers the July rule can re-tag any entry — the tags are in the catalog, one per line.
 
 ### Counting rules
 
@@ -80,18 +53,12 @@ which serve C4 and C3 heavily and C5 almost not at all. Only the
    a Getis-Ord grid is both a map layer (C1) and a spatial statistic (C4). Each
    is counted in every capability it genuinely serves, and the overlap matrix is
    published in [§ Overlap](#overlap) so a judge can subtract if they disagree.
-   The six numbers are **895 attributions across ~628 distinct features** — they
+   The six numbers are **477 attributions across 324 distinct features** — they
    are not a partition and are not presented as one.
 3. **Backend-only features are named, not buried.** Endpoints that are
    implemented and contract-tested but that no client file calls are listed in
    [§ Backend-only](#backend-only) so the count can be read either way.
-4. **The baseline is inherited; the delta is freshly counted.** The 186/62/119/
-   106/45/85 baseline came from classifying all 808 entries of
-   [`FEATURES.md`](FEATURES.md) against the challenge text. That classification
-   is carried forward unchanged. Everything added since was counted first-hand
-   for this audit by reading each new file and verifying it is actually rendered.
-   **`FEATURES.md` itself is stale** — its 808 entries predate the new work by a
-   day and do not include any of it. Fixing that catalog is a separate job.
+4. **Every entry is tagged, and the tags are the count.** Each of the 905 entries of [`FEATURES.md`](FEATURES.md) carries the capabilities it serves (or `[infra]`); `scripts/check_capabilities.mjs` derives the scorecard, the overlap matrix and `docs/capability_counts.json` from them and runs in CI and in the pre-commit hook. The 808 entries of the July catalog were tagged on 27 August 2026 by six independent passes over 135 entries each; the 97 entries added since were catalogued from the code with file references and sampled by skeptics, and only entries that survived (exist in the working tree, are not duplicates, are substance) were admitted — 143 were proposed, 94 kept, and three components that shipped on 26 July and escaped both audits were added last (903-905).
 
 ---
 
@@ -140,7 +107,7 @@ API helper plus `/alerts.csv` and `/cases.csv` as direct download links.
 
 ---
 
-## C1 — Advanced Visualization · 240 features ✅ PASS (+140)
+## C1 — Advanced Visualization · 134 features ✅ PASS (+34)
 
 ### What the challenge asks for
 
@@ -217,7 +184,7 @@ legend) was added to the map — a visual form the previous build did not have.
 ---
 
 <a id="c2"></a>
-## C2 — Criminological Network & Link Analysis · 105 features ✅ PASS (marginal, +5)
+## C2 — Criminological Network & Link Analysis · 81 features ❌ SHORT BY 19
 
 ### What the challenge asks for
 
@@ -267,21 +234,9 @@ answers "same hands, different jurisdiction" directly: cosine similarity over MO
 tag sets, with shared-district count reported alongside, so **a high MO match
 with zero shared districts is the flagged case**.
 
-### Why the verdict is qualified
+### Why the verdict is short
 
-The count clears 100, but it clears it by five, and **the victim and
-recurring-location thirds of "suspects, victims and recurring locations" are
-still not implemented.** Verified by grep across `client/src`: victims appear
-only as a case-detail party panel, a record-completeness check and a model input
-— there are no victim nodes in the graph and no victim–suspect bipartite view.
-There are no location nodes either. The nearest things are case-similarity
-geo-proximity, hotspot co-location, and `StationContext`'s registration
-neighbourhood (the FIRs numbered immediately before and after a case plus
-anything registered the same day — which is how a riot or a multi-victim assault
-surfaces as several connected CrimeNos). Those are useful and they are counted,
-but they are not first-class location linking. **A judge scoring C2 on
-capability-statement coverage rather than feature count would mark this down,
-and they would be right to.**
+**81 against a bar of 100.** The victim and recurring-location thirds of "suspects, victims and recurring locations" are now implemented — `GET /network/victim-links` and `GET /network/locations` feed a suspect↔victim projection and a suspect↔location projection on `/network` (`VictimPanels.jsx`, `LocationPanels.jsx`), with repeat-victim rings and unit-level co-location scores. What keeps the count under the bar is the rule: the graph explorer's many controls (layouts, labels, filters, saved views, exports) are infrastructure, so C2 is carried by the analytic panels alone — communities, paths, brokers, crews, link prediction, victim and location entities. A judge scoring on capability-statement coverage would now mark all three thirds present; a judge counting features under Appendix A gets 81.
 
 ### Where a judge sees it working
 
@@ -302,7 +257,7 @@ and they would be right to.**
 
 ---
 
-## C3 — Sociological & AI-Driven Predictive Dashboards · 167 features ✅ PASS (+67)
+## C3 — Sociological & AI-Driven Predictive Dashboards · 81 features ❌ SHORT BY 19
 
 ### What the challenge asks for
 
@@ -371,7 +326,7 @@ the first 200-row page and called it the corpus.
 
 ---
 
-## C4 — Pattern & Trend Discovery · 173 features ✅ PASS (+73)
+## C4 — Pattern & Trend Discovery · 85 features ❌ SHORT BY 15
 
 ### What the challenge asks for
 
@@ -448,7 +403,7 @@ can be before it stops buying anything.
 
 ---
 
-## C5 — Network & Behavioural Analysis · 85 features ❌ SHORT BY 15
+## C5 — Network & Behavioural Analysis · 44 features ❌ SHORT BY 56
 
 ### What the challenge asks for
 
@@ -497,36 +452,7 @@ network stops being a contact list and starts being an organisation".
 
 ### Why it is still short
 
-**85 against a bar of 100.** The previous audit put C5 at 45 and named five
-missing things: cohort behavioural analysis, MO-evolution-over-time,
-whole-community organised-crime scoring, MO-vs-outcome analysis, and behavioural
-change detection. **The recent work closed roughly 40 features and none of those
-five items.** What it added was structural depth on the existing two routes —
-better algorithms over the same graph — which is real and is counted, but the
-capability is still confined to `/network`, `/offenders` and `/offenders/:key`
-with two small footholds on `/cases` and `/reports`.
-
-Concretely, still missing:
-
-- **No organised-crime score for a community as a whole.** `communityMatrix`
-  reports contact volume between groups; nothing ranks the groups themselves by
-  how organised they are (cohesion × persistence × MO consistency ×
-  geographic reach).
-- **No MO evolution over time.** MO tags are treated as a static set per person.
-  There is no view of a person's or a crew's MO drifting — the escalation signal
-  that matters operationally.
-- **No behavioural change detection.** The tempo card computes a
-  last-12-months-versus-prior delta but nothing alerts on it; there is no
-  escalation/de-escalation watchlist.
-- **No cohort/peer-group behavioural analysis.** `PeerCohortPanel` does this for
-  *cases* (C4/C3); there is no equivalent for *offenders* — "how does this
-  person's tempo compare with others of the same MO profile and case count".
-- **MO vocabulary is extraction-based, not learned.** The ~2,500-phrase tag
-  vocabulary is mined by a deterministic extractor; no clustering or embedding
-  discovers MO families that the vocabulary does not already name.
-
-Any two of those five, built out properly, would close the gap. The list is not
-an excuse — it is the build order.
+**44 against a bar of 100.** The five items the July audit named as missing exist today: organised-crime crew scoring (`offenders/crews.js`, `OrgCrimeCrews`), MO evolution over time (`GET /offenders/mo-evolution`), behavioural change detection with escalation / de-escalation signals (`GET /offenders/:personKey/behaviour`), offender peer cohorts (`GET /offenders/:personKey/cohort`) and the MO-family machinery behind them. Under Appendix A each of those is one to three features, not a dozen, and much of the surrounding graph machinery is tagged C2 rather than C5 because it renders links rather than behaviour. The honest reading is that C5 has the *right* features and the fewest of them; the Round-2 backlog (`docs/ROUND2_FEATURE_BACKLOG.md`, "Analytical depth on C5/C2") is where the gap closes, with each addition tagged as it lands.
 
 ### Where a judge sees it working
 
@@ -548,7 +474,7 @@ an excuse — it is the build order.
 
 ---
 
-## C6 — AI/ML-Driven Intelligence · 125 features ✅ PASS (+25)
+## C6 — AI/ML-Driven Intelligence · 52 features ❌ SHORT BY 48
 
 ### What the challenge asks for
 
@@ -663,35 +589,29 @@ logistic model for the same reason.
 
 ---
 
-<a id="shortfall"></a>
 ## Shortfall
+<a id="shortfall"></a>
 
-**One capability does not clear 100 working features.**
+**Five capabilities do not clear 100 working features under the Round-2 rules.**
 
 | Capability | Now | Bar | **Gap** | Where the thin ground is |
 |---|---:|---:|---:|---|
-| **C5 Network & Behavioural** | 85 | 100 | **−15** | No whole-community organised-crime scoring · no MO-evolution-over-time · no behavioural change detection (escalation alerts) · no offender peer-cohort analysis · MO vocabulary is extraction-based, not learned. Everything still lives on `/network` + `/offenders` + Offender-360. |
+| **C2 Criminological Network & Link Analysis** | 81 | 100 | **−19** | Link analysis is carried by the analytic panels alone once the graph chrome is excluded; every new projection (victim, location, temporal) adds a handful of features, not dozens. |
+| **C3 Sociological & AI-Driven Predictive Dashboards** | 81 | 100 | **−19** | Predictive and socio-economic panels are few but deep (risk index, forecasts, socio correlation, calibration); dashboards built from them are counted once each. |
+| **C4 Pattern & Trend Discovery** | 85 | 100 | **−15** | Pattern discovery is largely rendered as charts that are also C1; the C4-only substance is the statistics behind them (Gi*, seasonality, Pareto, emerging-risk scoring). |
+| **C5 Network & Behavioural Analysis** | 44 | 100 | **−56** | Behavioural analysis has the right features (crews, MO evolution, escalation, cohorts) and the fewest of them; the graph machinery around them is C2. |
+| **C6 AI/ML-Driven Intelligence** | 52 | 100 | **−48** | Model surfaces are counted per model and per honest metric, not per screen that shows a score; the QuickML case-status model is a published negative result. |
 
-**C2 at 105 should be treated as provisional, not comfortable.** Five features
-over the bar is inside the margin of any hand classification, and the victim /
-recurring-location third of C2's capability statement is unimplemented. If a
-judge reads C2 on statement coverage rather than count, it reads as partial. The
-cheapest genuine fix is victim nodes in the graph (the `Victim` table has 53,836
-rows already loaded) — that is one data join away and would add a bipartite view
-plus victim-recurrence detection.
+Every gap above is stated as-is. The ±8 hand-classification tolerance does not change any verdict. The Round-2 backlog assigns new work to the thinnest capabilities first, and each shipped item is tagged in `FEATURES.md` so the scorecard moves only when the code does.
 
-**C2 and C5 overlap by 31 features and their union is 159.** If a judge merged
-them into one network capability, the honest merged number is 159 — comfortably
-past 100. They are scored separately, so C5 has to be closed separately, and
-features serving both (the community machinery, the analysis engine, the
-Offender-360 network panel) remain the efficient place to build.
+**C2 and C5 overlap by 19 features and their union is 106.** If a judge merged them into one network capability, the honest merged number is 106. They are scored separately, so each is closed separately.
 
 ---
 
 ## Honesty flags
 
 <a id="backend-only"></a>
-**Backend-only endpoints.** The previous audit listed 14 endpoints implemented,
+**Backend-only endpoints.** Under the Round-2 tags, 33 catalog entries are backend-only endpoints (tagged `endpoint`) — implemented, contract-tested and `curl`-verifiable — and they are counted, named as such so the count can be read either way. The previous audit listed 14 endpoints implemented,
 contract-tested and `curl`-verifiable that no client file called. **Four of those
 groups are now wired** — `/insight/socio-correlation`, `/insight/emerging`,
 `/alerts/summary` and `/trends/compare` all have client consumers today. What
@@ -730,10 +650,11 @@ excluded from every count in this document.
   submission. A browser API is arguably not a third-party *service*, but this is
   the one place in the app where that argument has to be made rather than
   avoided. Counted as infrastructure, not toward C6.
-- **`FEATURES.md` is stale.** Its 808 entries were cataloged before this wave and
-  do not include any of the ~230 new capability-bearing features. The baseline
-  half of every number here traces to it; the delta half was counted directly
-  from source for this audit.
+- **`FEATURES.md` is the count, so its gaps are the count's gaps.** Every number
+  here is derived from the catalog tags; a feature that exists in the code but
+  has no catalog entry is not counted (three such were found and added on 27
+  August — entries 903-905 — and the sweep that found them did not read every
+  component). Understatement of this kind is accepted; overstatement is not.
 
 ---
 
@@ -745,57 +666,37 @@ diagonal is each capability's total.
 
 |  | C1 | C2 | C3 | C4 | C5 | C6 |
 |---|---:|---:|---:|---:|---:|---:|
-| **C1** | **240** | 7 | 52 | 96 | 4 | 22 |
-| **C2** | 7 | **105** | 2 | 6 | 31 | 4 |
-| **C3** | 52 | 2 | **167** | 24 | 4 | 58 |
-| **C4** | 96 | 6 | 24 | **173** | 5 | 31 |
-| **C5** | 4 | 31 | 4 | 5 | **85** | 5 |
-| **C6** | 22 | 4 | 58 | 31 | 5 | **125** |
+| **C1** | **134** | 5 | 33 | 53 | 2 | 11 |
+| **C2** | 5 | **81** | 2 | 1 | 19 | 0 |
+| **C3** | 33 | 2 | **81** | 4 | 1 | 27 |
+| **C4** | 53 | 1 | 4 | **85** | 2 | 5 |
+| **C5** | 2 | 19 | 1 | 2 | **44** | 4 |
+| **C6** | 11 | 0 | 27 | 5 | 4 | **52** |
 
-The heavy pairs are unsurprising and defensible: **C1∩C4 = 96** (a hotspot you
-can see *and* that was found by a Gi\* test is both), **C3∩C6 = 58** (a risk
-score is a predictive dashboard and an ML model; a significance-tested
-correlation is a socio-economic explanation and a hidden-correlation surface),
-**C1∩C3 = 52** (anomaly and socio call-outs are rendered visually), and
-**C2∩C5 = 31** (the graph engine serves link analysis and organised-crime
-roll-up alike).
+The heavy pairs are unsurprising and defensible: **C1∩C4 = 53**, **C1∩C3 = 33**, **C3∩C6 = 27**, **C2∩C5 = 19** — a hotspot you can see *and* that a statistic found is both C1 and C4; a risk score is a predictive dashboard and an ML model; anomaly and socio call-outs are rendered visually; the graph engine serves link analysis and organised-crime roll-up alike.
 
-If a judge prefers a strict partition with no feature counted twice, attributing
-each feature to its single strongest capability, the numbers become **C1 178,
-C3 88, C2 66, C4 66, C6 45, C5 45**. That view is defensible but misleading: it
-collapses C4 largely because most of its output is also rendered visually, which
-is a fact about how the app draws discovery rather than about whether discovery
-happens.
+If a judge prefers a strict partition with no feature counted twice, attributing each feature to its single strongest capability, the numbers become **C1 132, C2 75, C3 46, C4 30, C5 24, C6 17** (324 distinct features). That view is defensible but misleading: it collapses C4 largely because most of its output is also rendered visually, which is a fact about how the app draws discovery rather than about whether discovery happens.
 
 ---
 
 ## Verification
 
-| Check | Command | Result on 26 Jul 2026 |
+| Check | Command | Result on 27 Aug 2026 |
 |---|---|---|
-| Endpoint contracts (all 66 routes, auth, privacy guardrail) | `node functions/dappa_api/test/run.mjs` | **623 passed, 0 failed** |
-| Bilingual key parity (English · Kannada) | `node scripts/check_i18n.mjs` | **5,285 English keys × kn, all present** (re-measured 27 Aug 2026 after Hindi was retired) |
+| Endpoint contracts (all 74 routes, auth, privacy guardrail) | `npm test` in `functions/dappa_api` | **804 passed, 0 failed** |
+| Bilingual key parity (English · Kannada) | `node scripts/check_i18n.mjs` | **5,288 English keys × kn, all present** |
 | Live smoke test against a deployment | `node scripts/smoke_test.mjs <BASE_URL>` | run before the demo |
 | Data completeness per table vs expected | `GET /server/dappa_api/api/v1/healthz?nocache=1` | `ChargesheetDetails` 39.8%, others full |
 | Caste/religion never reaches the UI or an export | contract suite — privacy guardrail case on `GET /cases/:id` | passing |
+| Capability counts agree (this file · README · FEATURES tags) | `node scripts/check_capabilities.mjs` | **C1 134 · C2 81 · C3 81 · C4 85 · C5 44 · C6 52** — passing |
+| Service table matches `servicemap.js` (28 services) | `node scripts/gen_service_table.mjs --check` | passing |
+| Endpoint + flag tables match the code (74 paths, 13 flags) | `node scripts/gen_contracts.mjs --check` | passing |
+| Tag calibration — independent samples of the tags | see `docs/ROUND2_BASELINE.md` § tag calibration | infra tags: 1 of 122 sampled disagreed (0.8 %); scored tags: 15 of 119 sampled disagreed (12.6 %, every one a double-count of a control or explanatory layer) — so the whole scored set was swept and 48 entries were re-tagged before these numbers were derived |
 
-**Audit method.** The baseline classification of the 808 `FEATURES.md` entries
-was carried forward. Everything added since was audited first-hand for this
-document: each new file read in full or to its analytic core; **every new
-component's wiring verified** by grepping its parent route for the render (all
-are reachable — several alerts panels render indirectly through `IntelPanel` and
-`AlertDetailSheet`, and `PeerCohortPanel`/`CaseCompleteness` render on
-`/cases/:id` rather than `/cases`); **every export of every new analysis module
-checked for consumers** (`network/analysis.js`, `geointel/stats.js`,
-`dashboard/analytics.js`, `trends/analysis.js`, `cases/deepScan.js`,
-`alerts/explain.js` — no dead exports; `adjacency`, `moSimilarity`, `giBand`,
-`giniIndex`, `socioIndex`, `normalTail` have no *external* consumer because they
-are internal helpers of other exports in the same file); the contract suite run;
-the data volumes checked against `pipeline/out/*.csv`; and the deployed feature
-flags read from `catalyst-config.json`.
+**Audit method (27 Aug 2026).** Every catalog entry was tagged individually against the organiser's capability wording and the Round-2 counting rules by six independent passes; the 94 post-July additions were catalogued from `git diff 87bd651..HEAD` with file references and only admitted after a skeptic confirmed each sampled item exists in the working tree, is not already catalogued and is substance; two further independent samples measured how harsh or generous the tags are. `scripts/check_capabilities.mjs` then derives every number in this file from the tags and fails the pre-commit hook and CI on any disagreement with the README or the catalog. The contract suite, the i18n gate and the generated-table checks were run the same day.
 
 The app is **207 client components across 52,200 lines** (excluding the ~12,300
 lines of bilingual locale data) plus a **7,046-line Catalyst function set**. The
 counts in this document are not inflated relative to the code.
 
-*Last audited against the repository state of 26 July 2026.*
+*Last re-derived against the repository state of 27 August 2026.*

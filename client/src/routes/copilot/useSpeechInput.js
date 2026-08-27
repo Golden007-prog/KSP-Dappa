@@ -1,13 +1,17 @@
-// /copilot — voice input via the Web Speech API (webkitSpeechRecognition in
-// Chromium/Safari). `supported` is false where the API is missing — the mic
-// button simply doesn't render there. One-shot recognition, en-IN.
+// Voice input via the browser Web Speech API (SpeechRecognition,
+// webkit-prefixed in Chromium/Safari; see lib/voice.js and docs/DECISIONS.md
+// D-014). `supported` is false where the API is missing — the mic button
+// simply doesn't render there. One-shot recognition in the ACTIVE UI language:
+// kn-IN when the interface is Kannada, so an officer can ask
+// "ಈ ವಾರ ನನ್ನ ಠಾಣೆಯಲ್ಲಿ ಏನಾಗಿದೆ?" without typing; en-IN otherwise.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useI18n } from '../../lib/i18n.jsx';
+import { recognitionCtor, speechLangFor } from '../../lib/voice.js';
 
-const SR = typeof window !== 'undefined'
-  ? (window.SpeechRecognition || window.webkitSpeechRecognition)
-  : undefined;
+const SR = recognitionCtor();
 
 export default function useSpeechInput({ onResult, onError } = {}) {
+  const { lang } = useI18n();
   const recRef = useRef(null);
   const cbRef = useRef({ onResult, onError });
   cbRef.current = { onResult, onError };
@@ -20,7 +24,7 @@ export default function useSpeechInput({ onResult, onError } = {}) {
   const start = useCallback(() => {
     if (!SR || recRef.current) return;
     const rec = new SR();
-    rec.lang = 'en-IN';
+    rec.lang = speechLangFor(lang);
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     rec.onresult = (e) => {
@@ -37,12 +41,12 @@ export default function useSpeechInput({ onResult, onError } = {}) {
       recRef.current = null;
       setListening(false);
     }
-  }, []);
+  }, [lang]);
 
   // Abort a dangling session on unmount so the mic indicator never sticks.
   useEffect(() => () => {
     try { recRef.current?.abort(); } catch { /* noop */ }
   }, []);
 
-  return { supported: !!SR, listening, start, stop };
+  return { supported: !!SR, listening, speechLang: speechLangFor(lang), start, stop };
 }
