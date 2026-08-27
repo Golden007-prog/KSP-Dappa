@@ -301,3 +301,23 @@ export function shortestPath(edges = [], from, to) {
   }
   return null;
 }
+
+/**
+ * Flag the top connectors as hubs (data.hub = 1). The canvas keeps a hub's name
+ * readable at any zoom and hides everyone else's below 7px, so a few hundred
+ * people no longer paint their labels over one another on the overview.
+ * Count scales with the graph — 4% of nodes, clamped to [6, 18] — and a node
+ * with a zero score is never a hub. Mutates and returns `nodes`.
+ */
+export function markHubs(nodes = [], score = (d) => d.size || 0, { frac = 0.04, min = 6, max = 18 } = {}) {
+  if (!nodes.length) return nodes;
+  const k = Math.min(nodes.length, Math.max(min, Math.min(max, Math.round(nodes.length * frac))));
+  const ranked = nodes
+    .map((node, i) => ({ i, s: Number(score(node.data)) || 0 }))
+    .sort((a, b) => b.s - a.s);
+  for (let r = 0; r < k; r += 1) {
+    if (!(ranked[r].s > 0)) break;
+    nodes[ranked[r].i].data.hub = 1;
+  }
+  return nodes;
+}

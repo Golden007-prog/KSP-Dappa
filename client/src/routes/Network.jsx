@@ -41,6 +41,7 @@ import {
   communityColor, computeCommunityStats, shortestPath, edgeKey,
   edgeTier, egoSubgraph, countComponents, brokerStats, articulationPoints,
   mutualNeighbors,
+  markHubs,
 } from './network/graphUtils.js';
 import {
   degreeIndex, corenessMap, bridgeEdges, strongestPath, graphBrief,
@@ -573,6 +574,7 @@ export default function Network() {
         watch: watchKeys.has(String(n.id)) ? 1 : 0,
       },
     }));
+    markHubs(nodes, (d) => d.links);
     const edges = view.edges.map((e) => ({
       data: {
         id: e.id,
@@ -604,6 +606,14 @@ export default function Network() {
   }, [graphMode, entityIndex, allNodesById, watchKeys, riskByUnit]);
 
   const elements = graphMode === 'cooffend' ? coElements : (projection?.elements || []);
+
+  // Canvas height follows the crowd actually drawn — the co-offending view or
+  // the victim/location projection: 560px suits a hundred nodes, a few hundred
+  // need more room or fit() shrinks discs below readable size.
+  const drawnNodes = graphMode === 'cooffend'
+    ? view.nodes.length
+    : (projection?.persons || 0) + (graphMode === 'victim' ? (projection?.shownVictims || 0) : (projection?.shownLocations || 0));
+  const graphHeight = drawnNodes > 250 ? 700 : drawnNodes > 120 ? 620 : 560;
 
   // Association path over the visible edges — fewest hops (BFS) or strongest
   // evidence (Dijkstra on 1/shared-FIRs, so repeat co-offending beats a chain
@@ -1058,7 +1068,7 @@ export default function Network() {
           onBackgroundTap={() => setSelected(null)}
           onLayoutStop={onLayoutStop}
           apiRef={cyApi}
-          height={560}
+          height={graphHeight}
         />
       );
     }
@@ -1095,7 +1105,7 @@ export default function Network() {
         onBackgroundTap={() => setSelected(null)}
         onLayoutStop={onLayoutStop}
         apiRef={cyApi}
-        height={560}
+        height={graphHeight}
       />
     );
   };
@@ -1592,6 +1602,7 @@ export default function Network() {
                 </div>
                 <ul className="space-y-1.5 border-t border-grid/60 pt-2.5">
                   <li>{t('network.legend.nodeSize')}</li>
+                  <li>{t('network.legend.hubLabel')}</li>
                   <li>{t('network.legend.edgeWidth')}</li>
                   <li><span className="text-amber">{t('network.legend.amberRing')}</span> {t('network.legend.amberRingText')}</li>
                   <li><span className="text-teal">{t('network.legend.tealRing')}</span> {t('network.legend.tealRingText')}</li>

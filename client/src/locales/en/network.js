@@ -507,6 +507,7 @@ export default {
   'legend.coreness': 'Core depth = how deep inside the dense nucleus a person sits',
   'legend.weakLink': 'Weak link = a single link holding two groups together (Weak)',
   'legend.predicted': 'Suggested link = shared associates but no shared FIR yet',
+  'legend.hubLabel': 'Bold name = top connector; other names appear as you zoom in and never overlap',
   'csv.links': 'Co-accused links',
   'csv.coreness': 'Core depth',
 

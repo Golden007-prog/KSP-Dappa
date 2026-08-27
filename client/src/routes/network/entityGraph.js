@@ -13,6 +13,7 @@
 //
 // Everything is pure: no React, no fetching, so the joins stay testable.
 import { ageBand, genderKey, victimProfileKey } from './entityData.js';
+import { markHubs } from './graphUtils.js';
 
 export const VICTIM_PREFIX = 'V:';
 export const LOCATION_PREFIX = 'U:';
@@ -577,6 +578,7 @@ export function victimElements(index, {
       },
     });
   }
+  markHubs(nodes);
   return {
     elements: [...nodes, ...edges],
     shownVictims: shown.length,
@@ -651,6 +653,7 @@ export function locationElements(index, {
       },
     });
   }
+  markHubs(nodes);
   return {
     elements: [...nodes, ...edges],
     shownLocations: shown.length,
