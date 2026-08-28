@@ -19,10 +19,11 @@
 //                 column of the current rows (raw row values)
 //   filterPlaceholder?
 // Row padding follows the global density (--density-y via .td-pad) unless dense.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import LoadingSkeleton from './LoadingSkeleton.jsx';
 import EmptyState from './EmptyState.jsx';
 import { useToast } from './ToastProvider.jsx';
+import { announce } from '../lib/a11y.js';
 import { fmtInt } from '../lib/format.js';
 import { useT } from '../lib/i18n.jsx';
 
@@ -45,6 +46,17 @@ export default function DataTable({
   const toast = useToast();
   const t = useT();
   const activeSort = onSortChange ? sort : localSort;
+
+  // WCAG 4.1.3: say how many rows arrived when a load finishes (server page
+  // or client refetch) — the skeleton-to-rows swap is otherwise silent.
+  const wasLoading = useRef(loading);
+  useEffect(() => {
+    if (wasLoading.current && !loading) {
+      const n = total !== undefined ? Number(total) : rows.length;
+      announce(n > 0 ? t('a11y.live.rowsLoaded', { n: fmtInt(n) }) : t('a11y.live.noRows'));
+    }
+    wasLoading.current = loading;
+  }, [loading, rows.length, total, t]);
 
   const filteredRows = useMemo(() => {
     const q = quickFilter.trim().toLowerCase();

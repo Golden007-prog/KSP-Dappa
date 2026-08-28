@@ -12,6 +12,7 @@ import { useSeasonalityForUnits } from './hooks.js';
 import { haversineKm, hotspotName, hourBand, hourInBand, hourLabel } from './utils.js';
 import { buildFeatureCollection, downloadGeoJson } from './geo.js';
 import { PanelHeader } from './SidePanel.jsx';
+import PlainSentence from '../../components/PlainSentence.jsx';
 import { hourBucketLabel } from './HourScrubber.jsx';
 import { useI18n } from '../../lib/i18n.jsx';
 
@@ -144,6 +145,7 @@ export default function HotspotPanel({
           </div>
         </div>
 
+        <PlainSentence term="cluster" lead={t('tier.hotspot.lead', { n: fmtInt(hotspot.caseCount), radius: fmtInt(hotspot.radiusM), band: band || '—' })} className="text-muted" />
         {band && (
           <p className="text-[11px] text-muted">
             {t('geointel.hotspot.peak')} <span className="chip !py-0.5 num text-amber">{band}</span>

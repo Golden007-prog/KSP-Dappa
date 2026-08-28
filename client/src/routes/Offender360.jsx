@@ -30,6 +30,9 @@ import MoEvolutionCard from './offenders/MoEvolutionCard.jsx';
 import BehaviourChangeCard from './offenders/BehaviourChangeCard.jsx';
 import PeerCohortCard from './offenders/PeerCohortCard.jsx';
 import CrewMembershipCard from './offenders/CrewMembershipCard.jsx';
+import FacePanel from './identify/FacePanel.jsx';
+import WhyLinkedCard from './depth/WhyLinkedCard.jsx';
+import OffenderLadderCard from './depth/OffenderLadderCard.jsx';
 import { useMoAnalysis } from './offenders/useMoAnalysis.js';
 import { jurisdictionSpan } from './network/analysis.js';
 import { RiskBadge, useDistrictName } from './offenders/common.jsx';
@@ -485,6 +488,8 @@ export default function Offender360() {
           />
 
           <CrewMembershipCard personKey={p.personKey || personKey} analysis={analysis} />
+          <FacePanel personKey={p.personKey || personKey} />
+          <WhyLinkedCard personKey={p.personKey || personKey} />
 
           <PeerCohortCard
             subject={{
@@ -503,6 +508,7 @@ export default function Offender360() {
 
         <div className="xl:col-span-2 space-y-4">
           <BehaviourChangeCard timeline={timeline} />
+          <OffenderLadderCard timeline={timeline} />
 
           <MoEvolutionCard timeline={timeline} />
 

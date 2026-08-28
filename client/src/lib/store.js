@@ -9,6 +9,7 @@ import { create } from 'zustand';
 const UI_KEY = 'dappa-ui';
 const DENSITY_KEY = 'dappa-density';
 const MOTION_KEY = 'dappa-motion';
+const FONTSIZE_KEY = 'dappa-fontsize';
 
 function readPersisted() {
   try {
@@ -50,6 +51,19 @@ function applyMotion(on) {
   try { localStorage.setItem(MOTION_KEY, on ? 'reduce' : 'full'); } catch { /* private mode */ }
 }
 
+function readFontSize() {
+  if (typeof document !== 'undefined' && document.documentElement.dataset.fontsize === 'large') return 'large';
+  try { return localStorage.getItem(FONTSIZE_KEY) === 'large' ? 'large' : 'normal'; } catch { return 'normal'; }
+}
+
+function applyFontSize(v) {
+  if (typeof document !== 'undefined') {
+    if (v === 'large') document.documentElement.dataset.fontsize = 'large';
+    else delete document.documentElement.dataset.fontsize;
+  }
+  try { localStorage.setItem(FONTSIZE_KEY, v); } catch { /* private mode */ }
+}
+
 export const useUiStore = create((set) => ({
   sidebarCollapsed: !!persisted.sidebarCollapsed,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -83,6 +97,16 @@ export const useUiStore = create((set) => ({
   setMotionReduced: (on) => {
     applyMotion(!!on);
     set({ motionReduced: !!on });
+  },
+
+  // Text-size preference (html[data-fontsize='large'] → 112.5% root size),
+  // persisted under its own key and pre-painted like density/motion.
+  fontSize: readFontSize(),
+  setFontSize: (value) => {
+    const v = value === 'large' ? 'large' : 'normal';
+    applyFontSize(v);
+    set({ fontSize: v });
+    return v;
   },
 }));
 

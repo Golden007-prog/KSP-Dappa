@@ -1,0 +1,2167 @@
+{
+  "summary": {
+    "series": 228,
+    "backtestMonths": 6,
+    "holdoutPoints": 1368,
+    "coverage80": 0.6974,
+    "coverage80Target": 0.8,
+    "coverageGap": -0.1026,
+    "medianMape": 47.78,
+    "p90Mape": 83.7,
+    "seriesUnderCovered": 122,
+    "seriesFullyCovered": 45,
+    "driftH1ToH6": -8.59,
+    "computeSeconds": 14.5
+  },
+  "byHorizon": [
+    {
+      "h": 1,
+      "rows": 228,
+      "coverage80": 0.693,
+      "mape": 58.16,
+      "medianApe": 44.44
+    },
+    {
+      "h": 2,
+      "rows": 228,
+      "coverage80": 0.6667,
+      "mape": 54.93,
+      "medianApe": 39.44
+    },
+    {
+      "h": 3,
+      "rows": 228,
+      "coverage80": 0.6447,
+      "mape": 60.63,
+      "medianApe": 44.38
+    },
+    {
+      "h": 4,
+      "rows": 228,
+      "coverage80": 0.7149,
+      "mape": 49.32,
+      "medianApe": 35.56
+    },
+    {
+      "h": 5,
+      "rows": 228,
+      "coverage80": 0.7193,
+      "mape": 45.08,
+      "medianApe": 33.33
+    },
+    {
+      "h": 6,
+      "rows": 228,
+      "coverage80": 0.7456,
+      "mape": 49.57,
+      "medianApe": 34.64
+    }
+  ],
+  "byMonth": [
+    {
+      "ym": "2026-02",
+      "rows": 228,
+      "coverage80": 0.693,
+      "mape": 58.16
+    },
+    {
+      "ym": "2026-03",
+      "rows": 228,
+      "coverage80": 0.6667,
+      "mape": 54.93
+    },
+    {
+      "ym": "2026-04",
+      "rows": 228,
+      "coverage80": 0.6447,
+      "mape": 60.63
+    },
+    {
+      "ym": "2026-05",
+      "rows": 228,
+      "coverage80": 0.7149,
+      "mape": 49.32
+    },
+    {
+      "ym": "2026-06",
+      "rows": 228,
+      "coverage80": 0.7193,
+      "mape": 45.08
+    },
+    {
+      "ym": "2026-07",
+      "rows": 228,
+      "coverage80": 0.7456,
+      "mape": 49.57
+    }
+  ],
+  "byModel": [
+    {
+      "model": "ETS(A,Ad,A,12)",
+      "series": 85,
+      "coverage80": 0.5333,
+      "mape": 49.35
+    },
+    {
+      "model": "seasonal-naive",
+      "series": 143,
+      "coverage80": 0.7949,
+      "mape": 55.52
+    }
+  ],
+  "series": [
+    {
+      "districtId": "101",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 21.42,
+      "meanMonthly": 39.28,
+      "meanBandWidthPct": 30.2
+    },
+    {
+      "districtId": "101",
+      "crimeHeadId": "2",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 19.98,
+      "meanMonthly": 30.81,
+      "meanBandWidthPct": 30.8
+    },
+    {
+      "districtId": "101",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 11.59,
+      "meanMonthly": 160.42,
+      "meanBandWidthPct": 12.4
+    },
+    {
+      "districtId": "101",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 16.47,
+      "meanMonthly": 39.94,
+      "meanBandWidthPct": 26.8
+    },
+    {
+      "districtId": "101",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 14.46,
+      "meanMonthly": 47.19,
+      "meanBandWidthPct": 24.1
+    },
+    {
+      "districtId": "101",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 12.16,
+      "meanMonthly": 37.31,
+      "meanBandWidthPct": 27.0
+    },
+    {
+      "districtId": "102",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 44.21,
+      "meanMonthly": 3.72,
+      "meanBandWidthPct": 117.4
+    },
+    {
+      "districtId": "102",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 64.44,
+      "meanMonthly": 2.42,
+      "meanBandWidthPct": 147.2
+    },
+    {
+      "districtId": "102",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 1.0,
+      "mape": 13.35,
+      "meanMonthly": 10.97,
+      "meanBandWidthPct": 57.0
+    },
+    {
+      "districtId": "102",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 31.59,
+      "meanMonthly": 3.22,
+      "meanBandWidthPct": 128.7
+    },
+    {
+      "districtId": "102",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 125.59,
+      "meanMonthly": 3.86,
+      "meanBandWidthPct": 66.2
+    },
+    {
+      "districtId": "102",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 75.0,
+      "meanMonthly": 2.81,
+      "meanBandWidthPct": 153.2
+    },
+    {
+      "districtId": "103",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 87.24,
+      "meanMonthly": 6.42,
+      "meanBandWidthPct": 134.1
+    },
+    {
+      "districtId": "103",
+      "crimeHeadId": "2",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 72.43,
+      "meanMonthly": 4.06,
+      "meanBandWidthPct": 85.8
+    },
+    {
+      "districtId": "103",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 17.18,
+      "meanMonthly": 28.39,
+      "meanBandWidthPct": 35.9
+    },
+    {
+      "districtId": "103",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 102.11,
+      "meanMonthly": 6.28,
+      "meanBandWidthPct": 108.1
+    },
+    {
+      "districtId": "103",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 21.61,
+      "meanMonthly": 7.03,
+      "meanBandWidthPct": 51.2
+    },
+    {
+      "districtId": "103",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 91.22,
+      "meanMonthly": 5.97,
+      "meanBandWidthPct": 127.3
+    },
+    {
+      "districtId": "104",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 46.69,
+      "meanMonthly": 3.08,
+      "meanBandWidthPct": 247.3
+    },
+    {
+      "districtId": "104",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 68.75,
+      "meanMonthly": 1.97,
+      "meanBandWidthPct": 161.1
+    },
+    {
+      "districtId": "104",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 29.15,
+      "meanMonthly": 10.36,
+      "meanBandWidthPct": 53.3
+    },
+    {
+      "districtId": "104",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 37.5,
+      "meanMonthly": 2.83,
+      "meanBandWidthPct": 174.8
+    },
+    {
+      "districtId": "104",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 49.51,
+      "meanMonthly": 3.36,
+      "meanBandWidthPct": 165.1
+    },
+    {
+      "districtId": "104",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 34.72,
+      "meanMonthly": 2.47,
+      "meanBandWidthPct": 245.6
+    },
+    {
+      "districtId": "105",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 39.32,
+      "meanMonthly": 4.42,
+      "meanBandWidthPct": 90.2
+    },
+    {
+      "districtId": "105",
+      "crimeHeadId": "2",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 56.29,
+      "meanMonthly": 3.56,
+      "meanBandWidthPct": 531.2
+    },
+    {
+      "districtId": "105",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 44.39,
+      "meanMonthly": 16.25,
+      "meanBandWidthPct": 39.3
+    },
+    {
+      "districtId": "105",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 48.96,
+      "meanMonthly": 3.92,
+      "meanBandWidthPct": 154.4
+    },
+    {
+      "districtId": "105",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 96.4,
+      "meanMonthly": 5.58,
+      "meanBandWidthPct": 84.0
+    },
+    {
+      "districtId": "105",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 101.06,
+      "meanMonthly": 4.08,
+      "meanBandWidthPct": 83.7
+    },
+    {
+      "districtId": "106",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 35.12,
+      "meanMonthly": 2.97,
+      "meanBandWidthPct": 250.8
+    },
+    {
+      "districtId": "106",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 75.0,
+      "meanMonthly": 2.14,
+      "meanBandWidthPct": 205.4
+    },
+    {
+      "districtId": "106",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 22.53,
+      "meanMonthly": 9.25,
+      "meanBandWidthPct": 64.4
+    },
+    {
+      "districtId": "106",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 61.34,
+      "meanMonthly": 2.25,
+      "meanBandWidthPct": 164.4
+    },
+    {
+      "districtId": "106",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 59.97,
+      "meanMonthly": 3.14,
+      "meanBandWidthPct": 129.4
+    },
+    {
+      "districtId": "106",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 49.77,
+      "meanMonthly": 2.53,
+      "meanBandWidthPct": 191.6
+    },
+    {
+      "districtId": "107",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 39.57,
+      "meanMonthly": 3.72,
+      "meanBandWidthPct": 181.1
+    },
+    {
+      "districtId": "107",
+      "crimeHeadId": "2",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 224.71,
+      "meanMonthly": 3.67,
+      "meanBandWidthPct": 56.4
+    },
+    {
+      "districtId": "107",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 20.87,
+      "meanMonthly": 20.86,
+      "meanBandWidthPct": 49.4
+    },
+    {
+      "districtId": "107",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 151.37,
+      "meanMonthly": 3.92,
+      "meanBandWidthPct": 79.1
+    },
+    {
+      "districtId": "107",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 49.46,
+      "meanMonthly": 4.94,
+      "meanBandWidthPct": 94.1
+    },
+    {
+      "districtId": "107",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 47.53,
+      "meanMonthly": 3.75,
+      "meanBandWidthPct": 109.6
+    },
+    {
+      "districtId": "108",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 67.59,
+      "meanMonthly": 1.58,
+      "meanBandWidthPct": 173.4
+    },
+    {
+      "districtId": "108",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 55.0,
+      "meanMonthly": 1.22,
+      "meanBandWidthPct": 253.3
+    },
+    {
+      "districtId": "108",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 44.01,
+      "meanMonthly": 7.08,
+      "meanBandWidthPct": 65.6
+    },
+    {
+      "districtId": "108",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 37.5,
+      "meanMonthly": 1.94,
+      "meanBandWidthPct": 169.3
+    },
+    {
+      "districtId": "108",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 107.41,
+      "meanMonthly": 2.47,
+      "meanBandWidthPct": 173.3
+    },
+    {
+      "districtId": "108",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 25.0,
+      "meanMonthly": 2.0,
+      "meanBandWidthPct": 157.0
+    },
+    {
+      "districtId": "109",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 29.75,
+      "meanMonthly": 3.25,
+      "meanBandWidthPct": 67.7
+    },
+    {
+      "districtId": "109",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 47.78,
+      "meanMonthly": 2.47,
+      "meanBandWidthPct": 168.1
+    },
+    {
+      "districtId": "109",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.0,
+      "mape": 71.38,
+      "meanMonthly": 17.58,
+      "meanBandWidthPct": 37.7
+    },
+    {
+      "districtId": "109",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 71.45,
+      "meanMonthly": 4.0,
+      "meanBandWidthPct": 104.4
+    },
+    {
+      "districtId": "109",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 30.47,
+      "meanMonthly": 4.56,
+      "meanBandWidthPct": 62.4
+    },
+    {
+      "districtId": "109",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 74.0,
+      "meanMonthly": 3.17,
+      "meanBandWidthPct": 138.2
+    },
+    {
+      "districtId": "110",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 38.49,
+      "meanMonthly": 3.44,
+      "meanBandWidthPct": 118.8
+    },
+    {
+      "districtId": "110",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 42.0,
+      "meanMonthly": 2.25,
+      "meanBandWidthPct": 227.6
+    },
+    {
+      "districtId": "110",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 29.75,
+      "meanMonthly": 13.17,
+      "meanBandWidthPct": 78.2
+    },
+    {
+      "districtId": "110",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 122.22,
+      "meanMonthly": 2.53,
+      "meanBandWidthPct": 143.9
+    },
+    {
+      "districtId": "110",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 30.65,
+      "meanMonthly": 4.08,
+      "meanBandWidthPct": 97.4
+    },
+    {
+      "districtId": "110",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 37.08,
+      "meanMonthly": 3.31,
+      "meanBandWidthPct": 158.7
+    },
+    {
+      "districtId": "111",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 63.4,
+      "meanMonthly": 3.03,
+      "meanBandWidthPct": 172.0
+    },
+    {
+      "districtId": "111",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 58.7,
+      "meanMonthly": 2.67,
+      "meanBandWidthPct": 162.4
+    },
+    {
+      "districtId": "111",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 26.93,
+      "meanMonthly": 12.08,
+      "meanBandWidthPct": 91.5
+    },
+    {
+      "districtId": "111",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 45.11,
+      "meanMonthly": 2.78,
+      "meanBandWidthPct": 169.6
+    },
+    {
+      "districtId": "111",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 36.9,
+      "meanMonthly": 3.61,
+      "meanBandWidthPct": 119.5
+    },
+    {
+      "districtId": "111",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 60.38,
+      "meanMonthly": 3.0,
+      "meanBandWidthPct": 187.9
+    },
+    {
+      "districtId": "112",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 61.67,
+      "meanMonthly": 2.92,
+      "meanBandWidthPct": 112.6
+    },
+    {
+      "districtId": "112",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 39.17,
+      "meanMonthly": 2.0,
+      "meanBandWidthPct": 221.9
+    },
+    {
+      "districtId": "112",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 43.94,
+      "meanMonthly": 10.58,
+      "meanBandWidthPct": 85.8
+    },
+    {
+      "districtId": "112",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 110.0,
+      "meanMonthly": 2.31,
+      "meanBandWidthPct": 201.1
+    },
+    {
+      "districtId": "112",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 33.62,
+      "meanMonthly": 3.89,
+      "meanBandWidthPct": 139.8
+    },
+    {
+      "districtId": "112",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 81.94,
+      "meanMonthly": 2.78,
+      "meanBandWidthPct": 157.5
+    },
+    {
+      "districtId": "113",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 31.11,
+      "meanMonthly": 2.5,
+      "meanBandWidthPct": 168.9
+    },
+    {
+      "districtId": "113",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 51.67,
+      "meanMonthly": 1.86,
+      "meanBandWidthPct": 217.2
+    },
+    {
+      "districtId": "113",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 44.51,
+      "meanMonthly": 9.31,
+      "meanBandWidthPct": 65.4
+    },
+    {
+      "districtId": "113",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 32.41,
+      "meanMonthly": 2.28,
+      "meanBandWidthPct": 197.6
+    },
+    {
+      "districtId": "113",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 55.88,
+      "meanMonthly": 3.14,
+      "meanBandWidthPct": 92.5
+    },
+    {
+      "districtId": "113",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 131.48,
+      "meanMonthly": 2.86,
+      "meanBandWidthPct": 168.5
+    },
+    {
+      "districtId": "114",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 32.41,
+      "meanMonthly": 2.83,
+      "meanBandWidthPct": 148.0
+    },
+    {
+      "districtId": "114",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.3333,
+      "mape": 91.67,
+      "meanMonthly": 2.06,
+      "meanBandWidthPct": 124.6
+    },
+    {
+      "districtId": "114",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 23.05,
+      "meanMonthly": 10.0,
+      "meanBandWidthPct": 73.2
+    },
+    {
+      "districtId": "114",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 146.53,
+      "meanMonthly": 2.64,
+      "meanBandWidthPct": 191.2
+    },
+    {
+      "districtId": "114",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 51.46,
+      "meanMonthly": 3.25,
+      "meanBandWidthPct": 134.3
+    },
+    {
+      "districtId": "114",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 43.75,
+      "meanMonthly": 2.53,
+      "meanBandWidthPct": 216.5
+    },
+    {
+      "districtId": "115",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 62.62,
+      "meanMonthly": 2.75,
+      "meanBandWidthPct": 143.9
+    },
+    {
+      "districtId": "115",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 51.67,
+      "meanMonthly": 2.06,
+      "meanBandWidthPct": 172.4
+    },
+    {
+      "districtId": "115",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 25.08,
+      "meanMonthly": 9.78,
+      "meanBandWidthPct": 59.7
+    },
+    {
+      "districtId": "115",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 58.44,
+      "meanMonthly": 3.08,
+      "meanBandWidthPct": 201.0
+    },
+    {
+      "districtId": "115",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 31.01,
+      "meanMonthly": 3.83,
+      "meanBandWidthPct": 84.5
+    },
+    {
+      "districtId": "115",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 50.0,
+      "meanMonthly": 2.36,
+      "meanBandWidthPct": 318.9
+    },
+    {
+      "districtId": "116",
+      "crimeHeadId": "1",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 75.62,
+      "meanMonthly": 3.39,
+      "meanBandWidthPct": 91.8
+    },
+    {
+      "districtId": "116",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 59.72,
+      "meanMonthly": 2.64,
+      "meanBandWidthPct": 209.6
+    },
+    {
+      "districtId": "116",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 54.65,
+      "meanMonthly": 12.67,
+      "meanBandWidthPct": 52.0
+    },
+    {
+      "districtId": "116",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 87.52,
+      "meanMonthly": 3.17,
+      "meanBandWidthPct": 162.7
+    },
+    {
+      "districtId": "116",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 35.06,
+      "meanMonthly": 3.92,
+      "meanBandWidthPct": 84.3
+    },
+    {
+      "districtId": "116",
+      "crimeHeadId": "8",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 36.73,
+      "meanMonthly": 3.31,
+      "meanBandWidthPct": 152.6
+    },
+    {
+      "districtId": "117",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 68.89,
+      "meanMonthly": 2.06,
+      "meanBandWidthPct": 121.6
+    },
+    {
+      "districtId": "117",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 42.22,
+      "meanMonthly": 1.5,
+      "meanBandWidthPct": 348.4
+    },
+    {
+      "districtId": "117",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 62.44,
+      "meanMonthly": 8.22,
+      "meanBandWidthPct": 85.1
+    },
+    {
+      "districtId": "117",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 47.22,
+      "meanMonthly": 1.94,
+      "meanBandWidthPct": 205.9
+    },
+    {
+      "districtId": "117",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 32.5,
+      "meanMonthly": 2.33,
+      "meanBandWidthPct": 100.5
+    },
+    {
+      "districtId": "117",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.3333,
+      "mape": 67.36,
+      "meanMonthly": 1.53,
+      "meanBandWidthPct": 145.7
+    },
+    {
+      "districtId": "118",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 27.87,
+      "meanMonthly": 2.58,
+      "meanBandWidthPct": 146.4
+    },
+    {
+      "districtId": "118",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 43.75,
+      "meanMonthly": 1.81,
+      "meanBandWidthPct": 243.9
+    },
+    {
+      "districtId": "118",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 14.73,
+      "meanMonthly": 10.17,
+      "meanBandWidthPct": 80.9
+    },
+    {
+      "districtId": "118",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.1667,
+      "mape": 72.71,
+      "meanMonthly": 2.64,
+      "meanBandWidthPct": 158.1
+    },
+    {
+      "districtId": "118",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 38.26,
+      "meanMonthly": 2.58,
+      "meanBandWidthPct": 217.4
+    },
+    {
+      "districtId": "118",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 72.08,
+      "meanMonthly": 1.97,
+      "meanBandWidthPct": 175.8
+    },
+    {
+      "districtId": "119",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 94.44,
+      "meanMonthly": 2.11,
+      "meanBandWidthPct": 116.6
+    },
+    {
+      "districtId": "119",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 47.22,
+      "meanMonthly": 1.64,
+      "meanBandWidthPct": 288.4
+    },
+    {
+      "districtId": "119",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 45.08,
+      "meanMonthly": 8.25,
+      "meanBandWidthPct": 54.0
+    },
+    {
+      "districtId": "119",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 36.81,
+      "meanMonthly": 2.31,
+      "meanBandWidthPct": 273.8
+    },
+    {
+      "districtId": "119",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 64.81,
+      "meanMonthly": 2.44,
+      "meanBandWidthPct": 256.6
+    },
+    {
+      "districtId": "119",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 60.42,
+      "meanMonthly": 1.5,
+      "meanBandWidthPct": 181.4
+    },
+    {
+      "districtId": "120",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 54.17,
+      "meanMonthly": 1.03,
+      "meanBandWidthPct": 282.6
+    },
+    {
+      "districtId": "120",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 46.67,
+      "meanMonthly": 0.97,
+      "meanBandWidthPct": 384.9
+    },
+    {
+      "districtId": "120",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 70.12,
+      "meanMonthly": 4.06,
+      "meanBandWidthPct": 191.3
+    },
+    {
+      "districtId": "120",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 36.11,
+      "meanMonthly": 1.08,
+      "meanBandWidthPct": 336.3
+    },
+    {
+      "districtId": "120",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 40.74,
+      "meanMonthly": 1.19,
+      "meanBandWidthPct": 201.5
+    },
+    {
+      "districtId": "120",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 54.86,
+      "meanMonthly": 0.92,
+      "meanBandWidthPct": 384.6
+    },
+    {
+      "districtId": "121",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 56.25,
+      "meanMonthly": 2.33,
+      "meanBandWidthPct": 119.1
+    },
+    {
+      "districtId": "121",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 39.58,
+      "meanMonthly": 1.39,
+      "meanBandWidthPct": 234.3
+    },
+    {
+      "districtId": "121",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 26.08,
+      "meanMonthly": 6.36,
+      "meanBandWidthPct": 88.7
+    },
+    {
+      "districtId": "121",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 103.89,
+      "meanMonthly": 1.75,
+      "meanBandWidthPct": 219.3
+    },
+    {
+      "districtId": "121",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 75.5,
+      "meanMonthly": 2.11,
+      "meanBandWidthPct": 218.0
+    },
+    {
+      "districtId": "121",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 76.67,
+      "meanMonthly": 1.92,
+      "meanBandWidthPct": 301.1
+    },
+    {
+      "districtId": "122",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 38.84,
+      "meanMonthly": 2.19,
+      "meanBandWidthPct": 209.7
+    },
+    {
+      "districtId": "122",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 16.67,
+      "meanMonthly": 1.58,
+      "meanBandWidthPct": 240.5
+    },
+    {
+      "districtId": "122",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 28.7,
+      "meanMonthly": 9.0,
+      "meanBandWidthPct": 70.1
+    },
+    {
+      "districtId": "122",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 49.33,
+      "meanMonthly": 2.39,
+      "meanBandWidthPct": 160.4
+    },
+    {
+      "districtId": "122",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.3333,
+      "mape": 79.51,
+      "meanMonthly": 2.42,
+      "meanBandWidthPct": 151.5
+    },
+    {
+      "districtId": "122",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 23.56,
+      "meanMonthly": 2.44,
+      "meanBandWidthPct": 129.0
+    },
+    {
+      "districtId": "123",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.3333,
+      "mape": 33.89,
+      "meanMonthly": 1.86,
+      "meanBandWidthPct": 133.6
+    },
+    {
+      "districtId": "123",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 50.69,
+      "meanMonthly": 1.78,
+      "meanBandWidthPct": 260.8
+    },
+    {
+      "districtId": "123",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 30.09,
+      "meanMonthly": 7.0,
+      "meanBandWidthPct": 85.2
+    },
+    {
+      "districtId": "123",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 13.61,
+      "meanMonthly": 1.92,
+      "meanBandWidthPct": 187.2
+    },
+    {
+      "districtId": "123",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 53.59,
+      "meanMonthly": 2.47,
+      "meanBandWidthPct": 227.1
+    },
+    {
+      "districtId": "123",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 60.0,
+      "meanMonthly": 2.11,
+      "meanBandWidthPct": 202.2
+    },
+    {
+      "districtId": "124",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 33.33,
+      "meanMonthly": 1.42,
+      "meanBandWidthPct": 257.7
+    },
+    {
+      "districtId": "124",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 54.44,
+      "meanMonthly": 1.36,
+      "meanBandWidthPct": 223.3
+    },
+    {
+      "districtId": "124",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 25.97,
+      "meanMonthly": 7.56,
+      "meanBandWidthPct": 43.7
+    },
+    {
+      "districtId": "124",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.3333,
+      "mape": 39.58,
+      "meanMonthly": 2.06,
+      "meanBandWidthPct": 147.8
+    },
+    {
+      "districtId": "124",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 61.16,
+      "meanMonthly": 2.86,
+      "meanBandWidthPct": 127.2
+    },
+    {
+      "districtId": "124",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 71.25,
+      "meanMonthly": 1.33,
+      "meanBandWidthPct": 193.4
+    },
+    {
+      "districtId": "125",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 29.63,
+      "meanMonthly": 1.92,
+      "meanBandWidthPct": 242.7
+    },
+    {
+      "districtId": "125",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 66.39,
+      "meanMonthly": 1.58,
+      "meanBandWidthPct": 434.8
+    },
+    {
+      "districtId": "125",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 1.0,
+      "mape": 15.92,
+      "meanMonthly": 7.22,
+      "meanBandWidthPct": 57.0
+    },
+    {
+      "districtId": "125",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 83.33,
+      "meanMonthly": 2.36,
+      "meanBandWidthPct": 158.7
+    },
+    {
+      "districtId": "125",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 28.89,
+      "meanMonthly": 2.25,
+      "meanBandWidthPct": 189.0
+    },
+    {
+      "districtId": "125",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 41.11,
+      "meanMonthly": 2.08,
+      "meanBandWidthPct": 133.4
+    },
+    {
+      "districtId": "126",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 84.26,
+      "meanMonthly": 2.81,
+      "meanBandWidthPct": 181.1
+    },
+    {
+      "districtId": "126",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 62.85,
+      "meanMonthly": 1.75,
+      "meanBandWidthPct": 428.4
+    },
+    {
+      "districtId": "126",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 75.78,
+      "meanMonthly": 8.17,
+      "meanBandWidthPct": 85.3
+    },
+    {
+      "districtId": "126",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 36.2,
+      "meanMonthly": 2.47,
+      "meanBandWidthPct": 181.6
+    },
+    {
+      "districtId": "126",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 19.21,
+      "meanMonthly": 3.19,
+      "meanBandWidthPct": 76.5
+    },
+    {
+      "districtId": "126",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 39.17,
+      "meanMonthly": 2.14,
+      "meanBandWidthPct": 201.5
+    },
+    {
+      "districtId": "127",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 55.56,
+      "meanMonthly": 1.42,
+      "meanBandWidthPct": 289.7
+    },
+    {
+      "districtId": "127",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 0.0,
+      "meanMonthly": 0.89,
+      "meanBandWidthPct": 209.1
+    },
+    {
+      "districtId": "127",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 76.07,
+      "meanMonthly": 6.47,
+      "meanBandWidthPct": 60.8
+    },
+    {
+      "districtId": "127",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 53.24,
+      "meanMonthly": 1.69,
+      "meanBandWidthPct": 197.3
+    },
+    {
+      "districtId": "127",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 30.56,
+      "meanMonthly": 2.14,
+      "meanBandWidthPct": 170.0
+    },
+    {
+      "districtId": "127",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 89.44,
+      "meanMonthly": 1.44,
+      "meanBandWidthPct": 258.5
+    },
+    {
+      "districtId": "128",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 36.11,
+      "meanMonthly": 1.47,
+      "meanBandWidthPct": 240.2
+    },
+    {
+      "districtId": "128",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 70.83,
+      "meanMonthly": 1.5,
+      "meanBandWidthPct": 174.3
+    },
+    {
+      "districtId": "128",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 24.62,
+      "meanMonthly": 6.47,
+      "meanBandWidthPct": 71.3
+    },
+    {
+      "districtId": "128",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 45.0,
+      "meanMonthly": 2.25,
+      "meanBandWidthPct": 182.6
+    },
+    {
+      "districtId": "128",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 46.33,
+      "meanMonthly": 2.31,
+      "meanBandWidthPct": 140.5
+    },
+    {
+      "districtId": "128",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 49.31,
+      "meanMonthly": 1.56,
+      "meanBandWidthPct": 258.9
+    },
+    {
+      "districtId": "129",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 37.5,
+      "meanMonthly": 1.47,
+      "meanBandWidthPct": 292.8
+    },
+    {
+      "districtId": "129",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 41.67,
+      "meanMonthly": 1.08,
+      "meanBandWidthPct": 196.5
+    },
+    {
+      "districtId": "129",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 64.65,
+      "meanMonthly": 7.19,
+      "meanBandWidthPct": 98.9
+    },
+    {
+      "districtId": "129",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 64.78,
+      "meanMonthly": 1.89,
+      "meanBandWidthPct": 195.5
+    },
+    {
+      "districtId": "129",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 36.81,
+      "meanMonthly": 2.44,
+      "meanBandWidthPct": 276.2
+    },
+    {
+      "districtId": "129",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 62.5,
+      "meanMonthly": 1.53,
+      "meanBandWidthPct": 195.7
+    },
+    {
+      "districtId": "130",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 45.37,
+      "meanMonthly": 1.97,
+      "meanBandWidthPct": 146.2
+    },
+    {
+      "districtId": "130",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 45.14,
+      "meanMonthly": 1.89,
+      "meanBandWidthPct": 384.7
+    },
+    {
+      "districtId": "130",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 28.38,
+      "meanMonthly": 9.94,
+      "meanBandWidthPct": 54.4
+    },
+    {
+      "districtId": "130",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 35.42,
+      "meanMonthly": 2.83,
+      "meanBandWidthPct": 168.0
+    },
+    {
+      "districtId": "130",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 38.66,
+      "meanMonthly": 2.75,
+      "meanBandWidthPct": 144.0
+    },
+    {
+      "districtId": "130",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 82.78,
+      "meanMonthly": 2.06,
+      "meanBandWidthPct": 225.1
+    },
+    {
+      "districtId": "131",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 60.0,
+      "meanMonthly": 1.86,
+      "meanBandWidthPct": 151.5
+    },
+    {
+      "districtId": "131",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 70.83,
+      "meanMonthly": 1.42,
+      "meanBandWidthPct": 222.1
+    },
+    {
+      "districtId": "131",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 57.49,
+      "meanMonthly": 7.33,
+      "meanBandWidthPct": 47.7
+    },
+    {
+      "districtId": "131",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 72.22,
+      "meanMonthly": 2.44,
+      "meanBandWidthPct": 179.7
+    },
+    {
+      "districtId": "131",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 106.25,
+      "meanMonthly": 2.25,
+      "meanBandWidthPct": 160.7
+    },
+    {
+      "districtId": "131",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 40.74,
+      "meanMonthly": 1.64,
+      "meanBandWidthPct": 277.0
+    },
+    {
+      "districtId": "132",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 55.56,
+      "meanMonthly": 1.75,
+      "meanBandWidthPct": 224.3
+    },
+    {
+      "districtId": "132",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 25.0,
+      "meanMonthly": 1.25,
+      "meanBandWidthPct": 198.5
+    },
+    {
+      "districtId": "132",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 44.31,
+      "meanMonthly": 7.72,
+      "meanBandWidthPct": 75.7
+    },
+    {
+      "districtId": "132",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 77.08,
+      "meanMonthly": 1.69,
+      "meanBandWidthPct": 174.5
+    },
+    {
+      "districtId": "132",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 52.44,
+      "meanMonthly": 2.19,
+      "meanBandWidthPct": 186.0
+    },
+    {
+      "districtId": "132",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 27.89,
+      "meanMonthly": 1.75,
+      "meanBandWidthPct": 221.3
+    },
+    {
+      "districtId": "133",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 70.14,
+      "meanMonthly": 2.17,
+      "meanBandWidthPct": 182.8
+    },
+    {
+      "districtId": "133",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 34.0,
+      "meanMonthly": 1.58,
+      "meanBandWidthPct": 218.5
+    },
+    {
+      "districtId": "133",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.3333,
+      "mape": 48.58,
+      "meanMonthly": 9.44,
+      "meanBandWidthPct": 54.4
+    },
+    {
+      "districtId": "133",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 34.44,
+      "meanMonthly": 2.19,
+      "meanBandWidthPct": 132.4
+    },
+    {
+      "districtId": "133",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 33.8,
+      "meanMonthly": 2.28,
+      "meanBandWidthPct": 268.5
+    },
+    {
+      "districtId": "133",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 28.33,
+      "meanMonthly": 2.08,
+      "meanBandWidthPct": 188.2
+    },
+    {
+      "districtId": "134",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 107.41,
+      "meanMonthly": 2.31,
+      "meanBandWidthPct": 156.5
+    },
+    {
+      "districtId": "134",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 79.44,
+      "meanMonthly": 1.56,
+      "meanBandWidthPct": 180.1
+    },
+    {
+      "districtId": "134",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 29.28,
+      "meanMonthly": 8.36,
+      "meanBandWidthPct": 66.3
+    },
+    {
+      "districtId": "134",
+      "crimeHeadId": "4",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 46.74,
+      "meanMonthly": 3.25,
+      "meanBandWidthPct": 141.8
+    },
+    {
+      "districtId": "134",
+      "crimeHeadId": "5",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.5,
+      "mape": 81.86,
+      "meanMonthly": 3.08,
+      "meanBandWidthPct": 106.9
+    },
+    {
+      "districtId": "134",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 109.44,
+      "meanMonthly": 2.28,
+      "meanBandWidthPct": 230.0
+    },
+    {
+      "districtId": "135",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 54.17,
+      "meanMonthly": 1.03,
+      "meanBandWidthPct": 243.6
+    },
+    {
+      "districtId": "135",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 54.17,
+      "meanMonthly": 0.58,
+      "meanBandWidthPct": 263.3
+    },
+    {
+      "districtId": "135",
+      "crimeHeadId": "3",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 99.17,
+      "meanMonthly": 2.5,
+      "meanBandWidthPct": 149.4
+    },
+    {
+      "districtId": "135",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 33.33,
+      "meanMonthly": 0.86,
+      "meanBandWidthPct": 243.5
+    },
+    {
+      "districtId": "135",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 45.83,
+      "meanMonthly": 1.08,
+      "meanBandWidthPct": 224.7
+    },
+    {
+      "districtId": "135",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 36.11,
+      "meanMonthly": 0.61,
+      "meanBandWidthPct": 320.4
+    },
+    {
+      "districtId": "136",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 42.59,
+      "meanMonthly": 1.17,
+      "meanBandWidthPct": 218.8
+    },
+    {
+      "districtId": "136",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": null,
+      "meanMonthly": 0.36,
+      "meanBandWidthPct": 335.0
+    },
+    {
+      "districtId": "136",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.8333,
+      "mape": 23.63,
+      "meanMonthly": 3.81,
+      "meanBandWidthPct": 120.0
+    },
+    {
+      "districtId": "136",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 28.75,
+      "meanMonthly": 1.22,
+      "meanBandWidthPct": 276.5
+    },
+    {
+      "districtId": "136",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 50.0,
+      "meanMonthly": 1.11,
+      "meanBandWidthPct": 298.0
+    },
+    {
+      "districtId": "136",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 41.67,
+      "meanMonthly": 0.83,
+      "meanBandWidthPct": 228.0
+    },
+    {
+      "districtId": "137",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.5,
+      "mape": 52.22,
+      "meanMonthly": 1.97,
+      "meanBandWidthPct": 222.9
+    },
+    {
+      "districtId": "137",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 48.15,
+      "meanMonthly": 1.28,
+      "meanBandWidthPct": 483.8
+    },
+    {
+      "districtId": "137",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.1667,
+      "mape": 49.48,
+      "meanMonthly": 7.53,
+      "meanBandWidthPct": 52.3
+    },
+    {
+      "districtId": "137",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 51.67,
+      "meanMonthly": 1.86,
+      "meanBandWidthPct": 196.2
+    },
+    {
+      "districtId": "137",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 68.33,
+      "meanMonthly": 2.69,
+      "meanBandWidthPct": 140.4
+    },
+    {
+      "districtId": "137",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 52.78,
+      "meanMonthly": 1.81,
+      "meanBandWidthPct": 261.6
+    },
+    {
+      "districtId": "138",
+      "crimeHeadId": "1",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 64.44,
+      "meanMonthly": 1.5,
+      "meanBandWidthPct": 233.1
+    },
+    {
+      "districtId": "138",
+      "crimeHeadId": "2",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 33.33,
+      "meanMonthly": 1.11,
+      "meanBandWidthPct": 352.0
+    },
+    {
+      "districtId": "138",
+      "crimeHeadId": "3",
+      "model": "ETS(A,Ad,A,12)",
+      "coverage80": 0.6667,
+      "mape": 70.73,
+      "meanMonthly": 4.56,
+      "meanBandWidthPct": 88.3
+    },
+    {
+      "districtId": "138",
+      "crimeHeadId": "4",
+      "model": "seasonal-naive",
+      "coverage80": 0.8333,
+      "mape": 50.0,
+      "meanMonthly": 1.42,
+      "meanBandWidthPct": 288.7
+    },
+    {
+      "districtId": "138",
+      "crimeHeadId": "5",
+      "model": "seasonal-naive",
+      "coverage80": 0.6667,
+      "mape": 33.06,
+      "meanMonthly": 1.58,
+      "meanBandWidthPct": 145.1
+    },
+    {
+      "districtId": "138",
+      "crimeHeadId": "8",
+      "model": "seasonal-naive",
+      "coverage80": 1.0,
+      "mape": 62.5,
+      "meanMonthly": 1.08,
+      "meanBandWidthPct": 299.2
+    }
+  ],
+  "method": "For every district × crime-head series the last 6 months are held out; the model chosen by the pipeline's own rule (ETS(A,Ad,A,12) when ≥ 24 months, mean ≥ 3 and ≥ 18 non-zero months, else the seasonal-naive blend) is refitted on the rest and its 80 % interval kept. coverage80 = share of held-out actuals inside [lo, hi]; MAPE excludes zero-actual months, as in analytics.py build_forecasts."
+}

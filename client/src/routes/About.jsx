@@ -48,6 +48,7 @@ import CaseSearchDemo from './about/CaseSearchDemo.jsx';
 import ProvenancePanel from './about/ProvenancePanel.jsx';
 import ChallengeCoverage from './about/ChallengeCoverage.jsx';
 import HonestyLedger from './about/HonestyLedger.jsx';
+import NightlyRunCard from './about/NightlyRunCard.jsx';
 
 const LINKS = {
   live: 'https://project-rainfall-60079891305.development.catalystserverless.in/app/index.html',
@@ -502,6 +503,8 @@ export default function About() {
           search={searchQ.data}
         />
       </div>
+
+      <NightlyRunCard />
 
       <div id="about-architecture" className="scroll-mt-32">
         <Card title={t('copilot.about.arch.title')} subtitle={t('copilot.about.arch.subtitle')}>

@@ -9,6 +9,7 @@ import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
+import ReadAloudButton from '../../components/ReadAloudButton.jsx';
 import { fmtNum } from '../../lib/format.js';
 import { useT } from '../../lib/i18n.jsx';
 
@@ -201,6 +202,7 @@ export default function NarrativePanel({ caseId, briefFacts }) {
       actions={
         <div className="flex items-center gap-2">
           {sourceBadge}
+          <ReadAloudButton id={`narrative-${caseId}`} text={briefFacts} size="md" />
           <button
             type="button"
             className="btn !py-1 !px-2 text-xs no-print"

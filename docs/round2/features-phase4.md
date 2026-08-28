@@ -1,0 +1,64 @@
+# Round 2 · Phase 4 — officer tiers ("every level of officer")
+
+Feature lines in FEATURES.md style, one per line, ready for the lead to fold in. Tags follow the Round-2 counting rule (Appendix A): a line is scored only when it puts analytic or visual substance on screen — a statistic, a chart, a map layer, a ranking, a relationship, a recorded decision; controls, states, i18n, caches, registrations and print plumbing are `[infra]`. Backlog rows (docs/ROUND2_FEATURE_BACKLOG.md §1) are cited per line.
+
+## Tier aggregates (functions/dappa_api)
+
+1. `GET /tiers/beat?unitId=&employeeId=` — one station's last-7-day FIRs against a 12-month weekly usual level with a Poisson-floored swing count and status word, today's StationRisk score as a percentile among scored stations with its drivers, nearby HotspotCluster patches ranked by haversine distance from the unit centroid with this week's incidents inside each patch, under-investigation cases with pendency age (optionally one officer's), and the unit's open alerts with age; `meta.provenance {asOn, window, method, provisional, tables}` on every answer — `functions/dappa_api/lib/routes/tiers.js`, `lib/app.js` (row 8, 28, 29, 34) [C3 C4 endpoint]
+2. `GET /tiers/station?unitId=` — this week by crime head against the mean and spread of the trailing seven weeks, the Crime Review month-vs-month-vs-last-year triad per head, open alerts with age, a possible-series scan (≥3 cases of one sub-head within 14 days, hour-band worded), an 8-week unit series against the district median of its sibling stations, undetected property cases older than 30 days (the CCS-17 "UN" lens) and caseload per investigating officer with median pendency — `functions/dappa_api/lib/routes/tiers.js` (rows 9, 20, 21, 30, 36, 39) [C4 C1 endpoint]
+3. `GET /tiers/state` — the 38-unit × crime-head matrix for the anchor month stamped "AS ON", per-head MoM / YoY triad with direction words, per-unit status against its own 11-month history, rate per lakh from SocioEconomic population, unit-wise breakup of the rare heads (murder, dacoity, rape, kidnapping) and the open-alert rollup — `functions/dappa_api/lib/routes/tiers.js` (rows 10, 23, 32) [C1 C4 endpoint]
+4. Tier route registration in the Express factory and 64 contract checks (shapes, unit filter, provenance block, statusWord rule, matrix arithmetic, an existing unit with no rows → 200 with empty arrays, unknown unit → 404, cache hit) — `functions/dappa_api/lib/app.js`, `functions/dappa_api/test/round2/phase4.test.mjs` [infra]
+
+## My Beat (`/beat`)
+
+5. "What changed?" card: last-7-day FIR count for my station against the usual weekly level, the dominant hour band, the by-head split, and the swing phrase with z behind a 44-px (i) — `client/src/routes/Beat.jsx`, `client/src/routes/tiers/bits.jsx` (rows 8, 42) [C4 C3]
+6. "What needs attention?" card: today's 30-day risk for my station in words (high / elevated / normal) with its top driver and "compared with others: higher than N of every 100 stations", plus the station's open alerts with status pill, swing phrase and observed-vs-expected — `client/src/routes/Beat.jsx` (rows 12, 28) [C3]
+7. "What do I do next?" card: one primary action composed from the nearest active hotspot ("Patrol near Peenya, 23:00–03:00") and a real dismiss control ("Not tonight — give a reason") that records the decision to the Phase-7 action log against the station's top alert, or to this phone when there is none, and says which — `client/src/routes/Beat.jsx`, `client/src/routes/tiers/DismissSheet.jsx`, `client/src/routes/tiers/actionLog.js` (rows 42, 47) [C3]
+8. Nearby hotspots list: sub-head · place, "N incidents within R m, HH:00–HH:00", when-to-patrol band, distance from the station, this week's incidents inside the patch, status pill — `client/src/routes/Beat.jsx` (row 29) [C4]
+9. My assigned cases: under-investigation cases for the station (or one officer via `?employeeId=`) with pendency age, IO name and a pendency status pill, each linking to the FIR — `client/src/routes/Beat.jsx` (row 34) [C1]
+10. Beat map tile: Leaflet with no tile layer — station centroid, hotspot circles (dashed when quiet, solid when active this week) and the last-7-day FIR points, fitted to bounds, legend and aria count — `client/src/routes/tiers/BeatMap.jsx` (row 35) [C1]
+11. Offline beat card: the last good `/tiers/beat` answer is kept per station and rendered when the network is down with a "Saved copy from <time> · offline" status pill (role=status) — `client/src/routes/Beat.jsx`, `client/public/sw.js` (row 47) [infra]
+12. Station picker (44 px select over `/geo/stations`), read-this-page-aloud, A5 print button, loading / error / empty states — `client/src/routes/tiers/bits.jsx`, `client/src/routes/Beat.jsx` [infra]
+
+## Station console (`/station`)
+
+13. Three-question strip: this week's registrations against the usual level with the swing phrase and the heads that are rising or on watch; the attention count (open alerts, possible series, undetected >30 d); the decision line for the top alert with "Open the alerts" and "Dismiss (reason required)" — `client/src/routes/Station.jsx` (rows 9, 42) [C4 C3]
+14. This week by crime head vs the usual level — table with status pill per head and the Crime Review triad (this month · last month · same month last year) with the vs-last-month percentage — `client/src/routes/Station.jsx` (row 30) [C1 C4]
+15. Needs-action-today alerts with SLA clocks (critical 4 h · high 12 h · medium 24 h · low 48 h from the alert's own CreatedAt, breached / warning / on-track as a pill) and age — `client/src/routes/Station.jsx`, `client/src/routes/tiers/bits.jsx` (row 9) [C3]
+16. Possible-series scan sentences — "3 Chain Snatching cases in 9 days at this station — possibly one series, mostly at night" with the run's dates and CrimeNos — `client/src/routes/Station.jsx` (row 20) [C4]
+17. 8-week unit trend against the district median (two-line SVG sparkline with its data table for print and screen readers) — `client/src/routes/Station.jsx` (row 21) [C1]
+18. Undetected property cases older than 30 days list with pendency and IO, linking to each FIR — `client/src/routes/Station.jsx` (row 36) [C4]
+19. My officers' caseload table: open cases, median pendency, >30 d, >60 d and a status pill per IO — `client/src/routes/Station.jsx` (row 39) [C1]
+
+## State rollup (`/state`)
+
+20. Three-question strip from the state totals: month-on-month and year-on-year direction with percentages, open alerts across units with the rising / watch unit chips, and the next step — `client/src/routes/StateHome.jsx` (row 42) [C4]
+21. Crime review by head: one auto-generated sentence per head in the Monthly Crime Review's own pattern ("There is a decrease in the reported cases of Murder during the current month (n) when compared to the previous month (n), and an increase when compared to the corresponding month of the previous year (n)") with a direction pill — `client/src/routes/StateHome.jsx` (row 10) [C4]
+22. Unit-wise breakup of the rare heads (murder, dacoity, rape, kidnapping) as per-unit count chips — `client/src/routes/StateHome.jsx` (row 23) [C1]
+23. The 38-unit × crime-head matrix with row totals, column totals, vs-last-month, per-lakh rate, open alerts and a status pill per unit, stamped "AS ON <date>" — `client/src/routes/StateHome.jsx` (row 32) [C1]
+
+## Tier chrome, plain language, glossary, print, PWA
+
+24. Tier switcher (Beat / Station / District / State) in the desktop topbar and the mobile More sheet, framed in the primary blue as the judges' demo asset, with a `?tier=` deep link, keyboard arrows, 44-px segments on mobile and a tooltip naming the signed-in role that set it — `client/src/components/TierControls.jsx`, `client/src/components/Layout.jsx` (rows 1, 25) [infra]
+25. Plain-language toggle (role=switch) bound to the tier store, on by default below District — `client/src/components/TierControls.jsx` (row 4) [infra]
+26. Role → tier from Catalyst Authentication once per session (`useAuthTier` → `applyRole`), anonymous → District (D-015) — `client/src/components/TierControls.jsx`, `client/src/lib/tierApi.js` (row 25) [infra]
+27. District tier chrome on the command dashboard: "Commissionerate · DCP (Crime)" for Bengaluru City, "District · SP" elsewhere, with the filtered district name — `client/src/components/TierControls.jsx` (row 3) [infra]
+28. Alert cards say the plain sentence first — "about 3 swings above normal" with "z 3.1" behind the tooltip (technical-first when plain mode is off) — `client/src/routes/alerts/AlertCard.jsx`, `client/src/components/PlainZ.jsx` (row 2) [C3]
+29. "Within the normal range" for every dashboard KPI delta whose latest point sits within two normal swings of its own 12-month sparkline, the percentage one hover away — `client/src/routes/dashboard/KpiLinkTile.jsx`, `client/src/components/PlainDelta.jsx` (row 5) [C3]
+30. Forecast band as a plain sentence on the Predict horizon card — "We expect around 140 next month — most likely between 120 and 160; the true number lands in that band 8 times in 10" — `client/src/routes/predict/HorizonPanel.jsx` (row 6) [C6]
+31. Hotspot drill sentence — "27 incidents within 400 m of each other, 23:00–03:00 — a patch, not a whole area", ε / minPts behind the (i) — `client/src/routes/geointel/HotspotPanel.jsx` (row 7) [C4]
+32. Network group sentence on the community summary — "9 people who keep turning up in the same cases across 4 districts — the computer only counts shared cases, it does not know they are a gang" — `client/src/routes/network/CommunitySummary.jsx` (row 14) [C5]
+33. Status discipline on every tier surface: colour + glyph + word (▲ RISING / ಏರಿಕೆ · ● WATCH / ನಿಗಾ · ✓ STABLE / ಸ್ಥಿರ · ▼ FALLING / ಇಳಿಕೆ · — NO DATA / ದತ್ತಾಂಶವಿಲ್ಲ) from the API's statusWord, pendency, risk word and SLA state — `client/src/components/StatusPill.jsx`, `client/src/locales/{en,kn}/tier.js` (row 33) [C1]
+34. Officer glossary page: every worked term of the plain-language layer (`lib/plainlanguage.js` GLOSSARY — 20 at the time of writing, read live so terms other phases add appear) in English and Kannada — technical term, label on the card, sentence, example — with each Kannada wording's verification status and a filter — `client/src/routes/Glossary.jsx` (row 15) [infra]
+35. KPI dictionary in the SCRB idiom: the 13 CCS-17 disposal states (Rep · Fal · Tr · Tru · NI · Con · Dis/Acq · Com · PT · UI · UN · OD · AB) with plain meanings in both languages, the 17 Crime Review heads with their sub-splits, and the rates and registers (detection, charge-sheeting, per lakh, pendency, LPR, provisional / as on) — `client/src/routes/tiers/kpiDictionary.js`, `client/src/routes/Glossary.jsx` (row 16) [infra]
+36. Provenance stamp under every tier figure ("As on 16 Aug 2026 · provisional · window · method") from the API's provenance block, and the BNSS s.168 / s.170 purpose line on every tier home — `client/src/components/ProvenanceStamp.jsx`, `client/src/routes/{Beat,Station,StateHome}.jsx` (rows 17, 18) [infra]
+37. Per-tier print sheets on the app's print plumbing: Beat card A5, Station sheet A4, State matrix A4 landscape; black-and-white safe (pills print as black glyph + word, tints drop, map hidden, "prepared for" and glyph legend lines print-only) — `client/src/routes/tiers/tierPrint.jsx` (row 43) [infra]
+38. 44-px (i) size for the plain-language sentence and term components on the Beat / Station tiers (`size="lg"`), plus a `lead` override so a screen's own numbers lead and the glossary sentence sits behind — `client/src/components/PlainSentence.jsx`, `client/src/components/PlainTerm.jsx` (row 47) [infra]
+39. Hand-written service worker: precached shell, network-first navigations, cache-first static assets, network-first API GETs with a 4 s timeout and a stamped last-good answer for offline; registered with a relative URL so '/', '/app/' and the Pages base all work; PNG maskable icons and Beat / Station shortcuts in the manifest — `client/public/sw.js`, `client/src/lib/sw.js`, `client/src/main.jsx`, `client/public/manifest.webmanifest`, `client/public/icons/*` (row 47) [infra]
+40. `tier` locale namespace (225 keys each in English and Kannada, parity checked by `scripts/check_i18n.mjs`) covering navigation, status words, tier names and roles, the three questions, every tier-home sentence, glossary UI and print labels; nav group "Officer tiers" with four routes in the sidebar, More sheet, command palette and document titles — `client/src/locales/en/tier.js`, `client/src/locales/kn/tier.js`, `client/src/components/Layout.jsx` [infra]
+41. Static-demo snapshots for the three tier endpoints so the GitHub Pages build renders the tier homes without an API — `scripts/demo_snapshot.mjs` [infra]
+
+## Count
+
+- Scored: 24 (lines 1–3, 5–10, 13–23, 28–33) · Infra: 17 (lines 4, 11, 12, 24–27, 34–41).
+- Overlaps declared strongest first; three endpoint lines tagged `endpoint`.

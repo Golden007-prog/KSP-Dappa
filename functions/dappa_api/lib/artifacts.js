@@ -151,4 +151,73 @@ function resetArtifacts() {
   memory.clear();
 }
 
-module.exports = { putArtifact, listArtifacts, getArtifact, resetArtifacts, INDEX_KEY, MAX_BYTES };
+// ---------------------------------------------------------------------------
+// SmartBrowz screenshot of the hotspot map for the Weekly Brief (row 157).
+//
+//   Real path : ctx.services.smartbrowz.screenshot(url, options) ->
+//               smartbrowz().takeScreenshot(url, { page_options:{viewport},
+//               screenshot_options:{type:'png'}, navigation_options:{wait_until} })
+//               (3.4.0 utils/pojo/smartbrowz.d.ts ICatalystSmartbrowzScrShot),
+//               stored in Stratus under briefs/map-<district>-<ts>.png.
+//   Fallback  : the static map the client already ships
+//               (client/public/media/command-dashboard.jpg), labelled as such.
+// Options are top-level request-body keys, so ONLY documented ones are sent;
+// a pre-signed URL needs a user context an anonymous call lacks, so a signing
+// failure keeps the stored key and returns url:null.
+// ---------------------------------------------------------------------------
+
+const STATIC_MAP = 'media/command-dashboard.jpg';
+const SNAPSHOT_VIEWPORT = { width: 1280, height: 800 };
+
+async function readAll(stream) {
+  if (Buffer.isBuffer(stream)) return stream;
+  if (typeof stream === 'string') return Buffer.from(stream, 'binary');
+  const chunks = [];
+  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks);
+}
+
+async function captureMapSnapshot(ctx, opts) {
+  const o = opts || {};
+  const districtId = String(o.districtId || '').trim();
+  const base = (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
+  const target = `${base}/index.html#/map${districtId ? `?district=${encodeURIComponent(districtId)}` : ''}`;
+  const fallback = {
+    mode: 'static', districtId: districtId || null, targetUrl: target, imagePath: STATIC_MAP, key: null, url: null, bytes: null, source: 'fallback-local'
+  };
+  if (!ctx.flags.smartbrowz) return Object.assign(fallback, { note: 'FEATURE_SMARTBROWZ off' });
+  if (!ctx.services.smartbrowz || !ctx.services.smartbrowz.screenshot) return Object.assign(fallback, { note: 'SmartBrowz handle unavailable in this runtime' });
+  if (!base) return Object.assign(fallback, { note: 'APP_BASE_URL unset' });
+  const t0 = Date.now();
+  try {
+    const options = o.noOptions ? undefined : {
+      page_options: { viewport: SNAPSHOT_VIEWPORT },
+      screenshot_options: { type: 'png', full_page: false },
+      navigation_options: { wait_until: 'networkidle2' }
+    };
+    const png = await readAll(await ctx.services.smartbrowz.screenshot(target, options));
+    if (!png || !png.length) throw new Error('empty screenshot');
+    const key = `briefs/map-${districtId || 'state'}-${Date.now()}.png`;
+    let stored = false;
+    let url = null;
+    if (ctx.services.artifactBucket && ctx.services.artifactBucket.putBinary) {
+      try {
+        await ctx.services.artifactBucket.putBinary(key, png, 'image/png');
+        stored = true;
+        try { url = await ctx.services.artifactBucket.signedUrl(key, 3600); } catch (e) { url = null; }
+      } catch (e) {
+        logJson('warn', 'map_snapshot_store_failed', { message: String((e && e.message) || e) });
+      }
+    }
+    return {
+      mode: 'screenshot', districtId: districtId || null, targetUrl: target, viewport: SNAPSHOT_VIEWPORT,
+      key: stored ? key : null, url, bytes: png.length, renderMs: Date.now() - t0,
+      imagePath: stored ? null : STATIC_MAP, source: 'catalyst-smartbrowz',
+      note: stored ? null : 'screenshot rendered but Stratus put failed; static map used in the brief'
+    };
+  } catch (e) {
+    return Object.assign(fallback, { renderMs: Date.now() - t0, note: `SmartBrowz screenshot failed (${String((e && e.message) || e).slice(0, 160)})` });
+  }
+}
+
+module.exports = { putArtifact, listArtifacts, getArtifact, resetArtifacts, captureMapSnapshot, INDEX_KEY, MAX_BYTES, STATIC_MAP };

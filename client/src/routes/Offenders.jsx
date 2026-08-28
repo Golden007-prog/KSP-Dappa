@@ -34,6 +34,8 @@ import AliasQueue from './offenders/AliasQueue.jsx';
 import { RiskBandStrip, MoTagChips, RecentRow } from './offenders/FilterStrips.jsx';
 import OrgCrimeCrews from './offenders/OrgCrimeCrews.jsx';
 import MoVocabulary from './offenders/MoVocabulary.jsx';
+import CrewReachPanel from './depth/CrewReachPanel.jsx';
+import DepthBehaviourSection from './depth/DepthBehaviourSection.jsx';
 import { useMoAnalysis } from './offenders/useMoAnalysis.js';
 import { readCompare, writeCompare, COMPARE_MAX } from './offenders/compareStore.js';
 import { readRecent, clearRecent } from './offenders/recentStore.js';
@@ -476,11 +478,14 @@ export default function Offenders() {
           { value: 'registry', label: t('offenders.tabs.registry') },
           { value: 'crews', label: t('offenders.tabs.crews'), badge: analysis.crews.length || undefined },
           { value: 'vocab', label: t('offenders.tabs.vocab') },
+          { value: 'depth', label: t('depth.tabs.depth') },
         ]}
       />
 
       {tab === 'crews' && <OrgCrimeCrews analysis={analysis} />}
+      {tab === 'crews' && <CrewReachPanel analysis={analysis} />}
       {tab === 'vocab' && <MoVocabulary analysis={analysis} />}
+      {tab === 'depth' && <DepthBehaviourSection />}
 
       {tab === 'registry' && (
       <>

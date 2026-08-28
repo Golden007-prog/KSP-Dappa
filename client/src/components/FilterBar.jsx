@@ -9,9 +9,10 @@
 // Extras: removable active-filter chips (labels resolved via useLookups) and a
 // "Views" sheet that saves/recalls named filter combos (localStorage
 // 'dappa-saved-views').
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLookups } from '../lib/api.js';
+import { announce } from '../lib/a11y.js';
 import { useUrlFilters, DATE_RANGES, describeFilters } from '../lib/filters.js';
 import Sheet from './Sheet.jsx';
 import { useToast } from './ToastProvider.jsx';
@@ -101,6 +102,17 @@ export default function FilterBar({ show = ['district', 'crimeHead', 'dateRange'
 
   const currentParams = { districtId, crimeHeadId, range: range === 'all' ? '' : range, from: rawFrom, to: rawTo };
   const currentSummary = describeFilters(currentParams, lookups.data, { t, tName });
+
+  // WCAG 4.1.3: a filter change re-renders the whole view silently for a
+  // screen reader — announce the new filter set (or that it was cleared)
+  // once, skipping the mount so the page load is not narrated twice.
+  const filterSig = `${districtId}|${crimeHeadId}|${range}|${rawFrom}|${rawTo}`;
+  const lastSig = useRef(filterSig);
+  useEffect(() => {
+    if (lastSig.current === filterSig) return;
+    lastSig.current = filterSig;
+    announce(anyActive ? t('a11y.live.filtersApplied', { summary: currentSummary }) : t('a11y.live.filtersCleared'));
+  }, [filterSig, anyActive, currentSummary, t]);
 
   const applyView = (v) => {
     // key order matters: setFilters clears from/to whenever it processes

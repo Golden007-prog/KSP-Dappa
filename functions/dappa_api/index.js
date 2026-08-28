@@ -84,7 +84,20 @@ function servicesFactory(req) {
     // Catalyst Authentication (User Management).
     auth: {
       currentUser: async () => capp.userManagement().getCurrentUser(),
-      allUsers: async () => capp.userManagement().getAllUsers()
+      allUsers: async () => capp.userManagement().getAllUsers(),
+      register: async (signupConfig, userDetails) => capp.userManagement().registerUser(signupConfig, userDetails)
+    },
+
+    // Data Store OLAP — same ZCQL, analytical engine (lib/olap.js).
+    olap: {
+      execute: async (sql) => capp.zcql().executeOLAPQuery(sql)
+    },
+
+    // Job Scheduling — the console-created pool is named in JOB_POOL_NAME (lib/jobs.js).
+    jobs: {
+      submit: async (meta) => capp.jobScheduling().job().submitJob(meta),
+      get: async (jobId) => capp.jobScheduling().job().getJob(jobId),
+      pools: async () => capp.jobScheduling().getAllJobpool()
     },
 
     // Push Notifications, web channel.
@@ -107,10 +120,11 @@ function servicesFactory(req) {
         const obj = await stratusBucket().getObject(key);
         return typeof obj === 'string' ? obj : obj && obj.toString ? obj.toString() : null;
       },
-      signedUrl: async (key) => {
-        const signed = await stratusBucket().generatePreSignedUrl(key, 'GET');
+      signedUrl: async (key, expiryInSec) => {
+        const signed = await stratusBucket().generatePreSignedUrl(key, 'GET', expiryInSec ? { expiryIn: String(expiryInSec) } : undefined);
         return (signed && (signed.signature || signed.url)) || null;
-      }
+      },
+      putBinary: async (key, buffer, contentType) => stratusBucket().putObject(key, buffer, contentType ? { contentType } : undefined)
     },
 
     // Circuits — the circuit itself is drawn in the console, so its id is env-supplied.
@@ -143,6 +157,10 @@ function servicesFactory(req) {
       }
     },
     smartbrowz: {
+      // Screenshot of any app URL (lib/artifacts.js captureMapSnapshot). Options
+      // are passed through untouched: the SDK merges them at the top level of
+      // the request body, so callers send only documented keys.
+      screenshot: async (url, options) => capp.smartbrowz().takeScreenshot(url, options),
       renderBrief: async (window) => {
         // The client is a HashRouter SPA served from /app/index.html, so the
         // print route only exists behind the hash — '/app/print/brief' is a

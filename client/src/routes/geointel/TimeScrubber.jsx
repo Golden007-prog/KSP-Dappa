@@ -93,6 +93,8 @@ export default function TimeScrubber({
                 title={t('geointel.scrub.barTitle', { month: monthLabel(m), n: totals[i] })}
                 aria-label={t('geointel.scrub.barAria', { month: monthLabel(m), n: totals[i] })}
                 onClick={() => onIndexChange(i + 1)}
+                // 2.5.8 Equivalent: the month slider below is the ≥24 px control
+                data-a11y-equivalent="geointel-month-range"
                 className={`flex-1 min-w-[2px] rounded-t-[1px] transition-colors ${
                   index === i + 1 ? 'bg-amber' : 'bg-grid hover:bg-amber/60'
                 }`}
@@ -102,6 +104,7 @@ export default function TimeScrubber({
           </div>
         )}
         <input
+          id="geointel-month-range"
           type="range"
           min={0}
           max={months.length}
@@ -109,7 +112,7 @@ export default function TimeScrubber({
           value={Math.min(index, months.length)}
           disabled={disabled}
           onChange={(e) => onIndexChange(Number(e.target.value))}
-          className="w-full geointel-range cursor-pointer disabled:cursor-not-allowed"
+          className="w-full h-6 geointel-range cursor-pointer disabled:cursor-not-allowed"
           aria-label={t('geointel.scrub.monthAria')}
           aria-valuetext={label}
         />

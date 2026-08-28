@@ -9,6 +9,7 @@ const copilot = require('../copilot');
 const quickml = require('../quickml');
 const zia = require('../zia');
 const mail = require('../mail');
+const artifacts = require('../artifacts');
 const { getFallbackState, fixtureNetworkGraph } = require('../fixture');
 const { toNum, round, ymAdd, pctDelta, parseJsonSafe, withTimeout, AI_TIMEOUT_MS } = require('../util');
 
@@ -217,8 +218,11 @@ function register(router) {
         // A rendered-and-stored PDF counts as success even when the signed URL
         // could not be minted — the bytes exist and the key locates them.
         if (out && (out.pdfUrl || out.stored)) {
+          // Hotspot-map screenshot stored beside the PDF (lib/artifacts.js
+          // captureMapSnapshot; static map when SmartBrowz cannot render it).
+          const mapSnapshot = await artifacts.captureMapSnapshot(ctx, { districtId: (req.body || {}).districtId }).catch(() => null);
           return ok(res, {
-            mode: 'pdf', pdfUrl: out.pdfUrl || null, storedKey: out.key || null, window
+            mode: 'pdf', pdfUrl: out.pdfUrl || null, storedKey: out.key || null, window, mapSnapshot
           }, { source: 'smartbrowz' });
         }
         fellBackBecause = 'smartbrowz returned no pdf';

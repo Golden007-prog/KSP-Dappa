@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import PulseDot from '../../components/PulseDot.jsx';
 import StatDelta from '../../components/StatDelta.jsx';
+import PlainDelta from '../../components/PlainDelta.jsx';
 import { fmtInt } from '../../lib/format.js';
 import { useT } from '../../lib/i18n.jsx';
 
@@ -95,7 +96,7 @@ export default function KpiLinkTile({
       ) : (
         <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
           <span className="num text-2xl font-semibold tracking-tight text-ink">{display}</span>
-          {mom !== undefined && <StatDelta value={Number(mom)} positiveIsGood={positiveIsGood} label={t('dashboard.abbr.mom')} />}
+          {mom !== undefined && <PlainDelta value={Number(mom)} series={spark} positiveIsGood={positiveIsGood} label={t('dashboard.abbr.mom')} />}
           {yoy !== undefined && <StatDelta value={Number(yoy)} positiveIsGood={positiveIsGood} label={t('dashboard.abbr.yoy')} />}
         </div>
       )}

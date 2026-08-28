@@ -40,6 +40,11 @@
           if (localStorage.getItem('dappa-motion') === 'reduce') {
             document.documentElement.dataset.motion = 'reduce';
           }
+          if (localStorage.getItem('dappa-fontsize') === 'large') {
+            document.documentElement.dataset.fontsize = 'large';
+          }
+          var lang = localStorage.getItem('dappa-lang');
+          if (lang === 'kn' || lang === 'en') document.documentElement.lang = lang;
         } catch (e) { /* storage unavailable — keep dark */ }
         var root = document.documentElement;
         root.classList.remove('dark', 'light');

@@ -6,10 +6,13 @@
 import { Link } from 'react-router-dom';
 import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
+import PlainZ from '../../components/PlainZ.jsx';
+import ReadAloudButton from '../../components/ReadAloudButton.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import Sparkline from './Sparkline.jsx';
 import MiniCompareBar from './MiniCompareBar.jsx';
 import SlaBadge from './SlaBadge.jsx';
+import ActionControls from './ActionControls.jsx';
 import { caseDrillHref } from './links.js';
 import { fmtInt, fmtNum, dateLabel, getFormatLocale } from '../../lib/format.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
@@ -89,7 +92,7 @@ export default function AlertCard({
             <h3 className="text-sm font-semibold text-ink truncate">
               {head} — {district}
             </h3>
-            <Badge tone={acked || snoozed ? 'slate' : 'red'} className="num">{t('alerts.card.z')} {fmtNum(a.zScore, 1)}</Badge>
+            <PlainZ z={a.zScore} tone={acked || snoozed ? 'slate' : 'red'} prefix={t('alerts.card.z')} />
             {dir && (
               <Tooltip label={t(dir === 'up' ? 'alerts.dir.upTip' : 'alerts.dir.downTip')}>
                 <span tabIndex={0} className="inline-flex rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
@@ -134,7 +137,7 @@ export default function AlertCard({
             )}
           </div>
 
-          {a.narrative && <p className="text-xs text-muted leading-relaxed">{a.narrative}</p>}
+          {a.narrative && <div className="flex items-start gap-2"><p className="flex-1 text-xs text-muted leading-relaxed">{a.narrative}</p><ReadAloudButton id={`alert-${a.alertId}`} text={a.narrative} /></div>}
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted num">
             <span>{dateLabel(a.periodStart)} → {dateLabel(a.periodEnd)}</span>
@@ -245,6 +248,7 @@ export default function AlertCard({
           {ackError && <p className="text-[11px] text-signal" role="alert">{t('alerts.card.ackError')}</p>}
         </div>
       </div>
+      <ActionControls alert={a} variant="card" className="mt-3" />
     </Card>
   );
 }

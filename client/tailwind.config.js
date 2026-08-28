@@ -15,6 +15,8 @@ export default {
         base: v('--t-base'),
         panel: { DEFAULT: v('--t-panel'), raised: v('--t-panel-raised') },
         grid: v('--t-grid'),
+        // ≥3:1 boundary for inputs/buttons (WCAG 1.4.11); hairlines stay `grid`
+        control: v('--t-control'),
         ink: v('--t-ink'),
         muted: v('--t-muted'),
         primary: { DEFAULT: v('--t-primary'), on: v('--t-primary-on') },

@@ -39,6 +39,7 @@ import CaseCompleteness from './cases/CaseCompleteness.jsx';
 import StationContext from './cases/StationContext.jsx';
 import PeerCohortPanel from './cases/PeerCohortPanel.jsx';
 import { buildCaseBrief } from './cases/caseBrief.js';
+import EvidenceTags from './cases/EvidenceTags.jsx';
 import './cases/case-detail-print.css';
 
 const WEEKDAY_KEYS = ['cases.detail.wd.sun', 'cases.detail.wd.mon', 'cases.detail.wd.tue',
@@ -443,6 +444,8 @@ export default function CaseDetail() {
       </div>
 
       <CaseTimeline caseData={d} />
+
+      <EvidenceTags caseId={String(d.caseMasterId ?? id)} />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">

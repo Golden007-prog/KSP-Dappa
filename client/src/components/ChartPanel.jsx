@@ -18,15 +18,18 @@
 // Both 'dappa' (dark) and 'dappa-light' themes are registered at module load;
 // the active app theme picks one and the chart re-instantiates on toggle.
 // Route fillers can also `import { DAPPA_CHART_COLORS } from '../components/ChartPanel.jsx'`.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
 import Card from './Card.jsx';
+import ChartTable from './ChartTable.jsx';
 import LoadingSkeleton from './LoadingSkeleton.jsx';
 import EmptyState from './EmptyState.jsx';
 import Tooltip from './Tooltip.jsx';
 import { useTheme } from './ThemeProvider.jsx';
+import { describeChart, optionToTable, withChartAria } from '../lib/chartA11y.js';
+import { fmtNum } from '../lib/format.js';
 import { useFocusTrap, useScrollLock } from '../lib/modal.js';
 import { useT } from '../lib/i18n.jsx';
 
@@ -189,8 +192,17 @@ export default function ChartPanel({
   const t = useT();
   const chartRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
+  const [showTable, setShowTable] = useState(false);
   const chartTheme = theme === 'light' ? 'dappa-light' : 'dappa';
   const hasChart = !loading && !error && !empty && !!option;
+
+  // WCAG 1.1.1 / 1.4.1 (lib/chartA11y.js): role="img" + a localized
+  // description on the canvas, decal fills when only colour separates the
+  // series, and the same numbers as a real table (toggle + always in print).
+  const chartName = title || t('shell.chart.word');
+  const description = useMemo(() => (option ? describeChart(option, t, { title, fmt: (v) => fmtNum(v, Number.isInteger(v) ? 0 : 1) }) : ''), [option, t, title]);
+  const ariaOption = useMemo(() => (option ? withChartAria(option, { description }) : option), [option, description]);
+  const table = useMemo(() => (hasChart ? optionToTable(option) : null), [hasChart, option]);
 
   const downloadPng = (instance) => {
     const inst = instance || chartRef.current?.getEchartsInstance?.();
@@ -208,9 +220,26 @@ export default function ChartPanel({
     a.remove();
   };
 
+  const tableAction = hasChart && table ? (
+    <Tooltip label={t(showTable ? 'a11y.chart.showChart' : 'a11y.chart.showTable')} position="bottom">
+      <button
+        type="button"
+        onClick={() => setShowTable((v) => !v)}
+        aria-pressed={showTable}
+        aria-label={t(showTable ? 'a11y.chart.showChartAria' : 'a11y.chart.showTableAria', { title: chartName })}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${showTable ? 'text-amber bg-amber/10' : 'text-muted hover:text-primary hover:bg-grid/30'}`}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+          {showTable ? <path d="M3 17l5-6 4 3 6-8M14 6h4v4" /> : <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 15h18M9 4v16" /></>}
+        </svg>
+      </button>
+    </Tooltip>
+  ) : null;
+
   const chartActions = exportable && hasChart ? (
     <>
       {actions}
+      {tableAction}
       <Tooltip label={t('shell.chart.downloadPng')} position="bottom">
         <button
           type="button"
@@ -236,7 +265,12 @@ export default function ChartPanel({
         </button>
       </Tooltip>
     </>
-  ) : actions;
+  ) : (
+    <>
+      {actions}
+      {tableAction}
+    </>
+  );
 
   const retryHeaderAction = error && onRetry ? (
     <>
@@ -286,6 +320,8 @@ export default function ChartPanel({
         <EmptyState compact title={t('common.state.empty')} message={emptyMessage || t('shell.chart.noPlot')} />
       </div>
     );
+  } else if (showTable && table) {
+    body = <ChartTable table={table} caption={description} visible className="!mt-0 overflow-y-auto" style={{ maxHeight: height }} />;
   } else {
     body = (
       <ReactECharts
@@ -293,7 +329,7 @@ export default function ChartPanel({
         key={chartTheme}
         echarts={echarts}
         theme={chartTheme}
-        option={option}
+        option={ariaOption}
         notMerge={notMerge}
         lazyUpdate
         style={{ height, width: '100%' }}
@@ -305,11 +341,12 @@ export default function ChartPanel({
   return (
     <Card title={title} subtitle={subtitle} actions={retryHeaderAction || chartActions} className={className}>
       {body}
+      {hasChart && table && !showTable && <ChartTable table={table} caption={description} />}
       {expanded && hasChart && (
         <ExpandedChart
           title={title}
           subtitle={subtitle}
-          option={option}
+          option={ariaOption}
           chartTheme={chartTheme}
           onEvents={onEvents}
           onClose={() => setExpanded(false)}

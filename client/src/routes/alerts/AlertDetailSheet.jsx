@@ -23,6 +23,7 @@ import AlertContextChart from './AlertContextChart.jsx';
 import ExplainPanel from './ExplainPanel.jsx';
 import SocioContext from './SocioContext.jsx';
 import TriageNotes from './TriageNotes.jsx';
+import ActionControls from './ActionControls.jsx';
 import { caseDrillHref } from './links.js';
 import { fmtNum, dateLabel } from '../../lib/format.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
@@ -152,6 +153,7 @@ export default function AlertDetailSheet({
           <button type="button" className={BTN} onClick={() => onCopy(a)}>{t('common.action.copy')}</button>
         </div>
 
+        <ActionControls alert={a} variant="sheet" />
         {meta && (
           <TriageNotes
             alertId={a.alertId}

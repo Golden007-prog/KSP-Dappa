@@ -1,0 +1,495 @@
+{
+  "thresholds": [
+    0.7,
+    0.72,
+    0.74,
+    0.76,
+    0.78,
+    0.8,
+    0.82,
+    0.84,
+    0.86,
+    0.88,
+    0.9,
+    0.92,
+    0.94,
+    0.96
+  ],
+  "truePairs": 2393,
+  "groundTruthRows": 1240,
+  "accusedRows": 36093,
+  "candidatePairs": 983697,
+  "exactAnchors": 241364,
+  "exactAnchorsSameDistrict": 27355,
+  "v1": {
+    "points": [
+      {
+        "precision": 0.0001,
+        "recall": 0.9904,
+        "f1": 0.0001,
+        "correctPairs": 2370,
+        "falsePairs": 34814195,
+        "clusters": 64,
+        "largestCluster": 32392,
+        "threshold": 0.7
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9904,
+        "f1": 0.0001,
+        "correctPairs": 2370,
+        "falsePairs": 34811019,
+        "clusters": 67,
+        "largestCluster": 32390,
+        "threshold": 0.72
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9887,
+        "f1": 0.0001,
+        "correctPairs": 2366,
+        "falsePairs": 33987603,
+        "clusters": 84,
+        "largestCluster": 32354,
+        "threshold": 0.74
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9791,
+        "f1": 0.0001,
+        "correctPairs": 2343,
+        "falsePairs": 33767521,
+        "clusters": 104,
+        "largestCluster": 32344,
+        "threshold": 0.76
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9561,
+        "f1": 0.0001,
+        "correctPairs": 2288,
+        "falsePairs": 32961090,
+        "clusters": 152,
+        "largestCluster": 32300,
+        "threshold": 0.78
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9398,
+        "f1": 0.0001,
+        "correctPairs": 2249,
+        "falsePairs": 32510197,
+        "clusters": 207,
+        "largestCluster": 32267,
+        "threshold": 0.8
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.8855,
+        "f1": 0.0001,
+        "correctPairs": 2119,
+        "falsePairs": 30872970,
+        "clusters": 329,
+        "largestCluster": 32164,
+        "threshold": 0.82
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.8262,
+        "f1": 0.0001,
+        "correctPairs": 1977,
+        "falsePairs": 28338146,
+        "clusters": 505,
+        "largestCluster": 31284,
+        "threshold": 0.84
+      },
+      {
+        "precision": 0.0003,
+        "recall": 0.7346,
+        "f1": 0.0005,
+        "correctPairs": 1758,
+        "falsePairs": 6694578,
+        "clusters": 825,
+        "largestCluster": 15272,
+        "threshold": 0.86
+      },
+      {
+        "precision": 0.0075,
+        "recall": 0.6444,
+        "f1": 0.0147,
+        "correctPairs": 1542,
+        "falsePairs": 205414,
+        "clusters": 1256,
+        "largestCluster": 1265,
+        "threshold": 0.88
+      },
+      {
+        "precision": 0.0186,
+        "recall": 0.6318,
+        "f1": 0.0362,
+        "correctPairs": 1512,
+        "falsePairs": 79582,
+        "clusters": 1448,
+        "largestCluster": 576,
+        "threshold": 0.9
+      },
+      {
+        "precision": 0.0321,
+        "recall": 0.5712,
+        "f1": 0.0608,
+        "correctPairs": 1367,
+        "falsePairs": 41240,
+        "clusters": 1625,
+        "largestCluster": 232,
+        "threshold": 0.92
+      },
+      {
+        "precision": 0.0395,
+        "recall": 0.5508,
+        "f1": 0.0737,
+        "correctPairs": 1318,
+        "falsePairs": 32058,
+        "clusters": 1693,
+        "largestCluster": 158,
+        "threshold": 0.94
+      },
+      {
+        "precision": 0.0364,
+        "recall": 0.3891,
+        "f1": 0.0666,
+        "correctPairs": 931,
+        "falsePairs": 24614,
+        "clusters": 1764,
+        "largestCluster": 96,
+        "threshold": 0.96
+      }
+    ],
+    "bestF1": {
+      "precision": 0.0395,
+      "recall": 0.5508,
+      "f1": 0.0737,
+      "correctPairs": 1318,
+      "falsePairs": 32058,
+      "clusters": 1693,
+      "largestCluster": 158,
+      "threshold": 0.94
+    },
+    "label": "v1 — pipeline scorer: phonetic + gender blocking, 0.6·ts + 0.2·age + 0.2·district, exact-name anchor across districts"
+  },
+  "v2": {
+    "points": [
+      {
+        "precision": 0.0004,
+        "recall": 0.7693,
+        "f1": 0.0007,
+        "correctPairs": 1841,
+        "falsePairs": 5248322,
+        "clusters": 602,
+        "largestCluster": 10163,
+        "threshold": 0.7
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.7693,
+        "f1": 0.0007,
+        "correctPairs": 1841,
+        "falsePairs": 5246134,
+        "clusters": 637,
+        "largestCluster": 10163,
+        "threshold": 0.72
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.7668,
+        "f1": 0.0007,
+        "correctPairs": 1835,
+        "falsePairs": 5015375,
+        "clusters": 777,
+        "largestCluster": 10142,
+        "threshold": 0.74
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.7635,
+        "f1": 0.0007,
+        "correctPairs": 1827,
+        "falsePairs": 4994402,
+        "clusters": 914,
+        "largestCluster": 10141,
+        "threshold": 0.76
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.7572,
+        "f1": 0.0008,
+        "correctPairs": 1812,
+        "falsePairs": 4753710,
+        "clusters": 1411,
+        "largestCluster": 10124,
+        "threshold": 0.78
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.7359,
+        "f1": 0.0008,
+        "correctPairs": 1761,
+        "falsePairs": 4647208,
+        "clusters": 1972,
+        "largestCluster": 10121,
+        "threshold": 0.8
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.6958,
+        "f1": 0.0008,
+        "correctPairs": 1665,
+        "falsePairs": 4331605,
+        "clusters": 3192,
+        "largestCluster": 10063,
+        "threshold": 0.82
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.6544,
+        "f1": 0.0008,
+        "correctPairs": 1566,
+        "falsePairs": 3810188,
+        "clusters": 3815,
+        "largestCluster": 9735,
+        "threshold": 0.84
+      },
+      {
+        "precision": 0.0016,
+        "recall": 0.5909,
+        "f1": 0.0033,
+        "correctPairs": 1414,
+        "falsePairs": 858308,
+        "clusters": 4010,
+        "largestCluster": 4756,
+        "threshold": 0.86
+      },
+      {
+        "precision": 0.0439,
+        "recall": 0.5244,
+        "f1": 0.0811,
+        "correctPairs": 1255,
+        "falsePairs": 27314,
+        "clusters": 4181,
+        "largestCluster": 357,
+        "threshold": 0.88
+      },
+      {
+        "precision": 0.108,
+        "recall": 0.5198,
+        "f1": 0.1789,
+        "correctPairs": 1244,
+        "falsePairs": 10271,
+        "clusters": 4238,
+        "largestCluster": 181,
+        "threshold": 0.9
+      },
+      {
+        "precision": 0.1691,
+        "recall": 0.4664,
+        "f1": 0.2482,
+        "correctPairs": 1116,
+        "falsePairs": 5483,
+        "clusters": 4326,
+        "largestCluster": 73,
+        "threshold": 0.92
+      },
+      {
+        "precision": 0.223,
+        "recall": 0.4522,
+        "f1": 0.2986,
+        "correctPairs": 1082,
+        "falsePairs": 3771,
+        "clusters": 4376,
+        "largestCluster": 42,
+        "threshold": 0.94
+      },
+      {
+        "precision": 0.2114,
+        "recall": 0.3201,
+        "f1": 0.2546,
+        "correctPairs": 766,
+        "falsePairs": 2858,
+        "clusters": 4423,
+        "largestCluster": 36,
+        "threshold": 0.96
+      }
+    ],
+    "bestF1": {
+      "precision": 0.223,
+      "recall": 0.4522,
+      "f1": 0.2986,
+      "correctPairs": 1082,
+      "falsePairs": 3771,
+      "clusters": 4376,
+      "largestCluster": 42,
+      "threshold": 0.94
+    },
+    "label": "v2 — district blocking: scored pairs only within a district, exact-name anchors only within a district"
+  },
+  "v3": {
+    "points": [
+      {
+        "precision": 0.0001,
+        "recall": 0.9904,
+        "f1": 0.0001,
+        "correctPairs": 2370,
+        "falsePairs": 34814145,
+        "clusters": 64,
+        "largestCluster": 32392,
+        "threshold": 0.7
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9904,
+        "f1": 0.0001,
+        "correctPairs": 2370,
+        "falsePairs": 34810919,
+        "clusters": 67,
+        "largestCluster": 32390,
+        "threshold": 0.72
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9858,
+        "f1": 0.0001,
+        "correctPairs": 2359,
+        "falsePairs": 33578006,
+        "clusters": 149,
+        "largestCluster": 32274,
+        "threshold": 0.74
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9741,
+        "f1": 0.0001,
+        "correctPairs": 2331,
+        "falsePairs": 33348266,
+        "clusters": 172,
+        "largestCluster": 32254,
+        "threshold": 0.76
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.9336,
+        "f1": 0.0001,
+        "correctPairs": 2234,
+        "falsePairs": 31276757,
+        "clusters": 425,
+        "largestCluster": 31563,
+        "threshold": 0.78
+      },
+      {
+        "precision": 0.0001,
+        "recall": 0.911,
+        "f1": 0.0001,
+        "correctPairs": 2180,
+        "falsePairs": 30033368,
+        "clusters": 559,
+        "largestCluster": 31121,
+        "threshold": 0.8
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.6958,
+        "f1": 0.0008,
+        "correctPairs": 1665,
+        "falsePairs": 4331605,
+        "clusters": 3192,
+        "largestCluster": 10063,
+        "threshold": 0.82
+      },
+      {
+        "precision": 0.0004,
+        "recall": 0.6544,
+        "f1": 0.0008,
+        "correctPairs": 1566,
+        "falsePairs": 3810188,
+        "clusters": 3815,
+        "largestCluster": 9735,
+        "threshold": 0.84
+      },
+      {
+        "precision": 0.0016,
+        "recall": 0.5909,
+        "f1": 0.0033,
+        "correctPairs": 1414,
+        "falsePairs": 858308,
+        "clusters": 4010,
+        "largestCluster": 4756,
+        "threshold": 0.86
+      },
+      {
+        "precision": 0.0439,
+        "recall": 0.5244,
+        "f1": 0.0811,
+        "correctPairs": 1255,
+        "falsePairs": 27314,
+        "clusters": 4181,
+        "largestCluster": 357,
+        "threshold": 0.88
+      },
+      {
+        "precision": 0.1084,
+        "recall": 0.519,
+        "f1": 0.1793,
+        "correctPairs": 1242,
+        "falsePairs": 10218,
+        "clusters": 4204,
+        "largestCluster": 181,
+        "threshold": 0.9
+      },
+      {
+        "precision": 0.2262,
+        "recall": 0.4522,
+        "f1": 0.3016,
+        "correctPairs": 1082,
+        "falsePairs": 3701,
+        "clusters": 4057,
+        "largestCluster": 70,
+        "threshold": 0.92
+      },
+      {
+        "precision": 0.2976,
+        "recall": 0.4363,
+        "f1": 0.3538,
+        "correctPairs": 1044,
+        "falsePairs": 2464,
+        "clusters": 4074,
+        "largestCluster": 36,
+        "threshold": 0.94
+      },
+      {
+        "precision": 0.299,
+        "recall": 0.3046,
+        "f1": 0.3018,
+        "correctPairs": 729,
+        "falsePairs": 1709,
+        "clusters": 4090,
+        "largestCluster": 34,
+        "threshold": 0.96
+      }
+    ],
+    "bestF1": {
+      "precision": 0.2976,
+      "recall": 0.4363,
+      "f1": 0.3538,
+      "correctPairs": 1044,
+      "falsePairs": 2464,
+      "clusters": 4074,
+      "largestCluster": 36,
+      "threshold": 0.94
+    },
+    "label": "v3 — scorer only: the exact-name anchor pass removed, threshold decides every link"
+  },
+  "pipelinePoint": {
+    "threshold": 0.92,
+    "note": "the operating point analytics.py selected (identity_metrics.json)"
+  },
+  "computeSeconds": 62.5,
+  "method": "Accused rows are blocked on (phonetic key of any name token, gender) and paired within an age window of 2 years; each pair is scored 0.6·token_sort_ratio + 0.2·max(0, 1 − |Δage|/5) + 0.2·[same district]; clusters are union-find components over pairs at or above the threshold plus the exact-name anchors. Precision and recall are pairwise against _ground_truth_offenders.csv (a planted offender linked to a background person counts as a false pair)."
+}

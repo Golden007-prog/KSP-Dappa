@@ -17,6 +17,12 @@ const extrasRoutes = require('./routes/extras');
 const servicesRoutes = require('./routes/services');
 const netlinksRoutes = require('./routes/netlinks');
 const behaviourRoutes = require('./routes/behaviour');
+const facesRoutes = require('./routes/faces');
+const tiersRoutes = require('./routes/tiers');
+const actionlogRoutes = require('./routes/actionlog');
+const surfacesRoutes = require('./routes/surfaces');
+const ingestRoutes = require('./routes/ingest');
+const depthRoutes = require('./routes/depth');
 
 /**
  * @param {object} [options]
@@ -33,6 +39,9 @@ function createApp(options) {
   // requests carry X-Request-Id and rate-limit headers.
   app.use(requestId());
   app.use(rateLimit());
+  // Face probes (≤4 MB, ~5.4 MB as base64) get a wider body limit on their
+  // paths only; everything else keeps the 1 MB gate.
+  app.use(['/api/v1/identify', '/server/dappa_api/api/v1/identify', '/api/v1/admin/faces', '/server/dappa_api/api/v1/admin/faces'], express.json({ limit: '6mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(requestLogger());
 
@@ -61,6 +70,7 @@ function createApp(options) {
   });
 
   const router = express.Router();
+  surfacesRoutes.register(router); // first: its observability middleware must see every request
   readRoutes.register(router);
   // services before insight/actions: /reports/artifacts and /admin/circuit/*
   // must match ahead of any later param route on the same prefix.
@@ -72,6 +82,11 @@ function createApp(options) {
   // /offenders/mo-evolution have to win over the later param routes.
   netlinksRoutes.register(router);
   behaviourRoutes.register(router);
+  facesRoutes.register(router);
+  tiersRoutes.register(router);
+  actionlogRoutes.register(router);
+  ingestRoutes.register(router);
+  depthRoutes.register(router);
   insightRoutes.register(router);
   casesRoutes.register(router);
   actionsRoutes.register(router);

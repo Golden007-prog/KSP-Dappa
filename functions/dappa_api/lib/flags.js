@@ -25,19 +25,26 @@ function getFlags() {
   return {
     quickml: flagOn('FEATURE_QUICKML', false),
     quickmlLlm: flagOn('FEATURE_QUICKML_LLM', false),
+    quickmlAutoml: flagOn('FEATURE_QUICKML_AUTOML', false),
     zia,
     // Zia sub-surfaces inherit FEATURE_ZIA unless individually overridden.
     ziaOcr: flagOn('FEATURE_ZIA_OCR', zia),
+    ziaObjects: flagOn('FEATURE_ZIA_OBJECTS', zia),
+    ziaModeration: flagOn('FEATURE_ZIA_MODERATION', zia),
     ziaTranslate: flagOn('FEATURE_ZIA_TRANSLATE', false),
     ziaAutoml: flagOn('FEATURE_ZIA_AUTOML', false),
+    faceId: flagOn('FEATURE_FACE_ID', false),
     smartbrowz: flagOn('FEATURE_SMARTBROWZ', false),
     mail: flagOn('FEATURE_MAIL', false),
     push: flagOn('FEATURE_PUSH', false),
     search: flagOn('FEATURE_SEARCH', true),
     filestore: flagOn('FEATURE_FILESTORE', true),
     auth: flagOn('FEATURE_AUTH', true),
+    authEmbed: flagOn('FEATURE_AUTH_EMBED', false),
     connections: flagOn('FEATURE_CONNECTIONS', false),
     circuit: flagOn('FEATURE_CIRCUIT', false),
+    jobs: flagOn('FEATURE_JOBS', false),
+    olap: flagOn('FEATURE_OLAP', false),
     publicDemo: flagOn('PUBLIC_DEMO', true)
   };
 }

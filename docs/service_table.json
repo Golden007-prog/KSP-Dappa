@@ -2,16 +2,16 @@
   "generatedFrom": "functions/dappa_api/lib/servicemap.js",
   "note": "status evaluated against the tracked catalyst-config.json; live truth is GET /meta/services",
   "summary": {
-    "total": 28,
-    "reachableFromCode": 23,
-    "liveNow": 15,
+    "total": 35,
+    "reachableFromCode": 30,
+    "liveNow": 20,
     "flagGated": 0,
-    "consolePending": 11,
-    "withFallback": 26,
+    "consolePending": 13,
+    "withFallback": 33,
     "byStatus": {
-      "live": 9,
-      "console-pending": 11,
-      "active": 4,
+      "live": 10,
+      "console-pending": 13,
+      "active": 8,
       "unavailable": 2,
       "platform": 2
     }
@@ -154,8 +154,8 @@
       "key": "file-store",
       "name": "File Store",
       "category": "data",
-      "status": "console-pending",
-      "statusReason": "FILESTORE_FOLDER_ID not set (create the folder in the console)",
+      "status": "live",
+      "statusReason": "generated brief artefacts uploaded to the configured folder",
       "invocation": "lib/artifacts.js — filestore().folder(id).uploadFile/downloadFile",
       "flag": "FEATURE_FILESTORE",
       "requires": [
@@ -183,12 +183,29 @@
       ]
     },
     {
+      "key": "data-store-olap",
+      "name": "Data Store OLAP database",
+      "category": "data",
+      "status": "console-pending",
+      "statusReason": "flag on but OLAP_ENABLED not set",
+      "invocation": "lib/olap.js — zcql().executeOLAPQuery(sql) for the district x head x month cube and the nightly detect step",
+      "flag": "FEATURE_OLAP",
+      "requires": [
+        "OLAP_ENABLED"
+      ],
+      "endpoints": [
+        "/olap/cube",
+        "/meta/olap-benchmark",
+        "/admin/jobs/nightly-refresh"
+      ]
+    },
+    {
       "key": "mail",
       "name": "Catalyst Mail",
       "category": "messaging",
       "status": "console-pending",
       "statusReason": "flag on but MAIL_FROM, DIGEST_TO not set",
-      "invocation": "lib/mail.js — email().sendMail({from_email,to_email,subject,content})",
+      "invocation": "lib/mail.js — email().sendMail({from_email,to_email,subject,content}); the action-loop digest (lib/actiondigest.js) goes through the same sendDigest",
       "flag": "FEATURE_MAIL",
       "requires": [
         "MAIL_FROM",
@@ -197,7 +214,9 @@
       "endpoints": [
         "/admin/digest/preview",
         "/admin/digest/send",
-        "/notify/test-digest"
+        "/notify/test-digest",
+        "/alerts/digest",
+        "/alerts/digest/send"
       ]
     },
     {
@@ -206,13 +225,15 @@
       "category": "messaging",
       "status": "active",
       "statusReason": "flag on and configured",
-      "invocation": "lib/push.js — pushNotification().web().sendNotification(message, recipients)",
+      "invocation": "lib/push.js — pushNotification().web().sendNotification(message, recipients); an alert escalate/assign action (lib/routes/actionlog.js) pushes through the same sendPush",
       "flag": "FEATURE_PUSH",
       "requires": [],
       "endpoints": [
         "/notify/register",
         "/notify/recipients",
-        "/notify/push"
+        "/notify/push",
+        "/alerts/:alertKey/actions",
+        "/actions/recent"
       ]
     },
     {
@@ -229,6 +250,24 @@
       "endpoints": [
         "/admin/circuit/nightly-refresh",
         "/admin/circuit/:executionId"
+      ]
+    },
+    {
+      "key": "job-scheduling",
+      "name": "Job Scheduling (job pool + retries)",
+      "category": "orchestration",
+      "status": "active",
+      "statusReason": "flag on and configured",
+      "invocation": "lib/jobs.js — jobScheduling().job().submitJob({target_type:'Function', target_name:'dappa_nightly', jobpool_name, job_config:{number_of_retries, retry_interval}}) / getJob(id)",
+      "flag": "FEATURE_JOBS",
+      "requires": [
+        "JOB_POOL_NAME"
+      ],
+      "endpoints": [
+        "/admin/jobs/nightly-refresh",
+        "/admin/jobs/:jobId",
+        "/admin/jobs/pools",
+        "/meta/nightly"
       ]
     },
     {
@@ -270,6 +309,37 @@
       ],
       "endpoints": [
         "/zia/translate"
+      ]
+    },
+    {
+      "key": "zia-face-analytics",
+      "name": "Zia Face Analytics (detection quality gate)",
+      "category": "ai",
+      "status": "active",
+      "statusReason": "flag on and configured",
+      "invocation": "lib/faces.js qualityGate() — zia().analyseFace(readStream, {mode:'moderate'}) before any comparison",
+      "flag": "FEATURE_FACE_ID",
+      "requires": [],
+      "endpoints": [
+        "/identify",
+        "/identify/model-card"
+      ]
+    },
+    {
+      "key": "zia-identity-scanner",
+      "name": "Zia Identity Scanner (1:1 face comparison)",
+      "category": "ai",
+      "status": "active",
+      "statusReason": "flag on and configured",
+      "invocation": "lib/faces.js ziaCompare() — zia().compareFace(galleryStream, probeStream) per shortlisted candidate (≤ FACE_ZIA_MAX_COMPARES, cached 24 h)",
+      "flag": "FEATURE_FACE_ID",
+      "requires": [],
+      "endpoints": [
+        "/identify",
+        "/identify/gallery",
+        "/identify/audit",
+        "/identify/rules",
+        "/identify/model-card"
       ]
     },
     {
@@ -327,13 +397,44 @@
       "category": "ai",
       "status": "active",
       "statusReason": "flag on and configured",
-      "invocation": "index.js smartbrowz.renderBrief — smartbrowz().convertToPdf(printUrl) then Stratus put + pre-signed URL",
+      "invocation": "index.js smartbrowz.renderBrief — smartbrowz().convertToPdf(printUrl) then Stratus put + pre-signed URL; lib/artifacts.js captureMapSnapshot — smartbrowz().takeScreenshot(mapUrl, {page_options, screenshot_options})",
       "flag": "FEATURE_SMARTBROWZ",
       "requires": [
         "APP_BASE_URL"
       ],
       "endpoints": [
-        "/reports/weekly-brief"
+        "/reports/weekly-brief",
+        "/reports/map-snapshot"
+      ]
+    },
+    {
+      "key": "zia-vision",
+      "name": "Zia Services (object recognition / image moderation)",
+      "category": "ai",
+      "status": "active",
+      "statusReason": "flag on and configured",
+      "invocation": "lib/objects.js — zia().detectObject(readStream); lib/moderation.js — zia().moderateImage(readStream, {mode})",
+      "flag": "FEATURE_ZIA_OBJECTS",
+      "requires": [],
+      "endpoints": [
+        "/zia/objects",
+        "/zia/objects/samples",
+        "/zia/moderate"
+      ]
+    },
+    {
+      "key": "quickml-automl",
+      "name": "QuickML AutoML challenger",
+      "category": "ai",
+      "status": "console-pending",
+      "statusReason": "flag on but QUICKML_AUTOML_ENDPOINT_KEY not set",
+      "invocation": "lib/challenger.js — quickML().predict(QUICKML_AUTOML_ENDPOINT_KEY, features) beside the embedded logistic champion",
+      "flag": "FEATURE_QUICKML_AUTOML",
+      "requires": [
+        "QUICKML_AUTOML_ENDPOINT_KEY"
+      ],
+      "endpoints": [
+        "/predict/outcome/challenger"
       ]
     },
     {
@@ -402,6 +503,22 @@
       "flag": null,
       "requires": [],
       "endpoints": []
+    },
+    {
+      "key": "apm-logs",
+      "name": "DevOps: APM + Logs",
+      "category": "platform",
+      "status": "console-pending",
+      "statusReason": "enable APM under DevOps > APM in the console and set APM_ENABLED=on; /meta/observability serves in-function telemetry meanwhile",
+      "invocation": "lib/observability.js — request ring buffer behind /meta/observability (Catalyst APM/Logs are console-read only; lib/apminsight in the SDK is the Site24x7 agent and needs a Site24x7 key)",
+      "flag": null,
+      "requires": [
+        "APM_ENABLED"
+      ],
+      "endpoints": [
+        "/meta/observability",
+        "/meta/nightly"
+      ]
     },
     {
       "key": "pipelines",

@@ -36,6 +36,7 @@ import WatchlistPanel from './network/WatchlistPanel.jsx';
 import LinkSuggestions from './network/LinkSuggestions.jsx';
 import BrokerBoard from './network/BrokerBoard.jsx';
 import GroupMatrix from './network/GroupMatrix.jsx';
+import CorridorPanel from './depth/CorridorPanel.jsx';
 import PairAnalyzer from './network/PairAnalyzer.jsx';
 import {
   communityColor, computeCommunityStats, shortestPath, edgeKey,
@@ -1649,6 +1650,7 @@ export default function Network() {
             <p className="text-[11px] text-muted">{t('network.analysis.subtitle')}</p>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <CorridorPanel />
             <LinkSuggestions
               edges={view.edges}
               nodesById={nodesById}

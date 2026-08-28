@@ -5,6 +5,7 @@
 // the FULL graph), plus a fly-to member list.
 import { useMemo } from 'react';
 import Card from '../../components/Card.jsx';
+import PlainSentence from '../../components/PlainSentence.jsx';
 import { fmtInt, fmtPct } from '../../lib/format.js';
 import { useT } from '../../lib/i18n.jsx';
 import { communityColor } from './graphUtils.js';
@@ -77,6 +78,7 @@ export default function CommunitySummary({
         {cell(t('network.community.districts'), fmtInt(community?.districts))}
         {cell(t('network.community.density'), stats.n > 1 ? fmtPct(stats.density * 100, { digits: 0, fraction: false }) : '—')}
       </div>
+      <PlainSentence term="community" vars={{ n: fmtInt(stats.n), districts: fmtInt(community?.districts) }} className="mb-3 text-muted" />
       {topMo.length > 0 && (
         <div className="mb-3">
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1">{t('network.community.topMo')}</p>

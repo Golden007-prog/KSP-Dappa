@@ -1,0 +1,382 @@
+{
+  "generatedAt": "2026-08-28T13:12:30.558Z",
+  "generator": "pipeline/faces_generate.py (procedural-v1, seed 2026)",
+  "faces": 200,
+  "measured": 200,
+  "floor": 0.7,
+  "deadBand": 0.1,
+  "pairs": {
+    "samePerson": 200,
+    "differentPerson": 1000,
+    "offsets": [
+      1,
+      7,
+      31,
+      77,
+      131
+    ]
+  },
+  "method": "confidence = ((cosine + 1) / 2) ^ 8 over range-scaled, mean-centred descriptor dimensions both sides carry (lib/faces.js similarity, LOCAL_SHARPEN = 8 — a monotone calibration that puts the equal-error region near the 0.7 floor); colours as chromaticity + luminance",
+  "paths": [
+    {
+      "path": "pixel/pixel",
+      "note": "probe pixels vs the gallery image's stored pixel descriptor (FaceGallery.QualityJson.pixel) — the live path for an arbitrary still",
+      "dims": 8,
+      "samePerson": {
+        "n": 200,
+        "min": 0.057,
+        "p10": 0.8762,
+        "p25": 0.9841,
+        "median": 0.9934,
+        "p75": 0.9972,
+        "p90": 0.9984,
+        "max": 1,
+        "mean": 0.9398
+      },
+      "differentPerson": {
+        "n": 1000,
+        "min": 0,
+        "p10": 0.0008,
+        "p25": 0.0078,
+        "median": 0.1526,
+        "p75": 0.4424,
+        "p90": 0.6917,
+        "max": 0.9888,
+        "mean": 0.2549
+      },
+      "atFloor": {
+        "floor": 0.7,
+        "falseAccept": 0.096,
+        "falseReject": 0.075,
+        "sameInDeadBand": 0.02,
+        "differentInDeadBand": 0.053
+      },
+      "sweep": [
+        {
+          "floor": 0.5,
+          "falseAccept": 0.218,
+          "falseReject": 0.045,
+          "sameInDeadBand": 0.01,
+          "differentInDeadBand": 0.064
+        },
+        {
+          "floor": 0.55,
+          "falseAccept": 0.182,
+          "falseReject": 0.055,
+          "sameInDeadBand": 0.015,
+          "differentInDeadBand": 0.063
+        },
+        {
+          "floor": 0.6,
+          "falseAccept": 0.149,
+          "falseReject": 0.055,
+          "sameInDeadBand": 0.01,
+          "differentInDeadBand": 0.069
+        },
+        {
+          "floor": 0.65,
+          "falseAccept": 0.115,
+          "falseReject": 0.065,
+          "sameInDeadBand": 0.01,
+          "differentInDeadBand": 0.067
+        },
+        {
+          "floor": 0.7,
+          "falseAccept": 0.096,
+          "falseReject": 0.075,
+          "sameInDeadBand": 0.02,
+          "differentInDeadBand": 0.053
+        },
+        {
+          "floor": 0.75,
+          "falseAccept": 0.08,
+          "falseReject": 0.09,
+          "sameInDeadBand": 0.025,
+          "differentInDeadBand": 0.035
+        },
+        {
+          "floor": 0.8,
+          "falseAccept": 0.057,
+          "falseReject": 0.095,
+          "sameInDeadBand": 0.02,
+          "differentInDeadBand": 0.039
+        },
+        {
+          "floor": 0.85,
+          "falseAccept": 0.042,
+          "falseReject": 0.1,
+          "sameInDeadBand": 0.01,
+          "differentInDeadBand": 0.038
+        },
+        {
+          "floor": 0.9,
+          "falseAccept": 0.028,
+          "falseReject": 0.11,
+          "sameInDeadBand": 0.015,
+          "differentInDeadBand": 0.029
+        },
+        {
+          "floor": 0.95,
+          "falseAccept": 0.017,
+          "falseReject": 0.125,
+          "sameInDeadBand": 0.025,
+          "differentInDeadBand": 0.025
+        }
+      ],
+      "equalError": {
+        "floor": 0.73,
+        "falseAccept": 0.082,
+        "falseReject": 0.08
+      }
+    },
+    {
+      "path": "pixel/spec",
+      "note": "probe pixels vs the gallery seed's parameter descriptor — the path when a gallery row has no stored pixel descriptor",
+      "dims": 6,
+      "samePerson": {
+        "n": 200,
+        "min": 0.0009,
+        "p10": 0.9119,
+        "p25": 0.9554,
+        "median": 0.9803,
+        "p75": 0.9944,
+        "p90": 0.9976,
+        "max": 1,
+        "mean": 0.9292
+      },
+      "differentPerson": {
+        "n": 1000,
+        "min": 0,
+        "p10": 0,
+        "p25": 0.0006,
+        "median": 0.0245,
+        "p75": 0.2255,
+        "p90": 0.7628,
+        "max": 1,
+        "mean": 0.1881
+      },
+      "atFloor": {
+        "floor": 0.7,
+        "falseAccept": 0.114,
+        "falseReject": 0.07,
+        "sameInDeadBand": 0.025,
+        "differentInDeadBand": 0.015
+      },
+      "sweep": [
+        {
+          "floor": 0.5,
+          "falseAccept": 0.167,
+          "falseReject": 0.045,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.023
+        },
+        {
+          "floor": 0.55,
+          "falseAccept": 0.151,
+          "falseReject": 0.045,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.027
+        },
+        {
+          "floor": 0.6,
+          "falseAccept": 0.129,
+          "falseReject": 0.045,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.038
+        },
+        {
+          "floor": 0.65,
+          "falseAccept": 0.12,
+          "falseReject": 0.05,
+          "sameInDeadBand": 0.005,
+          "differentInDeadBand": 0.031
+        },
+        {
+          "floor": 0.7,
+          "falseAccept": 0.114,
+          "falseReject": 0.07,
+          "sameInDeadBand": 0.025,
+          "differentInDeadBand": 0.015
+        },
+        {
+          "floor": 0.75,
+          "falseAccept": 0.102,
+          "falseReject": 0.07,
+          "sameInDeadBand": 0.02,
+          "differentInDeadBand": 0.018
+        },
+        {
+          "floor": 0.8,
+          "falseAccept": 0.094,
+          "falseReject": 0.07,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.02
+        },
+        {
+          "floor": 0.85,
+          "falseAccept": 0.08,
+          "falseReject": 0.07,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.022
+        },
+        {
+          "floor": 0.9,
+          "falseAccept": 0.059,
+          "falseReject": 0.095,
+          "sameInDeadBand": 0.025,
+          "differentInDeadBand": 0.035
+        },
+        {
+          "floor": 0.95,
+          "falseAccept": 0.036,
+          "falseReject": 0.22,
+          "sameInDeadBand": 0.15,
+          "differentInDeadBand": 0.044
+        }
+      ],
+      "equalError": {
+        "floor": 0.88,
+        "falseAccept": 0.073,
+        "falseReject": 0.07
+      }
+    },
+    {
+      "path": "spec/spec",
+      "note": "a probe drawn from a gallery seed vs the gallery seed — exact parameter space; same-person is 1.0 by construction",
+      "dims": 12,
+      "samePerson": {
+        "n": 200,
+        "min": 1,
+        "p10": 1,
+        "p25": 1,
+        "median": 1,
+        "p75": 1,
+        "p90": 1,
+        "max": 1,
+        "mean": 1
+      },
+      "differentPerson": {
+        "n": 1000,
+        "min": 0,
+        "p10": 0,
+        "p25": 0.0006,
+        "median": 0.0115,
+        "p75": 0.0795,
+        "p90": 0.2159,
+        "max": 0.8285,
+        "mean": 0.0706
+      },
+      "atFloor": {
+        "floor": 0.7,
+        "falseAccept": 0.007,
+        "falseReject": 0,
+        "sameInDeadBand": 0,
+        "differentInDeadBand": 0.007
+      },
+      "sweep": [
+        {
+          "floor": 0.5,
+          "falseAccept": 0.018,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.018
+        },
+        {
+          "floor": 0.55,
+          "falseAccept": 0.016,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.006
+        },
+        {
+          "floor": 0.6,
+          "falseAccept": 0.014,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.004
+        },
+        {
+          "floor": 0.65,
+          "falseAccept": 0.011,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.005
+        },
+        {
+          "floor": 0.7,
+          "falseAccept": 0.007,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.007
+        },
+        {
+          "floor": 0.75,
+          "falseAccept": 0.007,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.004
+        },
+        {
+          "floor": 0.8,
+          "falseAccept": 0.004,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.003
+        },
+        {
+          "floor": 0.85,
+          "falseAccept": 0,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.007
+        },
+        {
+          "floor": 0.9,
+          "falseAccept": 0,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0.004
+        },
+        {
+          "floor": 0.95,
+          "falseAccept": 0,
+          "falseReject": 0,
+          "sameInDeadBand": 0,
+          "differentInDeadBand": 0
+        }
+      ],
+      "equalError": {
+        "floor": 0.83,
+        "falseAccept": 0,
+        "falseReject": 0
+      }
+    }
+  ],
+  "rankTest": {
+    "pixel/pixel": {
+      "shortlistSize": 25,
+      "probes": 200,
+      "top1": 0.885,
+      "top3": 0.95,
+      "medianRank": 1,
+      "noReliableMatchRate": 0.02,
+      "truePersonBelowFloor": 0.075,
+      "wrongPersonRankedFirstAboveFloor": 0.105
+    },
+    "pixel/spec": {
+      "shortlistSize": 25,
+      "probes": 200,
+      "top1": 0.86,
+      "top3": 0.92,
+      "medianRank": 1,
+      "noReliableMatchRate": 0.01,
+      "truePersonBelowFloor": 0.07,
+      "wrongPersonRankedFirstAboveFloor": 0.13
+    }
+  },
+  "caveats": [
+    "Synthetic, procedural faces only: these numbers describe the engine on drawn faces, not on photographs of people.",
+    "Twelve skin tones × six hair colours bound what the pixel path can separate: people who share both will score alike, which is why the shortlist filters and the human decision exist.",
+    "Different-person pairs are 5 deterministic offsets per probe, not all pairs."
+  ]
+}

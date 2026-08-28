@@ -172,13 +172,22 @@ async function ocrScan(body, deps) {
     return { result: { ok: false, reason: `image too large (${buf.length} bytes, max ${MAX_IMAGE_BYTES})` }, source: 'fallback-local' };
   }
 
+  let ocrError = null;
   if (buf && d.flags && d.flags.ziaOcr && d.ziaClient && d.ziaClient.extractOpticalCharacters) {
-    const tmp = path.join(os.tmpdir(), `dappa-ocr-${Date.now()}-${Math.floor(Math.random() * 1e6)}.img`);
+    // Zia reads the upload's type from the file name, so the temp file must
+    // carry the real extension — a generic `.img` came back as a failed call
+    // on every scan (28 Aug 2026 live probe; docs/round2/decisions-phase8-catalyst.md).
+    const fmt = sniffImageFormat(buf);
+    const tmp = path.join(os.tmpdir(), `dappa-ocr-${Date.now()}-${Math.floor(Math.random() * 1e6)}.${fmt === 'jpeg' ? 'jpg' : (fmt || 'png')}`);
+    let stream = null;
     try {
       fs.writeFileSync(tmp, buf);
       const opts = modelType ? { language, modelType } : { language };
+      if (!b.language) delete opts.language; // omitted -> Zia auto-detects the script
+      stream = fs.createReadStream(tmp);
+      stream.on('error', () => {});
       const resp = await withTimeout(
-        d.ziaClient.extractOpticalCharacters(fs.createReadStream(tmp), opts),
+        d.ziaClient.extractOpticalCharacters(stream, opts),
         AI_TIMEOUT_MS, 'zia ocr'
       );
       const text = String((resp && resp.text) || '');
@@ -195,8 +204,10 @@ async function ocrScan(body, deps) {
         source: 'zia-ocr'
       };
     } catch (e) {
-      // fall through to the text-only path
+      // fall through to the text-only path, keeping the reason visible
+      ocrError = String((e && e.message) || e).slice(0, 200);
     } finally {
+      if (stream) stream.destroy();
       try { fs.unlinkSync(tmp); } catch (e) { /* best effort */ }
     }
   }
@@ -211,11 +222,25 @@ async function ocrScan(body, deps) {
       language,
       bytes: buf ? buf.length : 0,
       note: buf
-        ? 'Zia OCR is disabled or unreachable; supply {text} to analyse an already-transcribed FIR.'
+        ? (ocrError
+          ? `Zia OCR call failed (${ocrError}); analysed the supplied {text} instead.`
+          : 'Zia OCR is disabled or unreachable; supply {text} to analyse an already-transcribed FIR.')
         : 'No image supplied; analysed the provided text.'
     }, extractLocal(text)),
     source: 'fallback-local'
   };
+}
+
+const IMAGE_MAGIC = [
+  ['png', [0x89, 0x50, 0x4e, 0x47]], ['jpeg', [0xff, 0xd8, 0xff]], ['gif', [0x47, 0x49, 0x46, 0x38]],
+  ['bmp', [0x42, 0x4d]], ['tiff', [0x49, 0x49, 0x2a, 0x00]], ['tiff', [0x4d, 0x4d, 0x00, 0x2a]], ['pdf', [0x25, 0x50, 0x44, 0x46]]
+];
+
+function sniffImageFormat(buf) {
+  if (!buf || buf.length < 4) return null;
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  for (const [name, sig] of IMAGE_MAGIC) if (sig.every((v, i) => buf[i] === v)) return name;
+  return null;
 }
 
 // ---------------------------------------------------------------------------

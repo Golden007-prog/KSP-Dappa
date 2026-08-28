@@ -9,6 +9,7 @@ import '@fontsource/inter/700.css';
 import 'leaflet/dist/leaflet.css';
 import './index.css';
 import App from './App.jsx';
+import { registerServiceWorker } from './lib/sw.js';
 
 // HashRouter: Catalyst web hosting serves the SPA at /app/index.html with no
 // SPA rewrite rules, so hash routing keeps deep links + refresh working.
@@ -21,6 +22,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

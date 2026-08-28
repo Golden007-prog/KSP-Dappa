@@ -10,6 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useForecast, useLookups } from '../../lib/api.js';
 import Card from '../../components/Card.jsx';
 import Badge from '../../components/Badge.jsx';
+import PlainSentence from '../../components/PlainSentence.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
@@ -232,6 +233,9 @@ export default function HorizonPanel({ defaultDistrictId, defaultCrimeHeadId }) 
               </div>
             </div>
 
+            {model.steps[0]?.lo !== null && model.steps[0]?.hi !== null && (
+              <PlainSentence term="interval" vars={{ mid: fmtInt(Math.round(model.steps[0].predicted)), lo: fmtInt(Math.round(model.steps[0].lo)), hi: fmtInt(Math.round(model.steps[0].hi)) }} className="mt-3 text-muted" />
+            )}
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[380px] text-xs">
                 <thead>

@@ -12,6 +12,7 @@ import * as echarts from 'echarts';
 import { DAPPA_CHART_COLORS, DAPPA_CHART_COLORS_LIGHT } from '../../components/ChartPanel.jsx';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { useToast } from '../../components/ToastProvider.jsx';
+import { describeChart, withChartAria } from '../../lib/chartA11y.js';
 import { useT } from '../../lib/i18n.jsx';
 import { chartToCsv, downloadTextFile } from './transcript.js';
 
@@ -74,10 +75,15 @@ export default function CopilotChart({ chart }) {
 
   const baseType = chart?.type === 'pie' ? 'pie' : chart?.type === 'line' ? 'line' : 'bar';
   const type = baseType === 'pie' ? 'pie' : (typeOverride || baseType);
-  const option = useMemo(
-    () => (chart ? buildOption(chart, type, light) : null),
-    [chart, type, light],
-  );
+  // ECharts aria (role="img" + a localized description; decal fills for
+  // colour-only series) — lib/chartA11y.js; the table view below is the
+  // long description.
+  const option = useMemo(() => {
+    const base = chart ? buildOption(chart, type, light) : null;
+    if (!base) return null;
+    const description = describeChart(base, t, { title: chart.title || '', fmt: (v) => Number(v).toLocaleString('en-IN') });
+    return withChartAria(base, { description });
+  }, [chart, type, light, t]);
   if (!option) return null;
 
   const cats = chart.categories.map(String);

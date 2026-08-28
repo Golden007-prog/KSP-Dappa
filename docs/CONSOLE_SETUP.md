@@ -156,15 +156,17 @@ Since 27 Aug 2026 the key names below match what `lib/quickml.js`,
 ## 11. Data Store — mark the search columns full-text searchable
 
 `lib/search.js` calls `search().executeSearchQuery` on every `/search/cases`
-request and falls through to ZCQL `LIKE` until the console marks the columns.
+request and falls through to ZCQL `LIKE` when the engine answers nothing.
 
-1. Console → Project-Rainfall → **Cloud Scale ▸ Data Store** → table
-   **CaseMaster** → column settings → mark **BriefFacts**, **CrimeNo**,
-   **CaseNo** as *Searchable* (full-text).
-2. Same for **OffenderProfile**: **CanonicalName**, **AliasesJson**,
-   **MOTagsJson**.
-3. `GET /search/cases?q=chain` — `meta.source` changes from `zcql-like` to the
-   search engine.
+**Done on 28 Aug 2026** (see `docs/round2/decisions-phase3-console.md`): the
+*Search Index* toggle lives in each column's **Edit** dialog (Data Store →
+table → column row → *Edit* → *Search Index* → *Update*) and the console
+offers it for **Var Char columns only** — a Text column's dialog has no such
+toggle. Indexed: `CaseMaster.CrimeNo`, `CaseMaster.CaseNo`,
+`OffenderProfile.CanonicalName`. `BriefFacts`, `AliasesJson` and `MOTagsJson`
+are Text and stay on the ZCQL `LIKE` path, so `GET /search/cases?q=<CrimeNo>`
+reports `source: catalyst-search` while a narrative word still reports
+`fallback-zcql-like`.
 
 > **Set on `dappa_api`:** nothing · **Flip:** `FEATURE_SEARCH` is already on
 
@@ -190,10 +192,14 @@ embedded logistic outcome model serves `/predict/outcome`.
    (1:1 comparison of two images with a confidence score; all data centres).
    Document processing (Aadhaar/PAN) is **not** enabled — DAPPA never reads
    identity documents.
-3. Console → **Cloud Scale ▸ Stratus** → bucket `dappa` → folder
-   `face-gallery/` (generated, synthetic faces only).
+3. Console → **Cloud Scale ▸ Stratus** → bucket `dappa-import` (the
+   project's existing bucket, `STRATUS_BUCKET`) → prefix `face-gallery/v1/`
+   (generated, synthetic faces only — uploaded by `scripts/faces_upload.mjs`
+   through the deployed admin endpoint after `node scripts/deploy.mjs`).
+4. The `FaceGallery` Data Store table already exists (id 50643000000453380,
+   created 28 Aug 2026 — see §15).
 
-> **Set on `dappa_api`:** nothing · **Flip:** `FEATURE_FACE=on`
+> **Set on `dappa_api`:** nothing · **Flip:** `FEATURE_FACE_ID=on`
 
 ## 14. Production environment
 
@@ -205,13 +211,20 @@ Production afterwards.
 
 1. Console → project header → **Deploy to Production** → Settings ▸
    Environments ▸ Deployments → **Deploy** → *Yes, Proceed* (requires a payment
-   method; the Basic plan is active since 25 Aug 2026).
-2. Load the data into Production: `node scripts/bulk_load.js --production`
-   (resumable, `catalyst ds:import --production` per table), then
-   `node scripts/verify_load.mjs --production --counts-only`.
-3. Set the Production function's env vars (same list as Development) — the
-   migration copies configuration, but confirm each value in **Functions ▸
-   dappa_api ▸ Configuration** under the *Production* environment switch.
+   method; the Basic plan is active since 25 Aug 2026). **Done once on
+   27 Aug 2026**: `https://project-rainfall-60079891305.catalystserverless.in`
+   answers, with every table empty and the flags off — repeat this step after
+   the final Development deploy so the Round-2 tables and code migrate.
+2. Load the data into Production: `node scripts/prod_load.mjs` (sequential,
+   resumable; `catalyst ds:import --table <T> --production <csv>` per table,
+   boolean-fixed CSVs from `pipeline/.bool_fixed` first; it answers the CLI's
+   "Select a bucket" prompt on stdin, which `bulk_load.js` cannot), then
+   `node scripts/verify_load.mjs --production --counts-only` and
+   `GET <prod>/healthz?nocache=1` (13 tables at 100 %).
+3. Set the Production function's env vars (same list as Development; the
+   27 Aug migration did **not** carry the flags — `/healthz` on Production
+   reports them off) in **Functions ▸ dappa_api ▸ Configuration** under the
+   *Production* environment switch, including the `.env.deploy` secrets.
 4. Re-point `APP_BASE_URL` to
    `https://project-rainfall-60079891305.catalystserverless.in/app`, redeploy
    to Development with `node scripts/deploy.mjs`, then **Deploy to Production**
@@ -221,6 +234,25 @@ Production afterwards.
    incognito window.
 
 > **Set on `dappa_api`:** `APP_BASE_URL=<production /app URL>` · **Flip:** nothing
+
+## 15. Round-2 resources created on 28 Aug 2026 (Development)
+
+All created in the console by the lead and verified on the resulting page;
+`docs/round2/decisions-phase3-console.md` has the column-by-column record.
+
+| Resource | Name | Id | Used by |
+|---|---|---|---|
+| Data Store table | `ActionLog` | 50643000000453003 | action loop (`lib/actionlog.js`), ingest audit |
+| Data Store table | `FaceGallery` | 50643000000453380 | face identification (`lib/faces.js`) |
+| File Store folder | `dappa_reports` | 50643000000453759 | `FILESTORE_FOLDER_ID` → report archive |
+| Job Scheduling pool | `dappanightly` (Function, 512 MB) | 50643000000453771 | `lib/jobs.js` nightly refresh job |
+
+Console rules learned: table/folder names accept letters, digits and `_`;
+job-pool names accept letters and digits only; a table's *Search Index*
+toggle exists for Var Char columns only; "Deploy to Production" migrates
+schema and code but neither rows nor env values.
+
+> **Set on `dappa_api`:** `FILESTORE_FOLDER_ID=50643000000453759` (tracked — it is an id, not a credential) · **Flip:** nothing
 
 ---
 

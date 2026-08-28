@@ -1328,8 +1328,14 @@ for (const utterance of CANNED_UTTERANCES) {
   check('WIRED search calls Catalyst Search', seen('search').length === 1 && sr.json.data.source === 'catalyst-search');
   check('WIRED search sends the documented query shape', (() => {
     const q = seen('search')[0][1];
+    // Only console-indexed Var Char columns may be searched (D-P3-1): the
+    // Text column BriefFacts must NOT be in the engine query, LIKE covers it.
     return q.search === 'chain' && Array.isArray(q.search_table_columns.CaseMaster)
-      && q.search_table_columns.CaseMaster.includes('BriefFacts')
+      && q.search_table_columns.CaseMaster.includes('CrimeNo')
+      && q.search_table_columns.CaseMaster.includes('CaseNo')
+      && !q.search_table_columns.CaseMaster.includes('BriefFacts')
+      && q.search_table_columns.OffenderProfile.length === 1
+      && q.search_table_columns.OffenderProfile[0] === 'CanonicalName'
       && q.select_table_columns.CaseMaster.includes('CaseMasterID')
       && q.start === 1 && typeof q.end === 'number';
   })(), JSON.stringify(seen('search')[0] && seen('search')[0][1]));
@@ -1622,6 +1628,39 @@ server.close();
   check('FIXTURE fallback counted queries+writes', st.queries > 0 && st.writes > 0, JSON.stringify(st));
 
   downServer.close();
+}
+
+// --- Round-2 phase suites: test/round2/*.test.mjs -----------------------------
+// Each file exports `run(h)` and receives this harness's helpers bound to a
+// fresh stub-backed app, so parallel workstreams add checks without editing
+// this file. A suite that throws counts as one failed check, never a crash.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const { fileURLToPath, pathToFileURL } = require('url');
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'round2');
+  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.test.mjs')).sort() : [];
+  for (const f of files) {
+    const r2app = createApp({ clientFactory: () => createStubClient(buildFixtureTables()) });
+    const r2server = r2app.listen(0);
+    await new Promise((r) => r2server.once('listening', r));
+    const R2 = `http://127.0.0.1:${r2server.address().port}/api/v1`;
+    const before = pass + failCount;
+    try {
+      const mod = await import(pathToFileURL(path.join(dir, f)).href);
+      await mod.run({
+        get: (p) => get(p, R2),
+        post: (p, b, h) => post(p, b, h, R2),
+        del: (p) => del(p, R2),
+        getRaw: (p) => getRaw(p, R2),
+        check, hasKeys, BASE: R2, tables, createApp, createStubClient, buildFixtureTables
+      });
+    } catch (e) {
+      check(`round2 suite ${f} runs without throwing`, false, String((e && e.stack) || e).slice(0, 400));
+    }
+    r2server.close();
+    console.log(`round2/${f}: ${pass + failCount - before} checks`);
+  }
 }
 
 console.log('');

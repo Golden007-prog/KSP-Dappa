@@ -31,6 +31,8 @@ import EmergingPanel from './trends/EmergingPanel.jsx';
 import SeverityMix from './trends/SeverityMix.jsx';
 import CorrelationMatrix from './trends/CorrelationMatrix.jsx';
 import ABCompare from './trends/ABCompare.jsx';
+import LeadLagPanel from './depth/LeadLagPanel.jsx';
+import FestivalUpliftPanel from './depth/FestivalUpliftPanel.jsx';
 import {
   usePalettePref, seriesColors, OTHER_COLOR, ANOMALY_COLOR, HEAT_RAMP, DIVERGING_RAMP, SURFACE,
 } from './trends/palettes.js';
@@ -1053,6 +1055,11 @@ export default function Trends() {
         divergingRamp={divergingRamp}
         isNarrow={isNarrow}
       />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <LeadLagPanel districtId={districtId} />
+        <FestivalUpliftPanel districtId={districtId} />
+      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <SocioScatter

@@ -43,6 +43,7 @@ import OptionsSheet from './alerts/OptionsSheet.jsx';
 import TriageBoard from './alerts/TriageBoard.jsx';
 import TriageProgress from './alerts/TriageProgress.jsx';
 import DistrictRollup from './alerts/DistrictRollup.jsx';
+import OutcomePanel from './alerts/OutcomePanel.jsx';
 import AlertDetailSheet from './alerts/AlertDetailSheet.jsx';
 import CorpusSummary from './alerts/CorpusSummary.jsx';
 import IntelPanel from './alerts/IntelPanel.jsx';
@@ -1027,6 +1028,8 @@ export default function Alerts() {
           )}
         </>
       )}
+
+      <OutcomePanel unit={districtId || undefined} />
 
       <BulkBar
         count={selected.size}

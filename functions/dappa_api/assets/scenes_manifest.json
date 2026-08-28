@@ -1,0 +1,70 @@
+{
+  "generatedBy": "pipeline/scenes_generate.py",
+  "seed": 20260828,
+  "note": "procedural drawings, no photographs; boxes are [x1,y1,x2,y2] px",
+  "scenes": [
+    {
+      "sceneId": "scene_01",
+      "file": "scene_01.png",
+      "title": "Recovered handbag on a station floor",
+      "width": 960,
+      "height": 640,
+      "synthetic": true,
+      "generator": "pipeline/scenes_generate.py",
+      "objects": [
+        {
+          "label": "handbag",
+          "family": "item",
+          "box": [
+            330,
+            210,
+            640,
+            500
+          ]
+        }
+      ]
+    },
+    {
+      "sceneId": "scene_02",
+      "file": "scene_02.png",
+      "title": "Two-wheeler with a blank number plate",
+      "width": 960,
+      "height": 640,
+      "synthetic": true,
+      "generator": "pipeline/scenes_generate.py",
+      "objects": [
+        {
+          "label": "motorcycle",
+          "family": "vehicle",
+          "box": [
+            210,
+            170,
+            770,
+            470
+          ]
+        }
+      ]
+    },
+    {
+      "sceneId": "scene_03",
+      "file": "scene_03.png",
+      "title": "Knife on a table beside an evidence ruler",
+      "width": 960,
+      "height": 640,
+      "synthetic": true,
+      "generator": "pipeline/scenes_generate.py",
+      "objects": [
+        {
+          "label": "knife",
+          "family": "weapon",
+          "box": [
+            160,
+            250,
+            810,
+            370
+          ]
+        }
+      ]
+    }
+  ]
+}

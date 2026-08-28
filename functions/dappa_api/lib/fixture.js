@@ -11,6 +11,7 @@ const constants = require('./constants');
 const { ymOf, ymAdd, hash32 } = require('./util');
 const { createStubClient, createDatastore } = require('./datastore');
 const network = require('./network');
+const { seedActions } = require('./actionlog');
 
 const STUB_DISTRICTS = ['0101', '0103', '0107', '0109', '0111'];
 const STUB_SUBHEADS = [101, 302, 303, 306, 307, 401, 501];
@@ -83,6 +84,8 @@ function buildFixtureTables() {
     { AlertID: 'AL-004', DistrictID: '0109', UnitID: '1091', CrimeHeadID: 1, PeriodStart: `${ymAdd(NOW_YM, -2)}-01`, PeriodEnd: `${ymAdd(NOW_YM, -2)}-28`, Observed: 12, Expected: 9.0, ZScore: 2.1, Severity: 1, Status: 'ACK', Narrative: 'Assault cluster acknowledged', CreatedAt: `${ymAdd(NOW_YM, -2)}-20 08:00:00` }
   ];
 
+  tables.ActionLog = seedActions(tables.AnomalyAlert, { count: 40 });
+
   tables.HotspotCluster = [
     { ClusterID: 'HS-01', CrimeHeadID: 3, CentroidLat: 13.028, CentroidLng: 77.518, RadiusM: 800, CaseCount: 34, HourBandStart: 23, HourBandEnd: 3, WindowStart: `${ymAdd(NOW_YM, -5)}-01`, WindowEnd: NOW_YM + '-28', Intensity: 88, Label: 'HB Night cluster — Peenya, 23:00–03:00', DistrictID: '0101' },
     { ClusterID: 'HS-02', CrimeHeadID: 3, CentroidLat: 12.969, CentroidLng: 77.75, RadiusM: 650, CaseCount: 27, HourBandStart: 21, HourBandEnd: 1, WindowStart: `${ymAdd(NOW_YM, -5)}-01`, WindowEnd: NOW_YM + '-28', Intensity: 74, Label: 'Chain Snatching cluster — Whitefield, 21:00–01:00', DistrictID: '0101' },
@@ -104,6 +107,30 @@ function buildFixtureTables() {
     { PersonKey: 'P005', CanonicalName: 'Shivakumar Hegde', AliasesJson: '[]', CaseCount: 3, DistrictsJson: '["0109"]', FirstSeen: '2025-05-19', LastSeen: `${ymAdd(NOW_YM, -1)}-28`, MOTagsJson: '["vehicle-theft","country-made-pistol"]', CommunityID: 2, DegreeCentrality: 0.18, RiskScore: 51.2 },
     { PersonKey: 'P006', CanonicalName: 'Lakshman Rao', AliasesJson: '[]', CaseCount: 1, DistrictsJson: '["0107"]', FirstSeen: `${ymAdd(NOW_YM, -6)}-05`, LastSeen: `${ymAdd(NOW_YM, -6)}-05`, MOTagsJson: '[]', CommunityID: null, DegreeCentrality: 0, RiskScore: 12.0 }
   ];
+
+  // FaceGallery (Round 2, Phase 6): one procedural face per fixture offender,
+  // keyed by the same Seed the Python generator used, so lib/faces_spec.js
+  // re-derives the drawing and lib/faces.js the descriptor without a binary in
+  // the repo. QualityJson.pixel is the descriptor measured on the generated
+  // 512×512 PNG (scripts/faces_upload.mjs writes the same for the live rows).
+  // P006 is inactive on purpose: the shortlist must skip a withdrawn image.
+  const FACE_QUALITY = (pixel) => JSON.stringify({ gate: 'pending', generator: 'procedural-v1', width: 512, height: 512, pixel });
+  tables.FaceGallery = [
+    { PersonKey: 'P001', ObjectKey: 'face-gallery/v1/P001.png', ThumbKey: 'face-gallery/v1/thumbs/P001.png', Source: 'procedural-v1', Seed: 'v1:2026:P001', QualityJson: FACE_QUALITY({ skin: [255, 224, 196], hair: [255, 224, 196], aspect: 1.135, hairFrac: 0 }), Active: true },
+    { PersonKey: 'P002', ObjectKey: 'face-gallery/v1/P002.png', ThumbKey: 'face-gallery/v1/thumbs/P002.png', Source: 'procedural-v1', Seed: 'v1:2026:P002', QualityJson: FACE_QUALITY({ skin: [255, 224, 196], hair: [28, 24, 22], aspect: 1.451, hairFrac: 0.585 }), Active: true },
+    { PersonKey: 'P003', ObjectKey: 'face-gallery/v1/P003.png', ThumbKey: 'face-gallery/v1/thumbs/P003.png', Source: 'procedural-v1', Seed: 'v1:2026:P003', QualityJson: FACE_QUALITY({ skin: [150, 104, 72], hair: [60, 40, 28], aspect: 1.346, hairFrac: 0.603 }), Active: true },
+    { PersonKey: 'P004', ObjectKey: 'face-gallery/v1/P004.png', ThumbKey: 'face-gallery/v1/thumbs/P004.png', Source: 'procedural-v1', Seed: 'v1:2026:P004', QualityJson: FACE_QUALITY({ skin: [108, 70, 46], hair: [28, 24, 22], aspect: 1.108, hairFrac: 0.569 }), Active: true },
+    { PersonKey: 'P005', ObjectKey: 'face-gallery/v1/P005.png', ThumbKey: 'face-gallery/v1/thumbs/P005.png', Source: 'procedural-v1', Seed: 'v1:2026:P005', QualityJson: FACE_QUALITY({ skin: [170, 120, 88], hair: [28, 24, 22], aspect: 1.165, hairFrac: 0.388 }), Active: true },
+    { PersonKey: 'P006', ObjectKey: 'face-gallery/v1/P006.png', ThumbKey: 'face-gallery/v1/thumbs/P006.png', Source: 'procedural-v1', Seed: 'v1:2026:P006', QualityJson: FACE_QUALITY({ skin: [108, 70, 46], hair: [60, 40, 28], aspect: 1.49, hairFrac: 0.578 }), Active: false }
+  ];
+  // Two past face searches so the audit tab is never empty in demo mode —
+  // sha256 only, no probe image (rule R7). Appended, never assigned, so the
+  // phase-7 seeded alert actions above survive.
+  tables.ActionLog = (tables.ActionLog || []).concat([
+    { ROWID: 9600001, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-14 10:12:00`, AlertKey: 'face:fs-demo01-a3f2c9d1', ActionType: 'face-search', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1011', Note: `${NOW_YM.slice(0, 4)}00017`, OutcomeLabel: 'candidates', Payload: JSON.stringify({ subjectType: 'face', probeSha256: 'a3f2c9d1e7b04c6f8a1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b', caseNo: `${NOW_YM.slice(0, 4)}00017`, legalBasis: 'investigation-fir', filters: { districtId: '0101', moTag: 'two-wheeler' }, shortlist: { count: 2, description: '2 candidates from Bengaluru City, two-wheeler cases' }, candidates: 2, topConfidence: 0.91, topPersonKey: 'P001', engine: 'local-descriptor', gate: { mode: 'advisory', passed: true, reasons: [] }, floor: 0.7 }), ClientTs: `${ymAdd(NOW_YM, -1)}-14 10:12:00` },
+    { ROWID: 9600002, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-14 10:20:00`, AlertKey: 'face:fs-demo01-a3f2c9d1', ActionType: 'face-decision', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1011', Note: 'Scar on the right cheek and the two-wheeler MO agree with the FIR narrative', OutcomeLabel: 'confirm', Payload: JSON.stringify({ subjectType: 'face', personKey: 'P001', rationale: 'Scar on the right cheek and the two-wheeler MO agree with the FIR narrative', confidence: 0.91, engine: 'local-descriptor', caseNo: `${NOW_YM.slice(0, 4)}00017`, legalBasis: 'investigation-fir' }), ClientTs: `${ymAdd(NOW_YM, -1)}-14 10:20:00` },
+    { ROWID: 9600003, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-20 16:05:00`, AlertKey: 'face:fs-demo02-77b1e0c4', ActionType: 'face-search', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1031', Note: `${NOW_YM.slice(0, 4)}00023`, OutcomeLabel: 'no-reliable-match', Payload: JSON.stringify({ subjectType: 'face', probeSha256: '77b1e0c4d9a2f5e8b3c6d1a4e7f0b2c5d8e1f4a7b0c3d6e9f2a5b8c1d4e7f0a3', caseNo: `${NOW_YM.slice(0, 4)}00023`, legalBasis: 'bnss-s84-proclaimed', filters: { districtId: '0103' }, shortlist: { count: 2, description: '2 candidates from Mysuru City' }, candidates: 2, topConfidence: 0.41, topPersonKey: 'P003', engine: 'local-descriptor', gate: { mode: 'advisory', passed: true, reasons: [] }, floor: 0.7 }), ClientTs: `${ymAdd(NOW_YM, -1)}-20 16:05:00` }
+  ]);
 
   tables.ForecastMonthly = [];
   for (const d of ['0101', '0103']) {
@@ -230,6 +257,15 @@ function buildFixtureTables() {
     RefreshedAt: `${NOW_YM}-01 02:00:00`,
     DetailsJson: JSON.stringify({ mode: 'fixture', cases_read: 40, anomaly_alerts: 4, stations_scored: 15 })
   }];
+
+  // ActionLog (console-created 28 Aug 2026): one OCR attach audit row so
+  // GET /ocr/attachments?caseId=1 has something to read in fixture mode.
+  tables.ActionLog = (tables.ActionLog || []).concat([{
+    ROWID: 900001, AlertKey: 'case:1', ActionType: 'note', Actor: 'demo-admin', ActorRole: 'admin', Unit: '1012',
+    Note: 'OCR scan attached: Gold mangalsutra snatched near Devaraja Market by two persons on a two-wheeler. (2 MO tags)', OutcomeLabel: '',
+    Payload: JSON.stringify({ kind: 'ocr', caseId: '1', text: 'Gold mangalsutra snatched near Devaraja Market by two persons on a two-wheeler.', confidence: 0.91, language: 'eng', moTags: ['vehicle:two-wheeler', 'item:mangalsutra'], entities: [], ocrSource: 'fixture', sampleId: 'fir_01' }),
+    ClientTs: `${NOW_YM}-02 09:15:00`, CREATEDTIME: `${NOW_YM}-02 09:15:04`
+  }]);
 
   return tables;
 }

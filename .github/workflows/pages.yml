@@ -49,8 +49,43 @@ jobs:
       - name: Capability counts agree across CAPABILITIES.md / README / FEATURES
         run: node scripts/check_capabilities.mjs
 
-  build-and-deploy:
+  # WCAG 2.2 AA gate: axe-core over every route in both themes against the
+  # static-demo build (client/test/a11y/axe.mjs). Serious / critical
+  # violations fail the job and block the Pages deploy.
+  a11y:
     needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            functions/dappa_api/package-lock.json
+      - name: Install API dependencies
+        working-directory: functions/dappa_api
+        run: npm ci
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+      - name: Generate static API snapshot
+        run: node scripts/demo_snapshot.mjs
+      - name: Build client in static-demo mode
+        working-directory: client
+        env:
+          VITE_STATIC_DEMO: '1'
+        run: npm run build
+      - name: axe-core accessibility audit (WCAG 2.2 AA, both themes)
+        working-directory: client
+        run: node test/a11y/units.mjs && node test/a11y/axe.mjs
+
+  build-and-deploy:
+    needs: [test, a11y]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

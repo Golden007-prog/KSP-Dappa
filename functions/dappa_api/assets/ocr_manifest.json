@@ -1,0 +1,46 @@
+{
+  "generatedBy": "pipeline/ocr_samples_generate.py",
+  "seed": 20260828,
+  "note": "invented names, numbers and addresses; typed text over a synthetic paper texture",
+  "samples": [
+    {
+      "sampleId": "fir_01",
+      "file": "fir_01.jpg",
+      "title": "Chain snatching, Devaraja Market",
+      "district": "Mysuru City",
+      "station": "Devaraja PS",
+      "crimeNo": "1010310312026000412",
+      "language": "eng",
+      "kannadaLine": "ದೂರುದಾರರು: ಲಕ್ಷ್ಮಮ್ಮ ಗೌಡ · ಸರ ಕಳ್ಳತನ · ದೇವರಾಜ ಮಾರುಕಟ್ಟೆ",
+      "truthText": "The complainant Lakshmamma Gowda, aged 52, resident of Nazarbad, states that on 14-07-2026 at about 21:40 hrs while she was walking near Devaraja Market two unknown persons on a two-wheeler without number plate came from behind and snatched her gold mangalsutra weighing about 24 grams. One of the accused brandished a knife and threatened her before they fled towards Sayyaji Rao Road. Property worth Rs. 1,45,000 was stolen. Hence this complaint. Requested to take necessary action.",
+      "synthetic": true,
+      "generator": "pipeline/ocr_samples_generate.py"
+    },
+    {
+      "sampleId": "fir_02",
+      "file": "fir_02.jpg",
+      "title": "House-breaking by night, Peenya",
+      "district": "Bengaluru City",
+      "station": "Peenya PS",
+      "crimeNo": "1010110122026001188",
+      "language": "eng",
+      "kannadaLine": "ರಾತ್ರಿ ಮನೆ ಒಡೆತ · ಪೀಣ್ಯ ಠಾಣೆ · ಆಸ್ತಿ ಅಪರಾಧ",
+      "truthText": "Complainant Shivakumar Hegde, aged 46, of 2nd Stage Peenya, reports that between 23:30 hrs on 02-08-2026 and 05:15 hrs on 03-08-2026 unknown persons committed house breaking by lock-breaking the rear door with a gas-cutter while the family was away at Tumakuru. Cash of Rs. 60,000 and gold ornaments of about 40 grams kept in the bedroom almirah were stolen. Neighbours heard a motorcycle leaving at around 04:00 hrs. Requested to register a case and investigate.",
+      "synthetic": true,
+      "generator": "pipeline/ocr_samples_generate.py"
+    },
+    {
+      "sampleId": "fir_03",
+      "file": "fir_03.jpg",
+      "title": "OTP fraud posing as bank staff",
+      "district": "Mangaluru City",
+      "station": "Kadri PS",
+      "crimeNo": "1010510522026000731",
+      "language": "eng",
+      "kannadaLine": "ಸೈಬರ್ ಅಪರಾಧ · ಆನ್‌ಲೈನ್ ವಂಚನೆ · ಕದ್ರಿ ಠಾಣೆ",
+      "truthText": "The complainant Rekha Shetty, aged 34, states that on 19-08-2026 at 11:20 hrs she received a call from a person posing as bank staff who said her KYC update was pending and asked for the OTP sent to her phone. After she shared the one-time password an amount of Rs. 1,20,000 was transferred from her savings account in three transactions. The caller then switched off the phone. She requests action against the unknown accused and recovery of the amount.",
+      "synthetic": true,
+      "generator": "pipeline/ocr_samples_generate.py"
+    }
+  ]
+}

@@ -16,9 +16,15 @@ const { toNum } = require('./util');
 const { getLookups } = require('./lookups');
 
 const CASE_SEARCH_COLUMNS = ['BriefFacts', 'CrimeNo', 'CaseNo'];
+// Catalyst Search only accepts columns carrying a console Search Index, and
+// the console offers that toggle for Var Char only — Text columns (BriefFacts,
+// AliasesJson, MOTagsJson) cannot be indexed. CrimeNo, CaseNo and CanonicalName
+// were indexed on 28 Aug 2026; the LIKE fallback still covers the Text columns.
+const CASE_INDEXED_COLUMNS = ['CrimeNo', 'CaseNo'];
 const CASE_SELECT_COLUMNS = ['CaseMasterID', 'CrimeNo', 'CaseNo', 'CrimeRegisteredDate', 'PoliceStationID',
   'CrimeMajorHeadID', 'CrimeMinorHeadID', 'CaseStatusID', 'BriefFacts'];
 const OFFENDER_SEARCH_COLUMNS = ['CanonicalName', 'AliasesJson', 'MOTagsJson'];
+const OFFENDER_INDEXED_COLUMNS = ['CanonicalName'];
 const OFFENDER_SELECT_COLUMNS = ['PersonKey', 'CanonicalName', 'AliasesJson', 'CaseCount', 'RiskScore', 'DistrictsJson'];
 
 const SCOPES = ['all', 'cases', 'offenders'];
@@ -120,11 +126,11 @@ async function searchAll(ctx, opts) {
       const searchTables = {};
       const selectTables = {};
       if (scope === 'all' || scope === 'cases') {
-        searchTables.CaseMaster = CASE_SEARCH_COLUMNS;
+        searchTables.CaseMaster = CASE_INDEXED_COLUMNS;
         selectTables.CaseMaster = CASE_SELECT_COLUMNS;
       }
       if (scope === 'all' || scope === 'offenders') {
-        searchTables.OffenderProfile = OFFENDER_SEARCH_COLUMNS;
+        searchTables.OffenderProfile = OFFENDER_INDEXED_COLUMNS;
         selectTables.OffenderProfile = OFFENDER_SELECT_COLUMNS;
       }
       const res = await ctx.services.search.execute({

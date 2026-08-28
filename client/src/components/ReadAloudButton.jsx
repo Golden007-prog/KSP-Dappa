@@ -2,7 +2,9 @@
 // language (Kannada voice for ಕನ್ನಡ, English voice otherwise). Renders
 // NOTHING when the device has no voice for that language — see lib/voice.js.
 // Props: id (stable per summary), text (what to read; pass the plain-language
-// sentence, never the raw table), className?, size? ('sm' | 'md').
+// sentence, never the raw table), className?, size? ('sm' | 'md'),
+// variant? ('icon' default | 'text' — icon plus a visible label, for places
+// where an unlabeled speaker glyph would be ambiguous, e.g. a brief header).
 import { useT } from '../lib/i18n.jsx';
 import useReadAloud from '../routes/copilot/useReadAloud.js';
 import Tooltip from './Tooltip.jsx';
@@ -17,24 +19,26 @@ const STOP = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
 );
 
-export default function ReadAloudButton({ id, text, className = '', size = 'sm' }) {
+export default function ReadAloudButton({ id, text, className = '', size = 'sm', variant = 'icon' }) {
   const t = useT();
   const readAloud = useReadAloud();
   if (!readAloud.supported || !text) return null;
   const speaking = readAloud.speakingId === id;
   const label = speaking ? t('common.voice.stop') : t('common.voice.listen', { lang: readAloud.speechLang });
-  const dim = size === 'md' ? 'h-9 w-9' : 'h-7 w-7';
-  return (
-    <Tooltip label={label} position="bottom">
-      <button
-        type="button"
-        onClick={() => readAloud.toggle(id, text)}
-        aria-label={label}
-        aria-pressed={speaking}
-        className={`inline-flex ${dim} items-center justify-center rounded-md border border-grid/60 text-muted hover:text-primary hover:bg-grid/30 transition-colors ${speaking ? '!border-amber/60 text-amber' : ''} ${className}`}
-      >
-        {speaking ? STOP : SPEAKER}
-      </button>
-    </Tooltip>
+  const dim = size === 'md' ? 'h-9 min-w-[2.25rem]' : 'h-7 min-w-[1.75rem]';
+  const pad = variant === 'text' ? 'px-2 gap-1.5' : 'w-7';
+  const button = (
+    <button
+      type="button"
+      onClick={() => readAloud.toggle(id, text)}
+      aria-label={label}
+      aria-pressed={speaking}
+      className={`no-print inline-flex ${dim} ${variant === 'text' ? pad : (size === 'md' ? 'w-9' : 'w-7')} items-center justify-center rounded-md border border-control/60 text-muted hover:text-primary hover:bg-grid/30 transition-colors text-xs ${speaking ? '!border-amber/60 text-amber' : ''} ${className}`}
+    >
+      {speaking ? STOP : SPEAKER}
+      {variant === 'text' && <span>{speaking ? t('common.voice.stopShort') : t('common.voice.listenShort')}</span>}
+    </button>
   );
+  if (variant === 'text') return button;
+  return <Tooltip label={label} position="bottom">{button}</Tooltip>;
 }

@@ -151,27 +151,37 @@ function buildServiceMap(ctx) {
     fallback: 'in-process Map with the same TTL semantics',
     endpoints: ['/summary/kpis', '/geo/hotspots', '/healthz']
   });
+  add(Object.assign({
+    key: 'data-store-olap',
+    name: 'Data Store OLAP database',
+    category: 'data',
+    invocation: 'lib/olap.js — zcql().executeOLAPQuery(sql) for the district x head x month cube and the nightly detect step',
+    fallback: 'the identical structured query through the paged 300-row ZCQL path (executeZCQLQuery)',
+    flag: 'FEATURE_OLAP',
+    requires: ['OLAP_ENABLED'],
+    endpoints: ['/olap/cube', '/meta/olap-benchmark', '/admin/jobs/nightly-refresh']
+  }, gated(f.olap, ['OLAP_ENABLED'])));
 
   const mail = gated(f.mail, ['MAIL_FROM', 'DIGEST_TO']);
   add(Object.assign({
     key: 'mail',
     name: 'Catalyst Mail',
     category: 'messaging',
-    invocation: 'lib/mail.js — email().sendMail({from_email,to_email,subject,content})',
-    fallback: 'the fully rendered digest is returned as `preview` and logged',
+    invocation: 'lib/mail.js — email().sendMail({from_email,to_email,subject,content}); the action-loop digest (lib/actiondigest.js) goes through the same sendDigest',
+    fallback: 'the fully rendered digest is returned as `preview` and logged; the action-loop digest is also served as JSON and the printable /alerts/digest page',
     flag: 'FEATURE_MAIL',
     requires: ['MAIL_FROM', 'DIGEST_TO'],
-    endpoints: ['/admin/digest/preview', '/admin/digest/send', '/notify/test-digest']
+    endpoints: ['/admin/digest/preview', '/admin/digest/send', '/notify/test-digest', '/alerts/digest', '/alerts/digest/send']
   }, mail));
 
   add(Object.assign({
     key: 'push-notifications',
     name: 'Push Notifications',
     category: 'messaging',
-    invocation: 'lib/push.js — pushNotification().web().sendNotification(message, recipients)',
-    fallback: 'no-op that logs the payload and returns it as `preview`',
+    invocation: 'lib/push.js — pushNotification().web().sendNotification(message, recipients); an alert escalate/assign action (lib/routes/actionlog.js) pushes through the same sendPush',
+    fallback: 'no-op that logs the payload and returns it as `preview`; the in-app notification centre reads the same events from /actions/recent',
     flag: 'FEATURE_PUSH',
-    endpoints: ['/notify/register', '/notify/recipients', '/notify/push']
+    endpoints: ['/notify/register', '/notify/recipients', '/notify/push', '/alerts/:alertKey/actions', '/actions/recent']
   }, gated(f.push, [])));
 
   add(Object.assign({
@@ -179,11 +189,22 @@ function buildServiceMap(ctx) {
     name: 'Circuits (multi-step orchestration)',
     category: 'orchestration',
     invocation: 'lib/circuits.js — circuit().execute(CIRCUIT_ID, \'dappa_nightly_refresh\')',
-    fallback: 'the identical aggregate -> detect-anomalies -> notify steps run sequentially in-process',
+    fallback: 'Job Scheduling (lib/jobs.js, FEATURE_JOBS) submits the same nightly refresh with retries; without a job pool the identical aggregate -> detect-anomalies -> notify steps run sequentially in-process',
     flag: 'FEATURE_CIRCUIT',
     requires: ['CIRCUIT_ID'],
     endpoints: ['/admin/circuit/nightly-refresh', '/admin/circuit/:executionId']
   }, unavailableInDc('Circuits', 'docs/CATALYST_SERVICE_RESEARCH.md §3')));
+
+  add(Object.assign({
+    key: 'job-scheduling',
+    name: 'Job Scheduling (job pool + retries)',
+    category: 'orchestration',
+    invocation: 'lib/jobs.js — jobScheduling().job().submitJob({target_type:\'Function\', target_name:\'dappa_nightly\', jobpool_name, job_config:{number_of_retries, retry_interval}}) / getJob(id)',
+    fallback: 'the same three nightly steps run inline (lib/circuits.js runInline) and are reported in the job shape',
+    flag: 'FEATURE_JOBS',
+    requires: ['JOB_POOL_NAME'],
+    endpoints: ['/admin/jobs/nightly-refresh', '/admin/jobs/:jobId', '/admin/jobs/pools', '/meta/nightly']
+  }, gated(f.jobs, ['JOB_POOL_NAME'])));
 
   add({
     key: 'authentication',
@@ -242,6 +263,26 @@ function buildServiceMap(ctx) {
   }, gated(f.ziaTranslate, ['ZIA_TRANSLATE_URL'])));
 
   add(Object.assign({
+    key: 'zia-face-analytics',
+    name: 'Zia Face Analytics (detection quality gate)',
+    category: 'ai',
+    invocation: 'lib/faces.js qualityGate() — zia().analyseFace(readStream, {mode:\'moderate\'}) before any comparison',
+    fallback: 'advisory gate (decodable still image, dimensions, aspect) with gate.mode:\'advisory\' — never a fake detection',
+    flag: 'FEATURE_FACE_ID',
+    endpoints: ['/identify', '/identify/model-card']
+  }, gated(f.faceId, [])));
+
+  add(Object.assign({
+    key: 'zia-identity-scanner',
+    name: 'Zia Identity Scanner (1:1 face comparison)',
+    category: 'ai',
+    invocation: 'lib/faces.js ziaCompare() — zia().compareFace(galleryStream, probeStream) per shortlisted candidate (≤ FACE_ZIA_MAX_COMPARES, cached 24 h)',
+    fallback: 'local descriptor engine — cosine similarity over the generator\'s parameter space (meta.engine local-descriptor)',
+    flag: 'FEATURE_FACE_ID',
+    endpoints: ['/identify', '/identify/gallery', '/identify/audit', '/identify/rules', '/identify/model-card']
+  }, gated(f.faceId, [])));
+
+  add(Object.assign({
     key: 'zia-automl',
     name: 'Zia AutoML (tabular)',
     category: 'ai',
@@ -278,12 +319,33 @@ function buildServiceMap(ctx) {
     key: 'smartbrowz',
     name: 'SmartBrowz (PDF / screenshots)',
     category: 'ai',
-    invocation: 'index.js smartbrowz.renderBrief — smartbrowz().convertToPdf(printUrl) then Stratus put + pre-signed URL',
-    fallback: 'print-CSS route the browser prints itself',
+    invocation: 'index.js smartbrowz.renderBrief — smartbrowz().convertToPdf(printUrl) then Stratus put + pre-signed URL; lib/artifacts.js captureMapSnapshot — smartbrowz().takeScreenshot(mapUrl, {page_options, screenshot_options})',
+    fallback: 'print-CSS route the browser prints itself; the static map image in place of the screenshot',
     flag: 'FEATURE_SMARTBROWZ',
     requires: ['APP_BASE_URL'],
-    endpoints: ['/reports/weekly-brief']
+    endpoints: ['/reports/weekly-brief', '/reports/map-snapshot']
   }, gated(f.smartbrowz, ['APP_BASE_URL'])));
+
+  add(Object.assign({
+    key: 'zia-vision',
+    name: 'Zia Services (object recognition / image moderation)',
+    category: 'ai',
+    invocation: 'lib/objects.js — zia().detectObject(readStream); lib/moderation.js — zia().moderateImage(readStream, {mode})',
+    fallback: 'the scene generator\'s own manifest tags (source:fixture) and a format/size check with verdict:unscreened',
+    flag: 'FEATURE_ZIA_OBJECTS',
+    endpoints: ['/zia/objects', '/zia/objects/samples', '/zia/moderate']
+  }, gated(Boolean(f.ziaObjects || f.ziaModeration), [])));
+
+  add(Object.assign({
+    key: 'quickml-automl',
+    name: 'QuickML AutoML challenger',
+    category: 'ai',
+    invocation: 'lib/challenger.js — quickML().predict(QUICKML_AUTOML_ENDPOINT_KEY, features) beside the embedded logistic champion',
+    fallback: 'champion only; the challenger AUC is read from QUICKML_AUTOML_AUC (copied from the console), never computed here',
+    flag: 'FEATURE_QUICKML_AUTOML',
+    requires: ['QUICKML_AUTOML_ENDPOINT_KEY'],
+    endpoints: ['/predict/outcome/challenger']
+  }, gated(f.quickmlAutoml, ['QUICKML_AUTOML_ENDPOINT_KEY'])));
 
   add({
     key: 'web-client-hosting',
@@ -344,6 +406,19 @@ function buildServiceMap(ctx) {
     invocation: null,
     fallback: 'in-project event function + nightly reconciliation',
     endpoints: []
+  });
+  add({
+    key: 'apm-logs',
+    name: 'DevOps: APM + Logs',
+    category: 'platform',
+    status: envSet('APM_ENABLED') ? 'platform' : 'console-pending',
+    statusReason: envSet('APM_ENABLED')
+      ? 'APM enabled in the console for dappa_api (APM_ENABLED attests it); the SDK has no read API, so /meta/observability reports in-function latency and error rate'
+      : 'enable APM under DevOps > APM in the console and set APM_ENABLED=on; /meta/observability serves in-function telemetry meanwhile',
+    invocation: 'lib/observability.js — request ring buffer behind /meta/observability (Catalyst APM/Logs are console-read only; lib/apminsight in the SDK is the Site24x7 agent and needs a Site24x7 key)',
+    fallback: 'in-function p50/p95 latency, error rate and per-route counts',
+    requires: ['APM_ENABLED'],
+    endpoints: ['/meta/observability', '/meta/nightly']
   });
   add({
     key: 'pipelines',

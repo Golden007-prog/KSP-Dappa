@@ -177,6 +177,9 @@ await snapGet('/offenders', { perPage: 200 });
 await snapGet('/offenders', { perPage: 200, repeatOnly: '1' });
 await snapGet('/forecast');
 await snapGet('/risk/stations', { horizon: 30 });
+await snapGet('/tiers/beat');
+await snapGet('/tiers/station');
+await snapGet('/tiers/state');
 await snapGet('/cases', { page: 1, perPage: 50 });
 await snapGet('/cases', { page: 1, perPage: 8 }); // station-drill ladder terminal
 
@@ -241,6 +244,9 @@ for (const d of D_ALL) {
 
 // GeoIntel station drill: recent cases per fixture unit.
 for (const u of FIXTURE_UNITS) await snapGet('/cases', { page: 1, perPage: 8, unitId: u });
+
+// Ingest screen: the ER table registry (validation runs in the browser in the static demo).
+await snapGet('/ingest/tables');
 
 // Detail routes.
 for (const id of CASE_IDS) await snapGet(`/cases/${id}`);

@@ -7,6 +7,7 @@
 // a copy-diagnostics button and a collapsible technical-details block.
 import { Component } from 'react';
 import EmptyState from './EmptyState.jsx';
+import { announce } from '../lib/a11y.js';
 import { useT } from '../lib/i18n.jsx';
 
 // A dynamic import() that fails usually means the deployed bundle changed under
@@ -77,6 +78,8 @@ export default class ErrorBoundary extends Component {
   componentDidCatch(error, info) {
     console.error('[DAPPA] route render error', this.props.label || '', error, info);
     this.setState({ stack: String(info?.componentStack || error?.stack || '') });
+    // the fallback replaces the view without a focus move — say so (WCAG 4.1.3)
+    announce(`Error: ${String(error?.message || error)}`, { assertive: true });
   }
 
   componentWillUnmount() {

@@ -21,6 +21,7 @@ const Alerts = lazy(() => import('./routes/Alerts.jsx'));
 const Network = lazy(() => import('./routes/Network.jsx'));
 const Offenders = lazy(() => import('./routes/Offenders.jsx'));
 const Offender360 = lazy(() => import('./routes/Offender360.jsx'));
+const Identify = lazy(() => import('./routes/Identify.jsx'));
 const Predict = lazy(() => import('./routes/Predict.jsx'));
 const Copilot = lazy(() => import('./routes/Copilot.jsx'));
 const Cases = lazy(() => import('./routes/Cases.jsx'));
@@ -28,6 +29,13 @@ const CaseDetail = lazy(() => import('./routes/CaseDetail.jsx'));
 const Reports = lazy(() => import('./routes/Reports.jsx'));
 const PrintBrief = lazy(() => import('./routes/PrintBrief.jsx'));
 const About = lazy(() => import('./routes/About.jsx'));
+const Ingest = lazy(() => import('./routes/Ingest.jsx'));
+const Beat = lazy(() => import('./routes/Beat.jsx'));
+const Station = lazy(() => import('./routes/Station.jsx'));
+const StateHome = lazy(() => import('./routes/StateHome.jsx'));
+const Glossary = lazy(() => import('./routes/Glossary.jsx'));
+const Ocr = lazy(() => import('./routes/Ocr.jsx'));
+const AlertsDigest = lazy(() => import('./routes/AlertsDigest.jsx'));
 
 /** Which skeleton shape fits the destination while its chunk downloads. */
 function fallbackKindFor(pathname) {
@@ -154,15 +162,23 @@ export default function App() {
             <Route path="/map" element={<Boundary label="GeoIntel"><GeoIntel /></Boundary>} />
             <Route path="/trends" element={<Boundary label="Trends"><Trends /></Boundary>} />
             <Route path="/alerts" element={<Boundary label="Alerts"><Alerts /></Boundary>} />
+            <Route path="/alerts/digest" element={<Boundary label="the alert digest"><AlertsDigest /></Boundary>} />
             <Route path="/network" element={<Boundary label="the Network explorer"><Network /></Boundary>} />
             <Route path="/offenders" element={<Boundary label="Offenders"><Offenders /></Boundary>} />
             <Route path="/offenders/:personKey" element={<Boundary label="Offender 360"><Offender360 /></Boundary>} />
+            <Route path="/identify" element={<Boundary label="Identify"><Identify /></Boundary>} />
             <Route path="/predict" element={<Boundary label="Predict"><Predict /></Boundary>} />
             <Route path="/copilot" element={<Boundary label="Ask DAPPA"><Copilot /></Boundary>} />
             <Route path="/cases" element={<Boundary label="the Case explorer"><Cases /></Boundary>} />
             <Route path="/cases/:id" element={<Boundary label="the FIR detail"><CaseDetail /></Boundary>} />
             <Route path="/reports" element={<Boundary label="Reports"><Reports /></Boundary>} />
             <Route path="/about" element={<Boundary label="About"><About /></Boundary>} />
+            <Route path="/ingest" element={<Boundary label="Data ingest"><Ingest /></Boundary>} />
+            <Route path="/beat" element={<Boundary label="My Beat"><Beat /></Boundary>} />
+            <Route path="/station" element={<Boundary label="the Station console"><Station /></Boundary>} />
+            <Route path="/state" element={<Boundary label="the State rollup"><StateHome /></Boundary>} />
+            <Route path="/glossary" element={<Boundary label="the Glossary"><Glossary /></Boundary>} />
+            <Route path="/ocr" element={<Boundary label="the FIR scanner"><Ocr /></Boundary>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

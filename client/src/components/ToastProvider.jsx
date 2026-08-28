@@ -109,6 +109,7 @@ export function ToastProvider({ children }) {
       {children}
       {createPortal(
         <div
+          role="region"
           aria-live="polite"
           aria-label={t('shell.toast.region')}
           className="no-print fixed z-80 bottom-20 md:bottom-6 right-3 left-3 md:left-auto md:right-6 md:w-96 flex flex-col gap-2 pointer-events-none mb-safe"

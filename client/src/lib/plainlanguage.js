@@ -109,10 +109,117 @@ export const GLOSSARY = {
     en: { label: 'Risk next 30 days', sentence: 'How busy this station is likely to be compared with the others, from recent volume, trend and hotspots. It ranks where to look — it does not predict a crime.', example: 'Risk next 30 days: high — driven by night burglary and a rising trend.' },
     kn: { label: 'ಮುಂದಿನ 30 ದಿನಗಳ ಅಪಾಯ', sentence: 'ಇತ್ತೀಚಿನ ಪ್ರಮಾಣ, ಪ್ರವೃತ್ತಿ ಮತ್ತು ಹಾಟ್‌ಸ್ಪಾಟ್‌ಗಳಿಂದ, ಈ ಠಾಣೆ ಇತರರಿಗಿಂತ ಎಷ್ಟು ಬಿಡುವಿಲ್ಲದೆ ಇರಬಹುದು. ಎಲ್ಲಿ ನೋಡಬೇಕು ಎಂದು ಶ್ರೇಣಿ ಮಾಡುತ್ತದೆ — ಅಪರಾಧವನ್ನು ಮುನ್ಸೂಚಿಸುವುದಿಲ್ಲ.', example: 'ಮುಂದಿನ 30 ದಿನಗಳ ಅಪಾಯ: ಹೆಚ್ಚು — ರಾತ್ರಿ ಮನೆ ಒಡೆತ ಮತ್ತು ಏರುತ್ತಿರುವ ಪ್ರವೃತ್ತಿ.', status: 'repo' },
   },
+  // Round-2 analytical depth (routes/depth/*). Kannada marked unv: proposed
+  // by the team, awaiting sign-off by a Kannada-speaking officer.
+  ladder: {
+    technical: 'gravity transition matrix — P(next rung | this rung) over consecutive cases',
+    en: { label: 'Up or down the ladder', sentence: 'Of every 100 times a person\'s next case followed the last, {up} moved up a rung in seriousness and {down} moved down.', example: 'Theft to robbery = one rung up.' },
+    kn: { label: 'ಅಪರಾಧ ತೀವ್ರತೆಯ ಏಣಿ', sentence: 'ಒಬ್ಬ ವ್ಯಕ್ತಿಯ ಮುಂದಿನ ಪ್ರಕರಣ ಹಿಂದಿನದನ್ನು ಅನುಸರಿಸಿದ ಪ್ರತಿ 100 ಬಾರಿಯಲ್ಲಿ, {up} ಬಾರಿ ಒಂದು ಮೆಟ್ಟಿಲು ಮೇಲೆ ಹೋಯಿತು, {down} ಬಾರಿ ಕೆಳಗೆ ಇಳಿಯಿತು.', example: 'ಕಳ್ಳತನದಿಂದ ದರೋಡೆಗೆ = ಒಂದು ಮೆಟ್ಟಿಲು ಮೇಲೆ.', status: 'unv' },
+  },
+  transition: {
+    technical: 'offence-type transition matrix — P(next sub-head | this sub-head); lift = P(next | this) ÷ P(next)',
+    en: { label: 'What comes next', sentence: 'In {stay} of every 100 cases the next offence was the same type as the last.', example: 'After chain snatching, most often chain snatching again.' },
+    kn: { label: 'ಮುಂದಿನ ಅಪರಾಧ ಯಾವುದು', sentence: 'ಪ್ರತಿ 100 ಪ್ರಕರಣಗಳಲ್ಲಿ {stay} ಬಾರಿ ಮುಂದಿನ ಅಪರಾಧವೂ ಹಿಂದಿನದೇ ಬಗೆಯದ್ದಾಗಿತ್ತು.', example: 'ಸರಗಳ್ಳತನದ ನಂತರ ಹೆಚ್ಚಾಗಿ ಮತ್ತೆ ಸರಗಳ್ಳತನ.', status: 'unv' },
+  },
+  survival: {
+    technical: 'Kaplan–Meier survival S(t) = Π(1 − dᵢ/nᵢ), censored at the end of the data window',
+    en: { label: 'Time to the next case', sentence: 'About {p90} of every 100 people had another case within 90 days; {p365} within a year.', example: '40 of every 100 turned up again within 90 days.' },
+    kn: { label: 'ಮುಂದಿನ ಪ್ರಕರಣಕ್ಕೆ ಎಷ್ಟು ಸಮಯ', sentence: 'ಪ್ರತಿ 100 ಜನರಲ್ಲಿ ಸುಮಾರು {p90} ಜನರಿಗೆ 90 ದಿನಗಳೊಳಗೆ ಮತ್ತೊಂದು ಪ್ರಕರಣ ದಾಖಲಾಯಿತು; {p365} ಜನರಿಗೆ ಒಂದು ವರ್ಷದೊಳಗೆ.', example: '100ರಲ್ಲಿ 40 ಜನ 90 ದಿನಗಳೊಳಗೆ ಮತ್ತೆ ಕಾಣಿಸಿಕೊಂಡರು.', status: 'unv' },
+  },
+  reactivation: {
+    technical: 'pair re-activation — a gap ≥ 365 days between shared cases, the case ending the gap inside the last 12 months',
+    en: { label: 'Pairs back together', sentence: '{n} pairs came back together after a quiet year; {dormant} pairs have now been quiet that long.', example: 'Two men not seen together since 2024 — one FIR again in July 2026.' },
+    kn: { label: 'ಮತ್ತೆ ಜೊತೆಯಾದ ಜೋಡಿಗಳು', sentence: '{n} ಜೋಡಿಗಳು ಒಂದು ವರ್ಷದ ಮೌನದ ನಂತರ ಮತ್ತೆ ಜೊತೆಯಾಗಿ ಕಾಣಿಸಿಕೊಂಡವು; {dormant} ಜೋಡಿಗಳು ಈಗ ಅಷ್ಟು ಕಾಲ ಮೌನವಾಗಿವೆ.', example: 'ಇಬ್ಬರು 2024ರ ನಂತರ ಜೊತೆಗಿಲ್ಲ — 2026ರ ಜುಲೈನಲ್ಲಿ ಮತ್ತೆ ಒಂದೇ ಪ್ರಕರಣದಲ್ಲಿ.', status: 'unv' },
+  },
+  precisionrecall: {
+    technical: 'precision = correct links ÷ links made; recall = correct links ÷ true links; F1 = their harmonic mean',
+    en: { label: 'How right the name-matcher is', sentence: 'Of every 100 links the name-matcher made, {p} were right; it found {r} of every 100 true links.', example: '3 of every 100 links right; 57 of every 100 true links found.' },
+    kn: { label: 'ಹೆಸರು ಹೊಂದಾಣಿಕೆ ಎಷ್ಟು ಸರಿ', sentence: 'ಹೆಸರು ಹೊಂದಿಸುವ ವ್ಯವಸ್ಥೆ ಮಾಡಿದ ಪ್ರತಿ 100 ಸಂಪರ್ಕಗಳಲ್ಲಿ {p} ಸರಿಯಾಗಿದ್ದವು; ನಿಜವಾದ ಪ್ರತಿ 100 ಸಂಪರ್ಕಗಳಲ್ಲಿ {r} ಅನ್ನು ಅದು ಕಂಡುಹಿಡಿಯಿತು.', example: '100ರಲ್ಲಿ 3 ಸರಿ; ನಿಜವಾದ 100ರಲ್ಲಿ 57 ಸಿಕ್ಕವು.', status: 'unv' },
+  },
+  whylinked: {
+    technical: 'score = 0.6·token_sort_ratio + 0.2·age-closeness + 0.2·district-overlap; anchor when token_sort_ratio ≥ 0.95 and |Δage| ≤ 2',
+    en: { label: 'Why this name is linked', sentence: '{n} of {total} names clear the link line; the bar shows what each score is made of.', example: 'Name match 91 % + age close + same district = linked.' },
+    kn: { label: 'ಈ ಹೆಸರು ಏಕೆ ಸೇರಿಸಲಾಗಿದೆ', sentence: '{total} ಹೆಸರುಗಳಲ್ಲಿ {n} ಸಂಪರ್ಕ ಗೆರೆಯನ್ನು ದಾಟುತ್ತವೆ; ಬಣ್ಣದ ಪಟ್ಟಿ ಪ್ರತಿ ಅಂಕ ಯಾವುದರಿಂದ ಬಂತು ಎಂದು ತೋರಿಸುತ್ತದೆ.', example: 'ಹೆಸರು ಹೋಲಿಕೆ 91% + ವಯಸ್ಸು ಹತ್ತಿರ + ಅದೇ ಜಿಲ್ಲೆ = ಸಂಪರ್ಕ.', status: 'unv' },
+  },
+  reach: {
+    technical: 'crew footprint — centroid of member districts, spread = farthest member district; overlap = an active hotspot inside a crew district whose offence matches the crew MO',
+    en: { label: 'Where a crew reaches', sentence: '{n} of {total} crews have a live hotspot of their own offence type inside their districts.', example: 'A chain-snatching crew with a chain-snatching hotspot in Mysuru City.' },
+    kn: { label: 'ತಂಡದ ವ್ಯಾಪ್ತಿ', sentence: '{total} ತಂಡಗಳಲ್ಲಿ {n} ತಂಡಗಳ ಜಿಲ್ಲೆಗಳೊಳಗೆ ಅವರದೇ ಅಪರಾಧ ಬಗೆಯ ಸಕ್ರಿಯ ಹಾಟ್‌ಸ್ಪಾಟ್ ಇದೆ.', example: 'ಸರಗಳ್ಳತನ ತಂಡ — ಮೈಸೂರು ನಗರದಲ್ಲಿ ಸರಗಳ್ಳತನ ಹಾಟ್‌ಸ್ಪಾಟ್.', status: 'unv' },
+  },
+  corridor: {
+    technical: 'district-hop corridors — consecutive cases of one person in different districts, summed per district pair',
+    en: { label: 'Travelling offenders', sentence: '{pct} of every 100 profiled people ({n}) have cases in more than one district; the arcs are their hops.', example: 'Bengaluru City ⇄ Mysuru City — 2 hops.' },
+    kn: { label: 'ಸಂಚರಿಸುವ ಅಪರಾಧಿಗಳ ದಾರಿ', sentence: 'ಪ್ರತಿ 100 ಜನರಲ್ಲಿ {pct} ಜನರಿಗೆ ({n}) ಒಂದಕ್ಕಿಂತ ಹೆಚ್ಚು ಜಿಲ್ಲೆಗಳಲ್ಲಿ ಪ್ರಕರಣಗಳಿವೆ; ಕಮಾನುಗಳು ಅವರ ಜಿಗಿತಗಳು.', example: 'ಬೆಂಗಳೂರು ನಗರ ⇄ ಮೈಸೂರು ನಗರ — 2 ಜಿಗಿತಗಳು.', status: 'unv' },
+  },
+  nearrepeat: {
+    technical: 'near-repeat classification (distance × time bands) and the Knox space–time test with a permutation p-value',
+    en: { label: 'Struck again nearby', sentence: '{pct} of every 100 cases here followed another within {m} m and {d} days.', example: 'A burglary, then another on the same street 9 days later.' },
+    kn: { label: 'ಮತ್ತೆ ಹತ್ತಿರದಲ್ಲೇ', sentence: 'ಇಲ್ಲಿನ ಪ್ರತಿ 100 ಪ್ರಕರಣಗಳಲ್ಲಿ {pct} ಪ್ರಕರಣಗಳು {m} ಮೀ ಮತ್ತು {d} ದಿನಗಳೊಳಗೆ ಇನ್ನೊಂದನ್ನು ಅನುಸರಿಸಿದವು.', example: 'ಮನೆ ಕಳ್ಳತನ — ಅದೇ ಬೀದಿಯಲ್ಲಿ 9 ದಿನಗಳ ನಂತರ ಮತ್ತೊಂದು.', status: 'unv' },
+  },
+  trajectory: {
+    technical: 'emerging hot spot classes over monthly Getis–Ord Gi* (z ≥ 1.96 = hot)',
+    en: { label: 'How a hotspot moved', sentence: '{n} cells ran hot at some point in the last {months} months; each is classed by when.', example: 'New = hot this month only; persistent = hot every month.' },
+    kn: { label: 'ಹಾಟ್‌ಸ್ಪಾಟ್ ಹೇಗೆ ಬದಲಾಯಿತು', sentence: 'ಕಳೆದ {months} ತಿಂಗಳುಗಳಲ್ಲಿ {n} ಕೋಶಗಳು ಒಮ್ಮೆಯಾದರೂ ಬಿಸಿಯಾದವು; ಪ್ರತಿಯೊಂದನ್ನು ಯಾವಾಗ ಎಂಬುದರ ಮೇಲೆ ವರ್ಗೀಕರಿಸಲಾಗಿದೆ.', example: 'ಹೊಸದು = ಈ ತಿಂಗಳು ಮಾತ್ರ ಬಿಸಿ; ನಿರಂತರ = ಪ್ರತಿ ತಿಂಗಳೂ ಬಿಸಿ.', status: 'unv' },
+  },
+  leadlag: {
+    technical: 'cross-correlation r(k) = corr(Δx_t, Δy_{t+k}) on first-differenced monthly series; a lead when |r| ≥ 2/√n',
+    en: { label: 'Which rises first', sentence: '{n} pairs of crime heads move together with a delay (r above {r}); the first named tends to rise first.', example: 'Property crime rises, cyber crime rises a month later.' },
+    kn: { label: 'ಯಾವುದು ಮೊದಲು ಏರುತ್ತದೆ', sentence: '{n} ಜೋಡಿ ಅಪರಾಧ ವರ್ಗಗಳು ವಿಳಂಬದೊಂದಿಗೆ ಒಟ್ಟಿಗೆ ಚಲಿಸುತ್ತವೆ (r {r}ಕ್ಕಿಂತ ಹೆಚ್ಚು); ಮೊದಲು ಹೆಸರಿಸಿದ್ದು ಮೊದಲು ಏರುತ್ತದೆ.', example: 'ಆಸ್ತಿ ಅಪರಾಧ ಏರಿದ ಒಂದು ತಿಂಗಳ ನಂತರ ಸೈಬರ್ ಅಪರಾಧ ಏರುತ್ತದೆ.', status: 'unv' },
+  },
+  uplift: {
+    technical: 'festival uplift — window rate ÷ baseline rate − 1, mean across festivals, 95 % t-interval',
+    en: { label: 'Festival-week rise', sentence: 'Festival weeks ran about {pct}% above the surrounding weeks — likely between {lo}% and {hi}%.', example: 'Deepavali week: about 30 % more theft.' },
+    kn: { label: 'ಹಬ್ಬದ ವಾರದ ಏರಿಕೆ', sentence: 'ಹಬ್ಬದ ವಾರಗಳು ಸುತ್ತಲಿನ ವಾರಗಳಿಗಿಂತ ಸುಮಾರು {pct}% ಹೆಚ್ಚು — ಬಹುಶಃ {lo}% ಮತ್ತು {hi}% ನಡುವೆ.', example: 'ದೀಪಾವಳಿ ವಾರ: ಸುಮಾರು 30% ಹೆಚ್ಚು ಕಳ್ಳತನ.', status: 'unv' },
+  },
+  coverage: {
+    technical: '80 % interval coverage — share of held-out actuals inside [lo, hi] on the 6-month backtest',
+    en: { label: 'Did the range catch the truth?', sentence: 'The forecast range was meant to catch 80 of every 100 actual months; it caught {pct}.', example: '70 of 100 — the range is narrower than it should be.' },
+    kn: { label: 'ವ್ಯಾಪ್ತಿ ನಿಜವನ್ನು ಹಿಡಿಯಿತೇ', sentence: 'ಮುನ್ಸೂಚನೆಯ ವ್ಯಾಪ್ತಿ ಪ್ರತಿ 100 ನಿಜವಾದ ತಿಂಗಳುಗಳಲ್ಲಿ 80 ಅನ್ನು ಹಿಡಿಯಬೇಕಿತ್ತು; ಅದು {pct} ಅನ್ನು ಹಿಡಿಯಿತು.', example: '100ರಲ್ಲಿ 70 — ವ್ಯಾಪ್ತಿ ಇರಬೇಕಾದದ್ದಕ್ಕಿಂತ ಕಿರಿದು.', status: 'unv' },
+  },
+  recovery: {
+    technical: 'injected-pattern recovery — planted hotspots, anomalies, offenders and communities matched against the pipeline outputs',
+    en: { label: 'Planted patterns found again', sentence: 'Of the patterns deliberately planted in the synthetic data, the pipeline recovered about {pct} of every 100.', example: '1 of 6 hotspots as a cluster; all 6 as the densest cell.' },
+    kn: { label: 'ನೆಟ್ಟ ಮಾದರಿಗಳಲ್ಲಿ ಎಷ್ಟು ಸಿಕ್ಕವು', sentence: 'ಕೃತಕ ದತ್ತಾಂಶದಲ್ಲಿ ಉದ್ದೇಶಪೂರ್ವಕ ನೆಟ್ಟ ಮಾದರಿಗಳಲ್ಲಿ, ಪ್ರತಿ 100ರಲ್ಲಿ ಸುಮಾರು {pct} ಅನ್ನು ವಿಶ್ಲೇಷಣೆ ಮತ್ತೆ ಕಂಡುಹಿಡಿಯಿತು.', example: '6 ಹಾಟ್‌ಸ್ಪಾಟ್‌ಗಳಲ್ಲಿ 1 ಗುಂಪಾಗಿ ಸಿಕ್ಕಿತು; 6ರಲ್ಲಿ 6 ಅತಿ ದಟ್ಟ ಕೋಶವಾಗಿ ಕಾಣಿಸಿದವು.', status: 'unv' },
+  },
+  specialisation: {
+    technical: 'specialisation index = 1 − normalised entropy of the offence-type mix',
+    en: { label: 'How narrow the offending is', sentence: '1 means one offence type only; 0 means spread evenly across many.', example: 'Vehicle theft only = 1.' },
+    kn: { label: 'ಅಪರಾಧ ಎಷ್ಟು ಕಿರಿದು', sentence: '1 ಎಂದರೆ ಒಂದೇ ಬಗೆಯ ಅಪರಾಧ; 0 ಎಂದರೆ ಹಲವು ಬಗೆಗಳಲ್ಲಿ ಸಮನಾಗಿ ಹರಡಿದೆ.', example: 'ವಾಹನ ಕಳ್ಳತನ ಮಾತ್ರ = 1.', status: 'unv' },
+  },
   detection: {
     technical: 'detection rate = chargesheeted A / (A + C)',
     en: { label: 'Cases solved', sentence: 'Out of every 100 cases closed, how many ended with a chargesheet.', example: 'Cases solved: 44 of every 100.' },
     kn: { label: 'ಪತ್ತೆಯಾದ ಪ್ರಕರಣಗಳು', sentence: 'ಮುಗಿದ ಪ್ರತಿ 100 ಪ್ರಕರಣಗಳಲ್ಲಿ ಎಷ್ಟು ದೋಷಾರೋಪ ಪಟ್ಟಿಯಲ್ಲಿ ಮುಗಿದವು.', example: 'ಪತ್ತೆ: 100ರಲ್ಲಿ 44.', status: 'repo' },
+  },
+  ingestDelta: {
+    technical: 'Batch delta and robust z — Δ = AggMonthly SUM(CaseCount) after − before for the anchor month; robust z (MAD) of each district × crime-head month total against the trailing 11 months; alert line z ≥ 2',
+    en: { label: 'What this load changes', sentence: 'Adds {n} cases to {month}; {k} district × crime-head totals would cross the alert line.', example: 'Adds 188 cases to Jul 2026; 2 district × crime-head totals would cross the alert line.' },
+    kn: { label: 'ಈ ಲೋಡ್ ಏನು ಬದಲಿಸುತ್ತದೆ', sentence: '{month}ಗೆ {n} ಪ್ರಕರಣಗಳು ಸೇರುತ್ತವೆ; {k} ಜಿಲ್ಲೆ × ಅಪರಾಧ ಶೀರ್ಷಿಕೆ ಒಟ್ಟು ಮೊತ್ತಗಳು ಎಚ್ಚರಿಕೆ ರೇಖೆಯನ್ನು ದಾಟುತ್ತವೆ.', example: 'ಜುಲೈ 2026ಕ್ಕೆ 188 ಪ್ರಕರಣಗಳು ಸೇರುತ್ತವೆ; 2 ಜಿಲ್ಲೆ × ಶೀರ್ಷಿಕೆ ಒಟ್ಟು ಮೊತ್ತಗಳು ಎಚ್ಚರಿಕೆ ರೇಖೆಯನ್ನು ದಾಟುತ್ತವೆ.', status: 'unv' },
+  },
+  precision: {
+    technical: 'alert precision = true_positive ÷ labelled outcomes (95 % Wilson score interval)',
+    en: { label: 'Alerts that turned out real', sentence: 'Of the {n} alerts an officer labelled, {tp} turned out real — about {pct} of every 100. With few labels the true share could be anywhere from {lo} to {hi} of every 100.', example: 'Alerts that turned out real: 12 of 20 — about 60 of every 100.' },
+    kn: { label: 'ನಿಜವಾದ ಎಚ್ಚರಿಕೆಗಳು', sentence: 'ಅಧಿಕಾರಿ ಗುರುತಿಸಿದ {n} ಎಚ್ಚರಿಕೆಗಳಲ್ಲಿ {tp} ನಿಜವಾದವು — 100ರಲ್ಲಿ ಸುಮಾರು {pct}. ಕಡಿಮೆ ಗುರುತುಗಳಿರುವಾಗ ನಿಜವಾದ ಪಾಲು 100ರಲ್ಲಿ {lo} ರಿಂದ {hi} ರವರೆಗೆ ಇರಬಹುದು.', example: 'ನಿಜವಾದ ಎಚ್ಚರಿಕೆಗಳು: 20ರಲ್ಲಿ 12 — 100ರಲ್ಲಿ ಸುಮಾರು 60.', status: 'unv' },
+  },
+  timeToAck: {
+    technical: 'median time-to-acknowledge (hours from AnomalyAlert.CreatedAt to the first acknowledge action)',
+    en: { label: 'Time until someone looked', sentence: 'Half of the acknowledged alerts were looked at within {h} hours of being raised.', example: 'Time until someone looked: 4.8 hours.' },
+    kn: { label: 'ಯಾರಾದರೂ ನೋಡಲು ತೆಗೆದುಕೊಂಡ ಸಮಯ', sentence: 'ಸ್ವೀಕರಿಸಿದ ಎಚ್ಚರಿಕೆಗಳಲ್ಲಿ ಅರ್ಧವನ್ನು ಎತ್ತಿದ {h} ಗಂಟೆಗಳೊಳಗೆ ನೋಡಲಾಗಿದೆ.', example: 'ಯಾರಾದರೂ ನೋಡಲು ತೆಗೆದುಕೊಂಡ ಸಮಯ: 4.8 ಗಂಟೆ.', status: 'unv' },
+  },
+  faceConfidence: {
+    technical: 'face similarity — Zia Identity Scanner confidence or cosine over the generator descriptor space, 0–1',
+    en: { label: 'How alike the faces look', sentence: 'Out of 100, how strongly the two pictures resemble each other. {floor} or more is a lead worth checking; it is never proof of identity.', example: 'How alike the faces look: 87 out of 100 — a lead, not an identification.', value: (v) => `${Math.round(v * 100)} out of 100` },
+    kn: { label: 'ಮುಖಗಳು ಎಷ್ಟು ಹೋಲುತ್ತವೆ', sentence: '100ರಲ್ಲಿ, ಎರಡು ಚಿತ್ರಗಳು ಎಷ್ಟು ಹೋಲುತ್ತವೆ. {floor} ಅಥವಾ ಹೆಚ್ಚು ಎಂದರೆ ಪರಿಶೀಲಿಸಬೇಕಾದ ಸುಳಿವು; ಇದು ಗುರುತಿನ ಪುರಾವೆ ಎಂದಿಗೂ ಅಲ್ಲ.', example: 'ಮುಖಗಳು ಎಷ್ಟು ಹೋಲುತ್ತವೆ: 100ರಲ್ಲಿ 87 — ಸುಳಿವು, ಗುರುತಿಸುವಿಕೆ ಅಲ್ಲ.', value: (v) => `100ರಲ್ಲಿ ${Math.round(v * 100)}`, status: 'unv' },
+  },
+  faceFloor: {
+    technical: 'confidence floor (FACE_MATCH_FLOOR) with a 0.10 dead band; error rates measured at the floor',
+    en: { label: 'Floor', sentence: 'Below {floor} out of 100 the answer is "no reliable match". Just under it is borderline — shown, never called a match.', example: 'Floor 70: a 66 is borderline, a 52 is below the floor.' },
+    kn: { label: 'ಕನಿಷ್ಠ ಮಿತಿ', sentence: '100ರಲ್ಲಿ {floor}ಕ್ಕಿಂತ ಕೆಳಗೆ ಉತ್ತರ "ವಿಶ್ವಾಸಾರ್ಹ ಹೊಂದಾಣಿಕೆ ಇಲ್ಲ". ಅದರ ಸ್ವಲ್ಪ ಕೆಳಗೆ ಅಂಚಿನಲ್ಲಿ — ತೋರಿಸಲಾಗುತ್ತದೆ, ಹೊಂದಾಣಿಕೆ ಎಂದು ಕರೆಯುವುದಿಲ್ಲ.', example: 'ಮಿತಿ 70: 66 ಅಂಚಿನಲ್ಲಿ, 52 ಮಿತಿಗಿಂತ ಕೆಳಗೆ.', status: 'unv' },
+  },
+  faceShortlist: {
+    technical: 'bounded 1:1 comparison set (≤25) — no 1:N gallery search exists in Catalyst',
+    en: { label: 'Who was compared', sentence: 'Only the {n} people your filters narrowed the gallery to were compared (never more than {cap}); nobody outside that list was looked at.', example: '25 candidates from Bengaluru City vehicle-theft cases, 2019–2026.' },
+    kn: { label: 'ಯಾರನ್ನು ಹೋಲಿಸಲಾಯಿತು', sentence: 'ನಿಮ್ಮ ಸೋಸುವಿಕೆಗಳು ಕಿರಿದಾಗಿಸಿದ {n} ಜನರನ್ನು ಮಾತ್ರ ಹೋಲಿಸಲಾಯಿತು ({cap}ಕ್ಕಿಂತ ಹೆಚ್ಚು ಎಂದಿಗೂ ಇಲ್ಲ); ಆ ಪಟ್ಟಿಯ ಹೊರಗಿನ ಯಾರನ್ನೂ ನೋಡಲಿಲ್ಲ.', example: 'ಬೆಂಗಳೂರು ನಗರದ ವಾಹನ ಕಳ್ಳತನ ಪ್ರಕರಣಗಳ 25 ಅಭ್ಯರ್ಥಿಗಳು, 2019–2026.', status: 'unv' },
   },
 };
 

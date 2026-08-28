@@ -41,6 +41,19 @@ export function aliasConfidence(alias, canonical) {
   return Math.max(0, Math.min(1, 0.55 * editSim + 0.45 * tokenSim));
 }
 
+/**
+ * A confirmed face-search lead for the same person (routes/identify) raises
+ * the alias score toward 1 by 60 % of the remaining gap, scaled by the face
+ * confidence — never to 1 on its own — and carries the reason code
+ * 'face-corroborated' so the chip can say why. No face figure, no boost.
+ */
+export function faceCorroborated(conf, faceConf) {
+  const c = Math.max(0, Math.min(1, Number(conf) || 0));
+  const f = Number(faceConf);
+  if (!Number.isFinite(f) || f <= 0) return { conf: c, reasons: [] };
+  return { conf: Math.min(1, c + (1 - c) * Math.max(0, Math.min(1, f)) * 0.6), reasons: ['face-corroborated'], face: f };
+}
+
 /** Confidence → display band: a stable id (the caller translates it through
  *  network.confidence.<id>) plus a text color class for inline percentages. */
 export function confidenceBand(conf) {

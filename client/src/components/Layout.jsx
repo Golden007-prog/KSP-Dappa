@@ -26,6 +26,7 @@ import { useI18n, useT } from '../lib/i18n.jsx';
 import { useTheme } from './ThemeProvider.jsx';
 import CommandPalette, { recordRecentAction } from './CommandPalette.jsx';
 import DensityToggle from './DensityToggle.jsx';
+import FontSizeControl from './FontSizeControl.jsx';
 import LanguageToggle from './LanguageToggle.jsx';
 import OfflineBanner from './OfflineBanner.jsx';
 import PrintHeader from './PrintHeader.jsx';
@@ -33,7 +34,11 @@ import PulseDot from './PulseDot.jsx';
 import ScrollTopButton from './ScrollTopButton.jsx';
 import SegmentedControl from './SegmentedControl.jsx';
 import Sheet from './Sheet.jsx';
+import NotificationBell from './NotificationBell.jsx';
+import ShellA11y from './ShellA11y.jsx';
 import Tooltip from './Tooltip.jsx';
+import { TierSwitcher, PlainLanguageToggle, TierEyebrow } from './TierControls.jsx';
+import VoiceAskButton from './VoiceAskButton.jsx';
 import { useToast } from './ToastProvider.jsx';
 
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -48,6 +53,7 @@ const ICONS = {
   alerts: <Svg><path d="M18 9a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6" /><path d="M10.5 19a2 2 0 0 0 3 0" /></Svg>,
   network: <Svg><circle cx="5" cy="6" r="2.2" /><circle cx="19" cy="6" r="2.2" /><circle cx="12" cy="18" r="2.2" /><path d="M6.8 7.5 10.5 16M17.2 7.5 13.5 16M7.2 6h9.6" /></Svg>,
   offenders: <Svg><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><circle cx="17.5" cy="9.5" r="2.4" /><path d="M15.5 20a4.6 4.6 0 0 1 5-4.4" /></Svg>,
+  identify: <Svg><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="10.5" r="2.6" /><path d="M7.5 17a4.5 4.5 0 0 1 9 0" /></Svg>,
   predict: <Svg><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v4.5l3 2" /><path d="M12 3.5V2M20.5 12H22M12 20.5V22M3.5 12H2" /></Svg>,
   copilot: <Svg><path d="M21 12a8 8 0 0 1-8 8H4l2.4-2.9A8 8 0 1 1 21 12Z" /><path d="M9 11.5h.01M13 11.5h.01M17 11.5h.01" strokeWidth="2.4" /></Svg>,
   cases: <Svg><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2.5h8A1.5 1.5 0 0 1 20.5 9.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5Z" /></Svg>,
@@ -69,6 +75,10 @@ const ICONS = {
   install: <Svg size={16}><path d="M12 3v10m-4-4 4 4 4-4" /><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15" /></Svg>,
   filter: <Svg size={13}><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" /></Svg>,
   globe: <Svg size={16}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18" /></Svg>,
+  beat: <Svg><path d="M3 11 12 3l9 8v10H3z" /><path d="M9 21v-6h6v6" /></Svg>,
+  station: <Svg><path d="M4 21V8l8-5 8 5v13" /><path d="M9 21v-5h6v5M9 12h.01M15 12h.01" /></Svg>,
+  state: <Svg><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M12 8v8M8 12h8" /></Svg>,
+  glossary: <Svg><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5Z" /><path d="M4 4.5v17M8 7h8M8 11h6" /></Svg>,
 };
 
 // Route-local keyboard shortcuts surfaced in the global shortcuts sheet as an
@@ -174,6 +184,7 @@ const NAV_GROUPS = [
       { to: '/alerts', labelKey: 'common.nav.alerts', icon: 'alerts' },
       { to: '/network', labelKey: 'common.nav.network', icon: 'network' },
       { to: '/offenders', labelKey: 'common.nav.offenders', icon: 'offenders' },
+      { to: '/identify', labelKey: 'identify.nav.identify', icon: 'identify' },
     ],
   },
   {
@@ -181,6 +192,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/predict', labelKey: 'common.nav.predict', icon: 'predict' },
       { to: '/copilot', labelKey: 'common.nav.copilot', icon: 'copilot' },
+      { to: '/ocr', labelKey: 'surfaces.nav.ocr', icon: 'cases' },
     ],
   },
   {
@@ -188,6 +200,16 @@ const NAV_GROUPS = [
     items: [
       { to: '/cases', labelKey: 'common.nav.cases', icon: 'cases' },
       { to: '/reports', labelKey: 'common.nav.reports', icon: 'reports' },
+      { to: '/ingest', labelKey: 'ingest.nav.ingest', icon: 'cases' },
+    ],
+  },
+  {
+    groupKey: 'tier.nav.group',
+    items: [
+      { to: '/beat', labelKey: 'tier.nav.beat', icon: 'beat' },
+      { to: '/station', labelKey: 'tier.nav.station', icon: 'station' },
+      { to: '/state', labelKey: 'tier.nav.state', icon: 'state' },
+      { to: '/glossary', labelKey: 'tier.nav.glossary', icon: 'glossary' },
     ],
   },
   {
@@ -262,7 +284,7 @@ function SessionClock() {
       className="num hidden xl:inline-flex items-center gap-1.5 rounded-full border border-grid bg-panel/60 px-2.5 py-1 text-[11px] text-muted"
       title={t('shell.clock.ist')}
     >
-      {fmt.format(now)} <span className="text-muted/70">IST</span>
+      {fmt.format(now)} <span>IST</span>
     </span>
   );
 }
@@ -398,6 +420,8 @@ export default function Layout() {
   const setStoreDensity = useUiStore((s) => s.setDensity);
   const motionReduced = useUiStore((s) => s.motionReduced);
   const setMotionReduced = useUiStore((s) => s.setMotionReduced);
+  const fontSize = useUiStore((s) => s.fontSize);
+  const setFontSize = useUiStore((s) => s.setFontSize);
   const { theme, pref, setTheme, toggleTheme } = useTheme();
   const kpis = useKpis();
   const lookups = useLookups();
@@ -500,11 +524,8 @@ export default function Layout() {
     };
   }, [toast, t]);
 
-  // document title tracks the view (+ pending alert count for the tab strip)
-  useEffect(() => {
-    const base = `${t(viewKeyFor(location.pathname))} — KSP DAPPA`;
-    document.title = activeAlerts > 0 ? `(${activeAlerts > 99 ? '99+' : activeAlerts}) ${base}` : base;
-  }, [location.pathname, activeAlerts, t]);
+  // document title tracks the view (+ pending alert count for the tab strip) —
+  // applied by <ShellA11y>, which also honours a route's own useDocumentTitle()
 
   // global Ctrl/Cmd-K
   useEffect(() => {
@@ -741,6 +762,13 @@ export default function Layout() {
       perform: () => setMotionReduced(!motionReduced),
     },
     {
+      id: 'act-fontsize',
+      label: t(fontSize === 'large' ? 'a11y.fontSize.toNormal' : 'a11y.fontSize.toLarge'),
+      section: t('shell.section.actions'),
+      keywords: 'font text size larger bigger zoom accessibility',
+      perform: () => setFontSize(fontSize === 'large' ? 'normal' : 'large'),
+    },
+    {
       id: 'act-shortcuts',
       label: t('shell.palette.shortcuts'),
       section: t('shell.section.actions'),
@@ -822,7 +850,7 @@ export default function Layout() {
       },
     }))),
   ], [navigate, search, theme, pref, setTheme, toggleTheme, collapsed, toggleSidebar,
-    zen, density, setStoreDensity, motionReduced, setMotionReduced, filtersActive,
+    zen, density, setStoreDensity, motionReduced, setMotionReduced, fontSize, setFontSize, filtersActive,
     lookups.data, qc, toast, setSearchParams, installPrompt, paletteOpen,
     clearAllFilters, applySavedView, t, tName, lang, setLang, langs]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -914,7 +942,7 @@ export default function Layout() {
             </svg>
             {!collapsed && <span>{t('common.nav.collapse')}</span>}
           </button>
-          {!collapsed && <p className="text-[10px] text-muted/70 text-center pt-1">{t('shell.sidebar.version')}</p>}
+          {!collapsed && <p className="text-[10px] text-muted text-center pt-1">{t('shell.sidebar.version')}</p>}
         </div>
       </aside>
 
@@ -922,7 +950,8 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0">
         {!zen && (
           <div
-            role="note"
+            role="region"
+            aria-label={t('common.app.disclaimer')}
             className="no-print flex items-center justify-center gap-2 h-6 shrink-0 bg-amber/10 border-b border-amber/30 text-[10px] md:text-[11px] text-amber tracking-wide px-2 truncate"
           >
             <svg width="11" height="11" viewBox="0 0 24 24" {...stroke} aria-hidden="true" className="shrink-0">
@@ -983,7 +1012,9 @@ export default function Layout() {
               </Tooltip>
             )}
             <SessionClock />
+            <NotificationBell />
             <RefreshControl />
+            <VoiceAskButton search={search} className="hidden sm:inline-flex" />
             <Tooltip label={t('shell.copyLink.tooltip')} position="bottom">
               <button
                 type="button"
@@ -994,6 +1025,7 @@ export default function Layout() {
                 {ICONS.link}
               </button>
             </Tooltip>
+            <TierSwitcher className="hidden xl:inline-flex" /><PlainLanguageToggle className="hidden xl:inline-flex" />
             <LanguageToggle className="hidden lg:inline-flex" variant="compact" />
             <DensityToggle className="hidden md:inline-flex" />
             {zen && (
@@ -1022,6 +1054,7 @@ export default function Layout() {
 
           <main id="main-content" tabIndex={-1} className="p-4 md:p-6 pb-24 md:pb-8 focus:outline-none">
             <PrintHeader viewName={viewName} />
+            <TierEyebrow pathname={location.pathname} />
             <Outlet />
           </main>
         </div>
@@ -1093,10 +1126,13 @@ export default function Layout() {
               <span className="eyebrow shrink-0">{t(item.sectionKey)}</span>
             </NavLink>
           ))}
+          <VoiceAskButton search={search} variant="row" onDone={() => setMoreOpen(false)} />
         </nav>
+        <NotificationBell variant="row" className="mt-1" />
         <div className="mt-3 border-t border-grid pt-3 space-y-3 px-1">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-xs text-muted">{t('shell.more.language')}</span>
+            <span className="basis-full flex flex-wrap items-center gap-2 order-first pb-1"><TierSwitcher size="md" /><PlainLanguageToggle size="md" /></span>
             <LanguageToggle size="md" />
           </div>
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1130,12 +1166,17 @@ export default function Layout() {
               ]}
             />
           </div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs text-muted">{t('a11y.fontSize.label')}</span>
+            <FontSizeControl size="md" />
+          </div>
         </div>
       </Sheet>
 
       <GlobalShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} isMac={isMac} pathname={location.pathname} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={paletteActions} remoteSearch={remoteSearch} />
       <ScrollTopButton targetId="main-scroll" />
+      <ShellA11y viewName={viewName} pendingCount={activeAlerts} />
     </div>
   );
 }

@@ -68,6 +68,7 @@ import HotspotTable, { sortHotspotRows } from './geointel/HotspotTable.jsx';
 import GridPanel from './geointel/GridPanel.jsx';
 import CatchmentPanel from './geointel/CatchmentPanel.jsx';
 import SpaceTimePanel, { dayShort } from './geointel/SpaceTimePanel.jsx';
+import DepthDockTab from './depth/DepthDockTab.jsx';
 import {
   GAP_KMS, GRID_SIZES, boundsOf, buildCatchment, buildGrid, bivariateColor, coLocatedClusters,
   gridFeatureCollection, inBounds, nearestStation, tercileClass, terciles, weekdayOf,
@@ -1355,6 +1356,7 @@ export default function GeoIntel() {
         />
       ),
     },
+    { key: 'depth', label: t('depth.dock.tab'), node: <DepthDockTab apiParams={apiParams} /> },
   ];
 
   return (

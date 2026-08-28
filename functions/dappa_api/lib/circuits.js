@@ -13,6 +13,7 @@
 const { toNum, round, ymAdd, ymRange, logJson } = require('./util');
 const mail = require('./mail');
 const push = require('./push');
+const olap = require('./olap');
 
 const STEPS = ['aggregate', 'detect-anomalies', 'notify'];
 const EXEC_TTL_SEC = 3600;
@@ -63,12 +64,13 @@ async function stepDetect(ctx, agg) {
   const fromYm = ymAdd(anchor, -11);
   const months = ymRange(fromYm, anchor);
   // 38 districts x 8 heads x 12 months is far past the 300-row ZCQL cap, so
-  // this MUST page.
-  const rows = await ctx.ds.queryAll({
+  // this MUST page — or go through the OLAP engine when it is enabled.
+  const cube = await olap.queryAll(ctx, {
     table: 'AggMonthly', columns: ['DistrictID', 'CrimeHeadID', 'Ym', 'SUM(CaseCount)'],
     where: [{ col: 'Ym', op: '>=', val: fromYm }, { col: 'Ym', op: '<=', val: anchor }],
     groupBy: ['DistrictID', 'CrimeHeadID', 'Ym']
-  }, { maxRows: 6000 }).catch(() => []);
+  }, { maxRows: 6000 }).catch(() => ({ rows: [], engine: 'zcql' }));
+  const rows = cube.rows;
   const series = new Map();
   for (const r of rows) {
     const key = `${r.DistrictID}|${r.CrimeHeadID}`;

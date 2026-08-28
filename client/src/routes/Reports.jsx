@@ -15,6 +15,7 @@ import { format, subDays } from 'date-fns';
 import { useWeeklyBrief, apiPost } from '../lib/api.js';
 import Card from '../components/Card.jsx';
 import Badge from '../components/Badge.jsx';
+import ReadAloudButton from '../components/ReadAloudButton.jsx';
 import Tooltip from '../components/Tooltip.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import BriefContent from './reports/BriefContent.jsx';
@@ -541,7 +542,7 @@ export default function Reports() {
                   aria-label={t('alerts.reports.moveEarlier', { label })}
                   disabled={i === 0}
                   onClick={() => moveSection(key, -1)}
-                  className="px-1 py-1 min-h-[44px] sm:min-h-[26px] disabled:opacity-30 hover:text-ink"
+                  className="inline-flex items-center justify-center px-1 py-1 min-h-[44px] min-w-[24px] sm:min-h-[26px] disabled:opacity-30 hover:text-ink"
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
                 </button>
@@ -550,7 +551,7 @@ export default function Reports() {
                   aria-label={t('alerts.reports.moveLater', { label })}
                   disabled={i === order.length - 1}
                   onClick={() => moveSection(key, 1)}
-                  className="pl-1 pr-1.5 py-1 min-h-[44px] sm:min-h-[26px] disabled:opacity-30 hover:text-ink"
+                  className="inline-flex items-center justify-center pl-1 pr-1.5 py-1 min-h-[44px] min-w-[24px] sm:min-h-[26px] disabled:opacity-30 hover:text-ink"
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m10 6 6 6-6 6" /></svg>
                 </button>
@@ -581,6 +582,7 @@ export default function Reports() {
             </button>
             <Badge tone={execCustom ? 'amber' : 'slate'}>{execCustom ? t('alerts.reports.execCustom') : t('alerts.reports.execAuto')}</Badge>
             <span className="num text-[11px] text-muted">{t('alerts.reports.execWords', { n: fmtInt(wordCount(execText)) })}</span>
+            <ReadAloudButton id="brief-exec" text={execText} variant="text" />
           </div>
           {execOpen && (
             <div className="mt-2 space-y-2">

@@ -26,6 +26,8 @@ import ModelCards from './predict/ModelCards.jsx';
 import AccuracyBoard from './predict/AccuracyBoard.jsx';
 import HorizonPanel from './predict/HorizonPanel.jsx';
 import DriverLift from './predict/DriverLift.jsx';
+import ForecastAuditPanel from './depth/ForecastAuditPanel.jsx';
+import RecoveryCard from './depth/RecoveryCard.jsx';
 
 export default function Predict() {
   const navigate = useNavigate();
@@ -129,6 +131,11 @@ export default function Predict() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <HorizonPanel defaultDistrictId={districtId} defaultCrimeHeadId={crimeHeadId} />
         <AccuracyBoard districtId={districtId} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <ForecastAuditPanel />
+        <RecoveryCard />
       </div>
 
       <RiskDrawer

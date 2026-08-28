@@ -15,8 +15,9 @@ import EmptyState from '../../components/EmptyState.jsx';
 import SegmentedControl from '../../components/SegmentedControl.jsx';
 import { fmtInt, fmtPct } from '../../lib/format.js';
 import { useT } from '../../lib/i18n.jsx';
-import { aliasConfidence, confidenceBand } from './identity.js';
+import { aliasConfidence, confidenceBand, faceCorroborated } from './identity.js';
 import { readPref, writePref } from '../network/hooks.js';
+import { useFaceAudit } from '../../lib/faceApi.js';
 
 const OPEN_PREF = 'dappa-off-alias-queue';
 const REVIEW_PREF = 'dappa-off-alias-reviewed';
@@ -48,17 +49,37 @@ export default function AliasQueue({ rows = [] }) {
     });
   };
 
+  // Confirmed face-search leads (GET /identify/audit?decision=confirm): the
+  // best confirmed confidence per person, used as an independent corroboration
+  // of the identity behind an alias.
+  const faceAudit = useFaceAudit({ decision: 'confirm', limit: 100 });
+  const faceByPerson = useMemo(() => {
+    const m = new Map();
+    for (const it of (faceAudit.data && faceAudit.data.items) || []) {
+      for (const d of it.decisions || []) {
+        if (d.decision !== 'confirm') continue;
+        const f = Number.isFinite(Number(d.confidence)) ? Number(d.confidence) : (it.topPersonKey === d.personKey ? Number(it.topConfidence) : NaN);
+        if (Number.isFinite(f) && f > (m.get(d.personKey) || 0)) m.set(d.personKey, f);
+      }
+    }
+    return m;
+  }, [faceAudit.data]);
+
   const queue = useMemo(() => {
     const out = [];
     for (const r of rows) {
       for (const a of r.aliases || []) {
-        const conf = aliasConfidence(a, r.canonicalName);
+        const base = aliasConfidence(a, r.canonicalName);
+        const boost = faceCorroborated(base, faceByPerson.get(String(r.personKey)));
+        const conf = boost.conf;
         out.push({
           id: `${r.personKey}::${a}`,
           personKey: String(r.personKey),
           name: r.canonicalName || String(r.personKey),
           alias: a,
           conf,
+          face: boost.face || null,
+          reasons: boost.reasons,
           band: confidenceBand(conf),
           caseCount: Number(r.caseCount) || 0,
           districts: (r.districts || []).length,
@@ -66,7 +87,7 @@ export default function AliasQueue({ rows = [] }) {
       }
     }
     return out.sort((x, y) => x.conf - y.conf);
-  }, [rows]);
+  }, [rows, faceByPerson]);
 
   const counts = useMemo(() => {
     const c = { high: 0, med: 0, low: 0 };
@@ -131,6 +152,14 @@ export default function AliasQueue({ rows = [] }) {
                     <span className={`num text-[11px] shrink-0 ${q.band.text}`}>
                       {fmtPct(q.conf, { fraction: true, digits: 0 })}
                     </span>
+                    {q.face !== null && (
+                      <span
+                        className="chip !py-0.5 !border-teal/60 text-teal text-[10px] shrink-0 cursor-help"
+                        title={t('identify.alias.faceBoostHint', { pct: fmtPct(q.face, { fraction: true, digits: 0 }) })}
+                      >
+                        {t('identify.alias.faceBoost', { pct: fmtPct(q.face, { fraction: true, digits: 0 }) })}
+                      </span>
+                    )}
                     <span className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
