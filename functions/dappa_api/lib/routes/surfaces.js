@@ -255,6 +255,17 @@ function register(router) {
     ok(res, rec, { source: rec.source });
   }));
 
+  // The job-pool target (functions/dappa_job) calls THIS route, never
+  // /nightly-refresh: that one submits a job, so a job calling it would
+  // recurse. Same steps, same record shape, no submission.
+  router.post('/admin/jobs/run-inline', asyncH(async (req, res) => {
+    const ctx = req.ctx;
+    if (!requireAdmin(req, res, ctx.flags)) return;
+    const body = req.body || {};
+    const rec = await jobs.runInlineAsJob(ctx, { trigger: body.trigger || 'job', send: Boolean(body.send) });
+    ok(res, rec, { source: rec.source });
+  }));
+
   router.get('/admin/jobs/pools', asyncH(async (req, res) => {
     const ctx = req.ctx;
     if (!requireAdmin(req, res, ctx.flags)) return;

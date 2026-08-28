@@ -1,0 +1,14 @@
+{
+	"deployment": {
+		"name": "dappa_job",
+		"stack": "node20",
+		"type": "job",
+		"env_variables": {
+			"APP_BASE_URL": "https://project-rainfall-60079891305.development.catalystserverless.in/app",
+			"ADMIN_TOKEN": ""
+		}
+	},
+	"execution": {
+		"main": "main.js"
+	}
+}

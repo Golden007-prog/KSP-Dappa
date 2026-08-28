@@ -205,11 +205,11 @@ function buildServiceMap(ctx) {
     key: 'job-scheduling',
     name: 'Job Scheduling (job pool + retries)',
     category: 'orchestration',
-    invocation: 'lib/jobs.js — jobScheduling().job().submitJob({target_type:\'Function\', target_name:\'dappa_nightly\', jobpool_name, job_config:{number_of_retries, retry_interval}}) / getJob(id)',
+    invocation: 'lib/jobs.js — jobScheduling().job().submitJob({target_type:\'Function\', target_name:\'dappa_job\', jobpool_name, job_config:{number_of_retries, retry_interval}}) / getJob(id); functions/dappa_job is the job-typed target, because a Function pool cannot invoke the cron-typed dappa_nightly, and it calls back into /admin/jobs/run-inline',
     fallback: 'the same three nightly steps run inline (lib/circuits.js runInline) and are reported in the job shape',
     flag: 'FEATURE_JOBS',
     requires: ['JOB_POOL_NAME'],
-    endpoints: ['/admin/jobs/nightly-refresh', '/admin/jobs/:jobId', '/admin/jobs/pools', '/meta/nightly']
+    endpoints: ['/admin/jobs/nightly-refresh', '/admin/jobs/run-inline', '/admin/jobs/:jobId', '/admin/jobs/pools', '/meta/nightly']
   }, gated(f.jobs, ['JOB_POOL_NAME'])));
 
   add({

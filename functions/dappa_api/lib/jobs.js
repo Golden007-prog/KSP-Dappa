@@ -22,6 +22,12 @@ const LAST_KEY = 'v1:jobs:last';
 const JOB_TTL_SEC = 24 * 3600;
 const MAX_TRACKED = 20;
 const TARGET_FUNCTION = 'dappa_nightly';
+// A Function job pool can only invoke a function whose deployment type is
+// `job`, so the pool target is NOT the cron-typed dappa_nightly: submitting to
+// that fails with "The given function is not a job function." and silently
+// falls back inline. functions/dappa_job is the job-typed shim; it calls back
+// into /admin/jobs/run-inline so the steps have one implementation.
+const JOB_FUNCTION = String(process.env.JOB_TARGET_FUNCTION || 'dappa_job');
 const DEFAULT_RETRIES = 2;
 const DEFAULT_RETRY_INTERVAL_SEC = 900;
 
@@ -31,6 +37,20 @@ function remember(rec) {
   records.set(rec.jobId, rec);
   while (records.size > MAX_TRACKED) records.delete(records.keys().next().value);
   return rec;
+}
+
+// Catalyst enforces two rules on job_name that the SDK only reports at submit
+// time: "must contain only alphanumeric and underscore" and "within 1-20 char
+// length". Both were violated in turn by a hyphenated 22-char name, and both
+// failures are invisible in normal use — a rejected submit falls back inline
+// with an honest note, so the feature reads as healthy while never once
+// reaching the pool. Encoding the constraint here keeps it in one place.
+const JOB_NAME_MAX = 20;
+const JOB_NAME_RE = /^[A-Za-z0-9_]{1,20}$/;
+
+function jobName(now) {
+  const stamp = (now === undefined ? Date.now() : now).toString(36).replace(/[^A-Za-z0-9]/g, '');
+  return `nightly_${stamp}`.slice(0, JOB_NAME_MAX);
 }
 
 function jobsConfigured(ctx) {
@@ -60,10 +80,10 @@ async function submitNightly(ctx, opts) {
   const pool = String(process.env.JOB_POOL_NAME || '').trim();
   if (jobsConfigured(ctx)) {
     const meta = {
-      job_name: `dappa-nightly-${Date.now().toString(36)}`,
+      job_name: jobName(),
       jobpool_name: pool,
       target_type: 'Function',
-      target_name: TARGET_FUNCTION,
+      target_name: JOB_FUNCTION,
       params: { trigger: String(o.trigger || 'api'), send: String(Boolean(o.send)) },
       job_config: {
         number_of_retries: Number(process.env.JOB_RETRIES || DEFAULT_RETRIES),
@@ -75,7 +95,7 @@ async function submitNightly(ctx, opts) {
       const job = mapJob(out, { jobpool: pool });
       const rec = Object.assign({
         mode: 'job',
-        target: TARGET_FUNCTION,
+        target: JOB_FUNCTION,
         submittedAt: new Date().toISOString(),
         request: meta,
         steps: circuits.STEPS.map((name) => ({ name, status: 'delegated' })),
@@ -163,4 +183,4 @@ function resetJobs() {
   records.clear();
 }
 
-module.exports = { submitNightly, getJob, lastRun, listPools, jobsConfigured, mapJob, resetJobs, TARGET_FUNCTION, LAST_KEY };
+module.exports = { submitNightly, runInlineAsJob, getJob, lastRun, listPools, jobsConfigured, mapJob, resetJobs, jobName, JOB_NAME_RE, TARGET_FUNCTION, JOB_FUNCTION, LAST_KEY };

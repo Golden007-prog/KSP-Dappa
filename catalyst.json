@@ -4,7 +4,8 @@
         "targets": [
             "dappa_api",
             "dappa_nightly",
-            "dappa_event"
+            "dappa_event",
+            "dappa_job"
         ],
         "ignore": [
             "node_modules",

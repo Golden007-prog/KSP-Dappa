@@ -264,6 +264,13 @@ export async function run(h) {
     const st = await get(`/admin/jobs/${j.json.data.jobId}`, ADMIN);
     const stOk = await fetch(`${h.BASE}/admin/jobs/${j.json.data.jobId}`, { headers: ADMIN }).then((r) => r.json());
     check('jobs status reads the stored record', stOk.ok === true && stOk.data.jobId === j.json.data.jobId && stOk.data.mode === 'inline', JSON.stringify(st.json || stOk).slice(0, 200));
+    // The route functions/dappa_job calls. It must run the steps and must NOT
+    // submit, or a pool job would recurse into itself.
+    const ri = await post('/admin/jobs/run-inline', { trigger: 'job' }, ADMIN);
+    check('run-inline executes the nightly steps without submitting', ri.status === 200 && ri.json.data.mode === 'inline'
+      && ri.json.data.status === 'successful' && Array.isArray(ri.json.data.steps) && ri.json.data.steps.length === 3, JSON.stringify(ri.json.data).slice(0, 220));
+    const riAuth = await fetch(`${h.BASE}/admin/jobs/run-inline`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => r.status);
+    check('run-inline is admin-guarded in public demo mode', riAuth === 403, String(riAuth));
     const miss = await fetch(`${h.BASE}/admin/jobs/job-nope`, { headers: ADMIN }).then((r) => r.status);
     check('jobs status 404 for an unknown id', miss === 404);
     const pools = await fetch(`${h.BASE}/admin/jobs/pools`, { headers: ADMIN }).then((r) => r.json());
@@ -281,7 +288,19 @@ export async function run(h) {
     }, async (a) => {
       const r = await a.post('/admin/jobs/nightly-refresh', { trigger: 'test' }, ADMIN);
       check('FLAG-ON jobs submits a Function job to the pool with retries', r.status === 200 && r.json.data.mode === 'job' && r.json.data.jobId === '9001' && r.json.meta.source === 'catalyst-jobs'
-        && submitted[0].target_type === 'Function' && submitted[0].target_name === 'dappa_nightly' && submitted[0].jobpool_name === 'dappa_pool' && submitted[0].job_config.number_of_retries === 2, JSON.stringify(submitted[0]));
+        && submitted[0].target_type === 'Function' && submitted[0].target_name === 'dappa_job' && submitted[0].jobpool_name === 'dappa_pool' && submitted[0].job_config.number_of_retries === 2, JSON.stringify(submitted[0]));
+    // The live service rejects anything else with "job_name must contain only
+    // alphanumeric and underscore" and "job_name should be within 1-20 char
+    // length". A mock that accepts any string let a hyphenated 22-char name
+    // ship: every real submit failed and fell back inline, which reads as
+    // healthy because that fallback is deliberate and honest.
+    check('submitted job_name obeys the Catalyst charset and 20-char cap', jobs.JOB_NAME_RE.test(submitted[0].job_name), `${submitted[0].job_name} (${submitted[0].job_name.length} chars)`);
+    // A Function job pool can only invoke a `job`-typed function. Targeting the
+    // cron-typed dappa_nightly fails with "The given function is not a job
+    // function." and falls back inline — invisibly, because that fallback is
+    // deliberate. Pin the target so it cannot drift back.
+    check('pool target is the job-typed function, never the cron function', submitted[0].target_name === jobs.JOB_FUNCTION && jobs.JOB_FUNCTION !== jobs.TARGET_FUNCTION, `${submitted[0].target_name} vs cron ${jobs.TARGET_FUNCTION}`);
+    check('jobName stays inside the cap for far-future timestamps', jobs.JOB_NAME_RE.test(jobs.jobName(4102444800000)), jobs.jobName(4102444800000));
       const s2 = await a.get('/admin/jobs/9001', ADMIN);
       check('FLAG-ON job status is read live and mapped', s2.json.data.status === 'successful' && s2.json.data.retriedCount === 1 && s2.json.data.executionMs === 190000, JSON.stringify(s2.json.data).slice(0, 200));
       const p = await a.get('/admin/jobs/pools', ADMIN);

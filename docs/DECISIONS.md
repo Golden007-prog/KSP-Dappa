@@ -261,4 +261,36 @@ than as a pass: on a slightly more generous reading of three panels it clears,
 and on a stricter one it does not. Rounding it up is precisely the thing this
 document exists to prevent.
 
+**D-026 · Job Scheduling was reported as configured while every submit had silently failed; a job-typed target function makes it real (lead, 29 Aug 2026).**
+The console pool `dappanightly` (id 50643000000453771) had existed since phase 3,
+but `JOB_POOL_NAME` was never added to `.env.deploy`, so the service map read
+`console-pending`. Setting it flipped the row to `active` — and exercising the
+endpoint then failed three times in a row, each failure invisible because a
+rejected submit deliberately falls back to running the same steps inline with an
+honest note. In order: `job_name must contain only alphanumeric and underscore`
+(the name was hyphenated), `job_name should be within 1-20 char length` (22), and
+`The given function is not a job function.` The last is the substantive one: a
+Function job pool can only invoke a function whose deployment type is `job`, and
+`dappa_nightly` is typed `cron`.
+
+The fix is `functions/dappa_job`, a `job`-typed Node 20 function whose handler is
+`(jobRequest, context)` per the Catalyst job-functions contract. It calls back
+into the new admin route `/admin/jobs/run-inline` rather than
+`/admin/jobs/nightly-refresh`, because the latter submits a job and a job calling
+it would recurse; the aggregate → detect → notify steps therefore keep exactly
+one implementation (`lib/circuits.js runInline`) whichever way they are reached.
+The legacy 02:00 IST cron on `dappa_nightly` is untouched. Verified live: job
+`50643000000448004` (`nightly_mtdkop4h`) ran in pool `dappanightly`, status
+Success, 1,465 ms, 0 retries, and is listed in the console's Job Scheduling ▸
+Jobs view with source type API.
+
+Two lessons are worth more than the fix. First, an honest fallback is not a
+substitute for exercising the real path — the fallback is precisely what made
+three consecutive failures look like health, and only a live submit distinguished
+"configured" from "working". Second, `lib/jobs.js` and the contract suite both
+described the target as `dappa_nightly` and the mock accepted any string, so the
+tests agreed with the code and both were wrong about the service. The suite now
+pins the `job_name` charset and 20-char cap through the exported `JOB_NAME_RE`,
+and asserts the pool target is the job-typed function and never the cron one.
+
 <!-- Append new decisions here: **D-00N · Title (owner, date).** Decision + why. -->
