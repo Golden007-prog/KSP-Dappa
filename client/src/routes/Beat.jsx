@@ -179,7 +179,16 @@ export default function Beat() {
                 </div>
               </div>
               {recent.swings !== null && recent.swings !== undefined && (
-                <PlainSentence term="zscore" size="lg" lead={`${fmt('zscore', recent.swings)} (z ${fmtNum(recent.swings, 1)}). ${term('anomaly').sentence}`} className="text-muted" />
+                // The "unusual rise" gloss explains what an anomaly IS, so it
+                // only belongs on a week that is one. Appended unconditionally
+                // it told a constable "within the normal range … well outside
+                // this station's normal range" in the same breath.
+                <PlainSentence
+                  term="zscore"
+                  size="lg"
+                  lead={`${fmt('zscore', recent.swings)} (z ${fmtNum(recent.swings, 1)}).${Math.abs(Number(recent.swings)) >= 2 ? ` ${term('anomaly').sentence}` : ''}`}
+                  className="text-muted"
+                />
               )}
               {recent.byHead.length > 0 && (
                 <p className="text-xs text-muted" data-readable="">
