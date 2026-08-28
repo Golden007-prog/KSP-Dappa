@@ -103,10 +103,12 @@ export default function ActionControls({ alert: a, variant = 'card', className =
     }
   };
 
-  const FIELD = 'input-dark w-full !py-2 !text-xs';
+  // The six buttons are 44 px on the officer tiers; the select / input /
+  // textarea the officer must touch NEXT were 34-35 px. Same rank test.
+  const FIELD = `input-dark w-full !py-2 !text-xs${rank <= 1 ? ' min-h-[44px]' : ''}`;
 
   return (
-    <div className={`space-y-2 ${className}`} data-action-controls={variant}>
+    <div className={`space-y-2 ${className}`} data-action-controls={variant} data-open={open || isSheet ? 'true' : 'false'}>
       {!isSheet && (
         <div className="flex flex-wrap items-center gap-1.5">
           <button
@@ -126,7 +128,7 @@ export default function ActionControls({ alert: a, variant = 'card', className =
       )}
 
       {open && (
-        <div className="space-y-2 rounded-xl border border-grid/70 bg-base/40 p-2.5">
+        <div className="space-y-2 rounded-xl border border-grid/70 bg-canvas/40 p-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('actions.controls.title')}</span>
             {isSheet && chips.map((c) => <StatusPill key={c.k} status={c.s} label={c.text} />)}
@@ -169,7 +171,7 @@ export default function ActionControls({ alert: a, variant = 'card', className =
                 <fieldset className="space-y-1">
                   <legend className="mb-0.5 text-[11px] text-muted">{t('actions.outcome.label')}</legend>
                   {OUTCOME_LABELS.map((o) => (
-                    <label key={o} className="flex min-h-[36px] cursor-pointer items-center gap-2 text-xs text-ink">
+                    <label key={o} className={`flex cursor-pointer items-center gap-2 text-xs text-ink ${rank <= 1 ? 'min-h-[44px]' : 'min-h-[36px]'}`}>
                       <input type="radio" name={`outcome-${alertKey}`} value={o} checked={outcomeLabel === o} onChange={() => setOutcomeLabel(o)} className="h-4 w-4 accent-current text-primary" />
                       {t(`actions.outcome.${o}`)}
                     </label>

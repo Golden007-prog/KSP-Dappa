@@ -54,7 +54,7 @@ function ErrorFallback({ label, error, stack, stale, copied, onReset, onCopy }) 
           <summary className="cursor-pointer text-xs text-muted hover:text-ink transition-colors select-none">
             {t('shell.error.technical')}
           </summary>
-          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-grid bg-base/60 p-3 text-[11px] leading-relaxed text-muted whitespace-pre-wrap break-words">
+          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-grid bg-canvas/60 p-3 text-[11px] leading-relaxed text-muted whitespace-pre-wrap break-words">
             {String(error?.message || error)}
             {'\n'}
             {stack}

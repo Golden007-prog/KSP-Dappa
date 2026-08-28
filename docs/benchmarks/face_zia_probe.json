@@ -1,0 +1,50 @@
+{
+  "ranAt": "2026-08-28T14:40:00.000Z",
+  "base": "https://project-rainfall-60079891305.development.catalystserverless.in/server/dappa_api/api/v1",
+  "note": "Verbatim Zia responses for the procedural synthetic gallery, captured by the lead on the deployed Development function (POST /admin/faces/zia-probe). Three pooled Zia calls. This file is the evidence behind the face model card's statements about what Zia can and cannot do with generated faces.",
+  "analyseFace": [
+    {
+      "label": "gallery P00001 (512x512 procedural PNG)",
+      "bytes": 31662,
+      "mime": "image/png",
+      "ms": 122,
+      "status": 400,
+      "code": "ZIA_ERROR",
+      "error": "Please try again later",
+      "reading": "Zia Face Analytics does not detect a face in a procedurally drawn cartoon portrait. The quality gate therefore runs in ADVISORY mode for this gallery (dimensions, byte size and decodability are checked in-process; face count, landmarks and pose are reported as null with the reason shown on screen)."
+    }
+  ],
+  "compareFace": [
+    {
+      "label": "same person: gallery P00001 vs probe P00001",
+      "bytesA": 31662,
+      "bytesB": 68690,
+      "ms": 152,
+      "response": { "confidence": 0.8407, "matched": "true" },
+      "matchedType": "string"
+    },
+    {
+      "label": "different people: gallery P00001 vs gallery P00002",
+      "bytesA": 31662,
+      "bytesB": 26482,
+      "ms": 133,
+      "response": { "confidence": 0.6171, "matched": "true" },
+      "matchedType": "string"
+    }
+  ],
+  "findings": {
+    "identityScannerWorks": true,
+    "faceAnalyticsWorks": false,
+    "ziaOwnThreshold": 0.5,
+    "ziaFalseAcceptObserved": {
+      "pair": "P00001 vs P00002 (different generated people)",
+      "confidence": 0.6171,
+      "matched": "true",
+      "reading": "At Zia's documented 0.5 threshold this pair is reported as the same individual. It is not. DAPPA's own floor of 0.70 rejects it (0.6171 < 0.70) while accepting the true pair (0.8407 >= 0.70), so on this evidence the published floor is the thing standing between the officer and a false lead. This is one observed pair, not a measured error rate: the rates in face_calibration.json come from the local descriptor engine over 200 faces, and no equivalent Zia sweep exists because it would cost 200+ pooled calls."
+    },
+    "transientFailures": {
+      "observed": "In a live POST /identify with a 5-candidate shortlist, 1 of 5 compareFace calls succeeded and 4 returned the same 'Please try again later' error; the four fell back to the local descriptor engine and said so in their reason codes (zia-unavailable).",
+      "reading": "compareFace is not reliably available under the parallelism the shortlist uses. Every candidate names the engine that scored it, so the ranked list stays honest, but meta.engine must not present the whole answer as Zia when most candidates were scored locally."
+    }
+  }
+}

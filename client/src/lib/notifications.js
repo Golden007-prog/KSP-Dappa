@@ -77,7 +77,10 @@ export function deriveEvents({ alerts = [], actions = [], tier = 'district' }) {
       actor: x.actor || '',
       seeded: !!x.seeded,
       forMe: kind === 'escalation' && x.toTier === tier,
-      title: x.alertKey || '',
+      // No title: the alert key already leads the row and the StatusPill
+      // carries the detail (assignee, tier, outcome label, dismiss reason).
+      // Repeating the key here rendered every decision as "AL-001 · AL-001".
+      title: '',
       subtitle: x.note || '',
     });
   }

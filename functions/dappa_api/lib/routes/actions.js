@@ -209,6 +209,17 @@ function register(router) {
   router.post('/reports/weekly-brief', asyncH(async (req, res) => {
     const ctx = req.ctx;
     const window = String((req.body || {}).window || req.query.window || 'last7');
+    const districtId = String((req.body || {}).districtId || '').trim();
+    // The hotspot-map screenshot rides on BOTH shapes of this response. It used
+    // to be taken only inside the pdf branch, so in the mode that actually runs
+    // today (renderBrief failing with the documented user-context error) the
+    // brief carried no mapSnapshot at all — not even the static stand-in.
+    // Cached on the same 6 h key as POST /reports/map-snapshot so the extra
+    // leg costs at most one SmartBrowz render per district per 6 h.
+    const snapshot = await ctx.cache
+      .wrap(`v1:map-snapshot:${districtId || 'state'}`, 6 * 3600, false, () => artifacts.captureMapSnapshot(ctx, { districtId }))
+      .then((r) => r.value)
+      .catch(() => null);
     let fellBackBecause = null;
     if (ctx.flags.smartbrowz && ctx.services.smartbrowz) {
       try {
@@ -218,11 +229,8 @@ function register(router) {
         // A rendered-and-stored PDF counts as success even when the signed URL
         // could not be minted — the bytes exist and the key locates them.
         if (out && (out.pdfUrl || out.stored)) {
-          // Hotspot-map screenshot stored beside the PDF (lib/artifacts.js
-          // captureMapSnapshot; static map when SmartBrowz cannot render it).
-          const mapSnapshot = await artifacts.captureMapSnapshot(ctx, { districtId: (req.body || {}).districtId }).catch(() => null);
           return ok(res, {
-            mode: 'pdf', pdfUrl: out.pdfUrl || null, storedKey: out.key || null, window, mapSnapshot
+            mode: 'pdf', pdfUrl: out.pdfUrl || null, storedKey: out.key || null, window, mapSnapshot: snapshot
           }, { source: 'smartbrowz' });
         }
         fellBackBecause = 'smartbrowz returned no pdf';
@@ -239,7 +247,7 @@ function register(router) {
     }
     ok(res, {
       mode: 'print-css', printUrl: `/print/brief?window=${encodeURIComponent(window)}`, window,
-      fallbackReason: fellBackBecause
+      fallbackReason: fellBackBecause, mapSnapshot: snapshot
     }, { source: 'fallback-local' });
   }));
 

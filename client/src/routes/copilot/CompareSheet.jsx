@@ -17,7 +17,7 @@ function Pane({ message, side }) {
   const conf = confidenceFor(message);
   const tables = tablesFromZcql(message.zcql);
   return (
-    <section className="min-w-0 rounded-xl border border-grid bg-base/40 p-3" aria-label={t('copilot.compare.paneAria', { side: t(`copilot.compare.${side}`) })}>
+    <section className="min-w-0 rounded-xl border border-grid bg-canvas/40 p-3" aria-label={t('copilot.compare.paneAria', { side: t(`copilot.compare.${side}`) })}>
       {message.question && (
         <p className="text-[11px] text-amber leading-snug mb-1.5">
           <span className="uppercase tracking-wider text-[9px] text-muted mr-1.5">{t('copilot.compare.questionMark')}</span>
@@ -38,7 +38,7 @@ function Pane({ message, side }) {
       {message.zcql && (
         <details className="mt-2">
           <summary className="cursor-pointer text-[11px] text-muted hover:text-amber transition-colors select-none py-1.5 -my-1.5">{t('copilot.zcql.show')}</summary>
-          <pre className="mt-1.5 text-[10px] leading-relaxed text-teal/90 bg-base border border-grid rounded-lg p-2 overflow-x-auto whitespace-pre-wrap font-mono">{message.zcql}</pre>
+          <pre className="mt-1.5 text-[10px] leading-relaxed text-teal/90 bg-canvas border border-grid rounded-lg p-2 overflow-x-auto whitespace-pre-wrap font-mono">{message.zcql}</pre>
         </details>
       )}
     </section>

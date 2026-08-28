@@ -35,6 +35,37 @@ const YM_RE = /^\d{4}-\d{2}$/;
 const OCR_MANIFEST = path.join(__dirname, '..', '..', 'assets', 'ocr_manifest.json');
 const CUBE_TTL_SEC = 900;
 const SNAPSHOT_TTL_SEC = 6 * 3600;
+const SCENE_TTL_SEC = 6 * 3600;
+
+// Per-IP budget for the two anonymous routes that spend a metered Zia call.
+// requireAdmin is not an option on either: /zia/objects is what the FIR-detail
+// evidence card calls for a judge with no token, and /zia/moderate is the OCR
+// page's intake guard. The demo-shaped ceiling is generous (a judge cannot
+// reach it by clicking) but a loop cannot burn the pooled Zia allowance.
+const aiSpend = new Map(); // ip -> { count, resetAt }
+
+function aiBudgetPerHour() {
+  return Math.max(1, Number(process.env.AI_BUDGET_PER_HOUR || 40) || 40);
+}
+
+function overAiBudget(req, res) {
+  const now = Date.now();
+  const ip = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+  let h = aiSpend.get(ip);
+  if (!h || h.resetAt <= now) { h = { count: 0, resetAt: now + 3600000 }; aiSpend.set(ip, h); }
+  h.count += 1;
+  if (aiSpend.size > 500) for (const [k, v] of aiSpend) if (v.resetAt <= now) aiSpend.delete(k);
+  const limit = aiBudgetPerHour();
+  res.setHeader('X-AI-Budget-Remaining', String(Math.max(0, limit - h.count)));
+  if (h.count > limit) {
+    fail(res, 429, 'AI_BUDGET', `This demo allows ${limit} Zia calls per hour from one address; the cached and fixture paths still answer.`);
+    return true;
+  }
+  return false;
+}
+
+/** Test hook — forget the per-IP AI budget between suites. */
+function resetAiBudget() { aiSpend.clear(); }
 
 function ocrSamples() {
   try {
@@ -114,6 +145,7 @@ function register(router) {
     const body = req.body || {};
     const buf = moderation.decodeImage(body.imageBase64 || body.image || body.file);
     if (!buf) return fail(res, 400, 'BAD_REQUEST', 'Provide {imageBase64} (a base64 image or data: URI).');
+    if (ctx.flags.ziaModeration && overAiBudget(req, res)) return;
     const out = await moderation.moderateImage(buf, { flags: ctx.flags, ziaClient: ctx.services.ziaClient, mode: body.mode });
     if (!out.ok) return fail(res, 400, 'BAD_REQUEST', out.reason);
     ok(res, out, { source: out.source });
@@ -134,27 +166,45 @@ function register(router) {
     const sceneId = body.sceneId ? String(body.sceneId) : null;
     if (!buf && !sceneId) return fail(res, 400, 'BAD_REQUEST', 'Provide {imageBase64} or a demo {sceneId}.');
     if (sceneId && !objects.sceneById(sceneId)) return fail(res, 404, 'NOT_FOUND', `Unknown sceneId ${sceneId}.`);
-    let guard = null;
-    if (buf) {
-      guard = await moderation.guardUpload(buf, { flags: ctx.flags, ziaClient: ctx.services.ziaClient });
-      if (!guard.ok) return fail(res, 400, 'BLOCKED', guard.reason);
-    }
-    const out = await objects.detectObjects({ buffer: buf, sceneId }, { flags: ctx.flags, ziaClient: ctx.services.ziaClient });
-    let narrativeTags = [];
     const caseId = body.caseId ? String(body.caseId) : null;
-    if (caseId && /^\d{1,10}$/.test(caseId)) {
-      try {
-        const rows = await ctx.ds.query({ table: 'CaseMaster', columns: ['BriefFacts'], where: [{ col: 'CaseMasterID', op: '=', val: Number(caseId) }], limit: { count: 1 } });
-        narrativeTags = rows.length ? zia.extractLocal(rows[0].BriefFacts || '').moTags : [];
-      } catch (e) { narrativeTags = []; }
+    if (!buf && ctx.flags.ziaObjects && overAiBudget(req, res)) return;
+    // The FIR-detail card asks for the same three scenes on every page view.
+    // Cache the scene path (6 h) so a browsing judge spends at most one Zia
+    // call per scene per container; an uploaded image is never cached.
+    const readScene = async () => {
+      let guard = null;
+      if (buf) {
+        guard = await moderation.guardUpload(buf, { flags: ctx.flags, ziaClient: ctx.services.ziaClient });
+        if (!guard.ok) return { blocked: guard.reason };
+      }
+      const out = await objects.detectObjects({ buffer: buf, sceneId }, { flags: ctx.flags, ziaClient: ctx.services.ziaClient });
+      let narrativeTags = [];
+      if (caseId && /^\d{1,10}$/.test(caseId)) {
+        try {
+          const rows = await ctx.ds.query({ table: 'CaseMaster', columns: ['BriefFacts'], where: [{ col: 'CaseMasterID', op: '=', val: Number(caseId) }], limit: { count: 1 } });
+          narrativeTags = rows.length ? zia.extractLocal(rows[0].BriefFacts || '').moTags : [];
+        } catch (e) { narrativeTags = []; }
+      }
+      return {
+        value: Object.assign({}, out, {
+          caseId,
+          narrativeTags,
+          mergedMoTags: [...new Set([...(out.moTags || []), ...narrativeTags])],
+          moderation: guard ? guard.moderation : null
+        })
+      };
+    };
+    let result;
+    let cached = false;
+    if (!buf && sceneId) {
+      const hit = await ctx.cache.wrap(`v1:zia-objects:${sceneId}:${caseId || ''}`, SCENE_TTL_SEC, nocache(req), async () => (await readScene()).value);
+      result = { value: hit.value };
+      cached = hit.cached;
+    } else {
+      result = await readScene();
     }
-    const merged = [...new Set([...(out.moTags || []), ...narrativeTags])];
-    ok(res, Object.assign({}, out, {
-      caseId,
-      narrativeTags,
-      mergedMoTags: merged,
-      moderation: guard ? guard.moderation : null
-    }), { source: out.source, count: out.objects.length });
+    if (result.blocked) return fail(res, 400, 'BLOCKED', result.blocked);
+    ok(res, result.value, { source: result.value.source, count: result.value.objects.length, cached });
   }));
 
   // -------------------------------------------------------------------------
@@ -283,8 +333,15 @@ function register(router) {
   // -------------------------------------------------------------------------
   // SmartBrowz screenshot of the hotspot map (fallback: the static map)
   // -------------------------------------------------------------------------
+  // Guarded: every call spends a metered SmartBrowz render AND writes a
+  // Stratus object, so it is a write-ish route even though it reads a map.
+  // ?nocache is deliberately ignored here (an anonymous loop with nocache=1
+  // was five renders and five objects); the 6 h cache is the budget, and the
+  // hourly object key means a repeat inside the hour overwrites one object
+  // instead of accumulating timestamped ones.
   router.post('/reports/map-snapshot', asyncH(async (req, res) => {
     const ctx = req.ctx;
+    if (!requireAdmin(req, res, ctx.flags)) return;
     const body = req.body || {};
     const districtId = String(body.districtId || req.query.districtId || '').trim();
     if (districtId && !/^\d{3,4}$/.test(districtId)) return fail(res, 400, 'BAD_REQUEST', 'districtId must be a 3-4 digit id.');
@@ -292,8 +349,8 @@ function register(router) {
     // noOptions: a bare takeScreenshot(url) probe — SmartBrowz merges option
     // keys into the top level of its request body and rejects unknown ones.
     const noOptions = Boolean(body.noOptions);
-    const { value, cached } = await ctx.cache.wrap(key, SNAPSHOT_TTL_SEC, nocache(req), () => artifacts.captureMapSnapshot(ctx, { districtId, noOptions }));
-    ok(res, value, { source: value.source, cached, ttlSec: SNAPSHOT_TTL_SEC });
+    const { value, cached } = await ctx.cache.wrap(key, SNAPSHOT_TTL_SEC, false, () => artifacts.captureMapSnapshot(ctx, { districtId, noOptions }));
+    ok(res, value, { source: value.source, cached, ttlSec: SNAPSHOT_TTL_SEC, nocacheHonoured: false });
   }));
 
   // -------------------------------------------------------------------------
@@ -351,4 +408,4 @@ function register(router) {
   }));
 }
 
-module.exports = { register };
+module.exports = { register, resetAiBudget, aiBudgetPerHour };

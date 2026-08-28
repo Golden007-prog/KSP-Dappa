@@ -9,15 +9,17 @@
      cache first, refreshed in the background.
    - fetch, API GETs (/server/dappa_api/… or the static demo's /demo/api/…):
      network first with a 4 s timeout; the last good answer is kept in
-     'dappa-api-v1' and served when the network fails or stalls, with an
+     'dappa-api-<VERSION>' and served when the network fails or stalls, with an
      'X-Dappa-Cache: saved <iso>' header so a screen can say "saved copy from
      <time> · offline". The last /tiers/beat answer is therefore always the
      most recent one that reached the phone.
-   Bump VERSION to invalidate every cache. */
+   Bump VERSION to invalidate every cache — shell, assets AND saved API
+   answers, so a deploy can never serve an old payload shape offline. The Beat
+   card keeps its own last-good copy in localStorage, which survives the bump. */
 const VERSION = 'v1-2026-08-28';
 const SHELL = `dappa-shell-${VERSION}`;
 const ASSETS = `dappa-assets-${VERSION}`;
-const API = 'dappa-api-v1';
+const API = `dappa-api-${VERSION}`;
 const API_TIMEOUT_MS = 4000;
 const API_MAX_ENTRIES = 120;
 

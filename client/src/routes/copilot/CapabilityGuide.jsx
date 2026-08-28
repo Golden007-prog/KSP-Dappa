@@ -59,7 +59,7 @@ export default function CapabilityGuide({ onAsk, disabled = false }) {
               <button
                 key={family}
                 type="button"
-                className="text-left rounded-lg border border-grid bg-base/40 px-3 py-2 min-h-[44px] hover:border-amber/50 transition-colors disabled:opacity-50"
+                className="text-left rounded-lg border border-grid bg-canvas/40 px-3 py-2 min-h-[44px] hover:border-amber/50 transition-colors disabled:opacity-50"
                 onClick={() => onAsk(example)}
                 disabled={disabled}
               >

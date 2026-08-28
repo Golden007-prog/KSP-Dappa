@@ -26,7 +26,7 @@ function FamilyCard({ family, rowsByKey, onPickTag, selected }) {
     .slice(0, 4);
 
   return (
-    <div className="bg-base/60 border border-grid rounded-lg p-3 flex flex-col gap-2">
+    <div className="bg-canvas/60 border border-grid rounded-lg p-3 flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium text-ink leading-5 min-w-0">{family.label}</p>
         <Tooltip label={t('offenders.vocab.liftHint')}>

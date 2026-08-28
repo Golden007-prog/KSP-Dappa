@@ -243,7 +243,7 @@ export default function MixRadar({ window: win, districtId, colors, otherColor, 
                   <li key={r.districtId} className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="min-h-[40px] flex-1 min-w-0 flex items-center gap-2 rounded-lg border border-grid bg-base/40 px-2.5 text-left hover:border-amber/40 transition-colors"
+                      className="min-h-[40px] flex-1 min-w-0 flex items-center gap-2 rounded-lg border border-grid bg-canvas/40 px-2.5 text-left hover:border-amber/40 transition-colors"
                       onClick={() => setSelB(r.districtId)}
                       title={t('trends.radar.overlayTip', { name: r.name })}
                     >

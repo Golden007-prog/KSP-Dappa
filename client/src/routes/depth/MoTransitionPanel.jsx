@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { useDepthMoTransitions } from '../../lib/depthApi.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
 import { fmtInt, fmtNum, fmtPct } from '../../lib/format.js';
-import { PanelFrame, HeatMatrix, StatTile } from './DepthBits.jsx';
+import { PanelFrame, HeatMatrix, SampleLine, StatTile } from './DepthBits.jsx';
 
 export default function MoTransitionPanel() {
   const t = useT();
@@ -62,6 +62,7 @@ export default function MoTransitionPanel() {
               </ul>
             </div>
           )}
+          <SampleLine scan={d.scan} />
         </div>
       )}
     </PanelFrame>

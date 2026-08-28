@@ -180,7 +180,7 @@ export default function MessageBubble({
               <button
                 key={q}
                 type="button"
-                className="text-left text-[11px] text-muted border border-grid bg-base/60 rounded-full px-3 min-h-[40px] hover:border-amber/50 hover:text-ink transition-colors"
+                className="text-left text-[11px] text-muted border border-grid bg-canvas/60 rounded-full px-3 min-h-[40px] hover:border-amber/50 hover:text-ink transition-colors"
                 onClick={() => onAsk(q)}
               >
                 {q}
@@ -209,7 +209,7 @@ export default function MessageBubble({
                 {t('copilot.zcql.copy')}
               </button>
             </div>
-            <pre className="mt-1 text-[11px] leading-relaxed text-teal/90 bg-base border border-grid rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap font-mono">
+            <pre className="mt-1 text-[11px] leading-relaxed text-teal/90 bg-canvas border border-grid rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap font-mono">
               {message.zcql}
             </pre>
           </details>

@@ -26,18 +26,25 @@ export default function PlainSentence({ term, vars, className = '', as: Tag = 'p
   const behind = leadOverride
     ? `${r.technicalName} — ${r.technical} · ${r.sentence}`
     : (plain ? `${r.technicalName} — ${r.technical}` : r.sentence);
-  const dims = size === 'lg' ? 'h-11 w-11 -my-3' : 'h-5 w-5';
+  // 'lg' puts the 44-px target in its own column so it owns its height; a
+  // negative margin would drag it back across the line above (it did).
+  const big = size === 'lg';
+  const dims = big ? 'h-11 w-11 shrink-0' : 'h-5 w-5';
+  // With a lead override the visible sentence already carries the screen's
+  // own numbers and `behind` already opens with the technical name, so the
+  // usual r.label prefix read as "alert precision: alert precision — …".
+  const ariaLabel = leadOverride ? behind : `${r.label}: ${behind}`;
   return (
-    <Tag className={`text-[13px] leading-snug text-ink ${className}`}>
-      <span>{lead}</span>
-      {' '}
-      <Tooltip label={behind} position="bottom">
+    <Tag className={`text-[13px] leading-snug text-ink ${big ? 'flex items-center gap-1' : ''} ${className}`}>
+      <span className={big ? 'min-w-0 flex-1' : undefined}>{lead}</span>
+      {!big && ' '}
+      <Tooltip label={behind} position="bottom" className={big ? 'shrink-0' : ''}>
         <button
           type="button"
-          className={`inline-flex ${dims} align-middle items-center justify-center rounded-full text-muted hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber`}
-          aria-label={`${r.label}: ${behind}`}
+          className={`inline-flex ${dims} ${big ? '' : 'align-middle'} items-center justify-center rounded-full text-muted hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber`}
+          aria-label={ariaLabel}
         >
-          {INFO(size === 'lg' ? 16 : 11)}
+          {INFO(big ? 16 : 11)}
         </button>
       </Tooltip>
     </Tag>

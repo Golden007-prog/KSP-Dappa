@@ -161,20 +161,20 @@ export default function ScenarioPanel({ defaultDistrictId, defaultCrimeHeadId })
 
       {totals && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3">
-          <div className="rounded-lg border border-grid bg-base/40 px-3 py-2.5">
+          <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2.5">
             <p className="text-[11px] uppercase tracking-wide text-muted">
               {t('trends.predict.scen.baseTotal', { n: fmtInt(forecast.length) })}
             </p>
             <p className="num text-xl font-semibold text-ink mt-0.5">{fmtInt(totals.base)}</p>
           </div>
-          <div className="rounded-lg border border-grid bg-base/40 px-3 py-2.5">
+          <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2.5">
             <p className="text-[11px] uppercase tracking-wide text-muted">{t('trends.predict.scen.scenarioTotal')}</p>
             <p className="num text-xl font-semibold text-ink mt-0.5 flex items-baseline gap-2">
               {fmtInt(totals.scenario)}
               <StatDelta value={uplift} positiveIsGood={false} />
             </p>
           </div>
-          <div className="rounded-lg border border-grid bg-base/40 px-3 py-2.5">
+          <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2.5">
             <p className="text-[11px] uppercase tracking-wide text-muted">
               {totals.delta >= 0 ? t('trends.predict.scen.additional') : t('trends.predict.scen.avoided')}
             </p>

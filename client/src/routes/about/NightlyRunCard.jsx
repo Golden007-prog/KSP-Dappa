@@ -146,7 +146,7 @@ export default function NightlyRunCard() {
               ['p95', fmtDuration(obs.p95Ms, t)],
               ['errorRate', `${num(obs.errorRatePct) === null ? '—' : obs.errorRatePct}%`],
             ].map(([k, v]) => (
-              <div key={k} className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+              <div key={k} className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
                 <div className="num text-base font-semibold text-ink">{v}</div>
                 <div className="text-[10px] uppercase tracking-wider text-muted">{t(`surfaces.obs.${k}`)}</div>
               </div>

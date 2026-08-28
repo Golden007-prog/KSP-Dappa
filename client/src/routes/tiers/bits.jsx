@@ -3,13 +3,14 @@
 // the station picker, and small pure helpers (weekday from the real date,
 // hour bands, pendency ages, alert SLA clocks). Everything here is used by at
 // least two of the tier routes; route-specific markup stays in the route.
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import Tooltip from '../../components/Tooltip.jsx';
 import StatusPill from '../../components/StatusPill.jsx';
 import ReadPageButton from '../../components/ReadPageButton.jsx';
 import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 import { useStations } from '../../lib/api.js';
+import { useTierStore } from '../../lib/tier.js';
 import { useI18n } from '../../lib/i18n.jsx';
 import { slaFor } from '../alerts/sla.js';
 
@@ -23,6 +24,21 @@ const PRINT = (
     <path d="M6 9V3h12v6" /><rect x="6" y="14" width="12" height="7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
   </svg>
 );
+
+/** A tier home IS its tier. The sidebar / More-sheet / palette entries are
+ * plain routes ({ to: '/beat' }), so before this hook opening My Beat from the
+ * app's own navigation left the store on whatever tier was last set — usually
+ * 'district' — and the plain-language layer stayed off: the KPI tile rendered
+ * "seasonal baseline" instead of "Usual level". Only the ?tier=beat deep link
+ * flipped it. Setting the tier from the route makes both paths agree, and
+ * matches what the switcher already does when it navigates here. */
+export function useTierRoute(tier) {
+  const current = useTierStore((s) => s.tier);
+  const setTier = useTierStore((s) => s.setTier);
+  useEffect(() => {
+    if (current !== tier) setTier(tier);
+  }, [tier, current, setTier]);
+}
 
 /** 44 × 44 (i) button — the technical term behind a plain label on the
  * Beat / Station tiers (design correction 1). `label` is what the tooltip and
@@ -86,8 +102,14 @@ export function TierHeader({ eyebrow, title, sub, readTarget, onPrint, printLabe
 }
 
 /** Station picker (44 px select) over GET /geo/stations; the API defaults to
- * the busiest scored station when nothing is chosen. */
-export function UnitPicker({ value, onChange, defaulted = false, className = '' }) {
+ * the busiest scored station when nothing is chosen.
+ *
+ * `compact` drops the stacked label and renders the select alone so it can sit
+ * in the tier header row — worth ~120 px of a 360-px fold. The helper line that
+ * used to sit under the select is gone in both forms: it repeated the
+ * placeholder option ('tier.unit.defaulted') word for word, and the
+ * placeholder is what is on screen whenever no station has been chosen. */
+export function UnitPicker({ value, onChange, className = '', compact = false }) {
   const { t, tName } = useI18n();
   const stations = useStations();
   const options = useMemo(() => {
@@ -96,22 +118,25 @@ export function UnitPicker({ value, onChange, defaulted = false, className = '' 
       .map((s) => ({ unitId: String(s.unitId), name: s.unitName || String(s.unitId), district: tName('districts', s.districtId, s.districtName || '') }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [stations.data, tName]);
+  const select = (
+    <select
+      id="tier-unit"
+      aria-label={t('tier.unit.aria')}
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value || '')}
+      className={compact ? 'input-dark min-h-[44px] max-w-[11rem] text-xs' : 'input-dark min-h-[44px] w-full text-sm'}
+    >
+      <option value="">{stations.isLoading ? t('tier.unit.loading') : t('tier.unit.defaulted')}</option>
+      {options.map((o) => (
+        <option key={o.unitId} value={o.unitId}>{o.name}{o.district ? ` · ${o.district}` : ''}</option>
+      ))}
+    </select>
+  );
+  if (compact) return <span className={`no-print inline-flex ${className}`}>{select}</span>;
   return (
     <div className={`no-print flex flex-col gap-1 ${className}`}>
       <label htmlFor="tier-unit" className="text-[11px] font-medium text-muted">{t('tier.unit.label')}</label>
-      <select
-        id="tier-unit"
-        aria-label={t('tier.unit.aria')}
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value || '')}
-        className="input-dark min-h-[44px] w-full text-sm"
-      >
-        <option value="">{stations.isLoading ? t('tier.unit.loading') : t('tier.unit.defaulted')}</option>
-        {options.map((o) => (
-          <option key={o.unitId} value={o.unitId}>{o.name}{o.district ? ` · ${o.district}` : ''}</option>
-        ))}
-      </select>
-      {defaulted && !value && <p className="text-[11px] text-muted">{t('tier.unit.defaulted')}</p>}
+      {select}
     </div>
   );
 }

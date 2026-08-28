@@ -18,12 +18,16 @@
 // about its window: every answer carries meta.provenance {asOn, window, method,
 // provisional:true} in the Monthly Crime Review's own footer idiom.
 //
-// "Usual level" (the baseline an officer compares a week against) is the
-// unit's mean weekly count over the trailing 8 weeks of CaseMaster (weeks 1–7
-// against week 8) with a Poisson floor on the spread, so a station with three
-// cases a week is not told it is "three swings above normal" because one extra
-// FIR came in. Where only AggMonthly exists (the beat's 7-day usual) the
-// 12-month monthly mean is scaled to a week (÷ 365/12/7).
+// "Usual level" (the baseline an officer compares a week against) is ONE
+// number shared by /tiers/beat and /tiers/station: the unit's mean weekly
+// count over the trailing 8 weeks of CaseMaster (weeks 1–7 against week 8)
+// with a Poisson floor on the spread, so a station with three cases a week is
+// not told it is "three swings above normal" because one extra FIR came in.
+// It is the figure an officer can verify from the station's own diary, and
+// the two tiers must never word the same week differently (D-phase4-8).
+// The 12-month AggMonthly mean scaled to a week (÷ 365/12/7) survives on the
+// beat as recent.longRun — a separately labelled long-run comparison that
+// drives no status word.
 //
 // Caste / religion columns are never selected here.
 
@@ -55,6 +59,16 @@ function daysBetween(a, b) {
   const db = Date.parse(`${String(b).slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(da) || !Number.isFinite(db)) return null;
   return Math.round((db - da) / 86400000);
+}
+
+/** Weekly bucket of an ISO day inside the trailing 8 weeks ending `asOf`:
+ * 0 = oldest week, 7 = the last seven days; null outside the window. Shared by
+ * beatHome() and stationHome() so both tiers bucket a week the same way. */
+function weekIndexOf(iso, asOf) {
+  const back = daysBetween(iso, asOf);
+  if (back === null || back < 0) return null;
+  const idx = 7 - Math.floor(back / 7);
+  return idx >= 0 && idx <= 7 ? idx : null;
 }
 
 function hourOf(dt) {
@@ -258,19 +272,20 @@ async function beatHome(ctx, unit, employeeId) {
   const anchor = await anchorYm(ctx.ds, null);
   const asOf = await unitAsOf(ctx, unit.unitId, anchor);
   const from7 = dayAdd(asOf, -6);
+  const from56 = dayAdd(asOf, -55);
   const uiId = underInvestigationId(lk);
 
-  const [recentRows, aggRows, riskRows, allRisk, hotspotRows, openRows, alerts, centroid, employees] = await Promise.all([
+  const [rows56, aggRows, riskRows, allRisk, hotspotRows, openRows, alerts, centroid, employees] = await Promise.all([
     ctx.ds.queryAll({
       table: 'CaseMaster',
       columns: ['CaseMasterID', 'CrimeNo', 'CrimeRegisteredDate', 'CrimeMajorHeadID', 'CrimeMinorHeadID', 'CaseStatusID', 'IncidentFromDate', 'latitude', 'longitude', 'PolicePersonID'],
       where: [
         { col: 'PoliceStationID', op: '=', val: unit.unitId },
-        { col: 'CrimeRegisteredDate', op: '>=', val: from7 },
+        { col: 'CrimeRegisteredDate', op: '>=', val: from56 },
         { col: 'CrimeRegisteredDate', op: '<=', val: `${asOf} 23:59:59` }
       ],
       orderBy: { col: 'CrimeRegisteredDate', desc: true, tieBreak: 'CaseMasterID' }
-    }, { maxRows: 600 }),
+    }, { maxRows: 3000 }),
     ctx.ds.query({
       table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)'],
       where: [{ col: 'UnitID', op: '=', val: unit.unitId }, { col: 'Ym', op: '>=', val: ymAdd(anchor, -11) }, { col: 'Ym', op: '<=', val: anchor }],
@@ -295,16 +310,33 @@ async function beatHome(ctx, unit, employeeId) {
     employeesOfUnit(ctx, unit.unitId)
   ]);
 
-  // Usual weekly level from 12 months of AggMonthly, scaled to a week.
+  // The usual weekly level — identical arithmetic to stationHome() below, so
+  // the two tiers can never word the same week differently. Week index 0 is
+  // the oldest of the trailing eight weeks, 7 the last seven days.
+  const unitWeeks = new Array(8).fill(0);
+  for (const r of rows56) {
+    const idx = weekIndexOf(r.CrimeRegisteredDate, asOf);
+    if (idx !== null) unitWeeks[idx] += 1;
+  }
+  const recentRows = rows56.filter((r) => weekIndexOf(r.CrimeRegisteredDate, asOf) === 7);
+  const base7 = unitWeeks.slice(0, 7);
+  const hasHistory = unitWeeks.some((v) => v > 0);
+  const usualPerWeek = round(mean(base7), 1);
+  const count7 = recentRows.length;
+  const z7 = hasHistory ? swings(count7, usualPerWeek, sd(base7)) : null;
+
+  // The 12-month AggMonthly mean scaled to a week: a DIFFERENT, long-run
+  // comparison kept beside the weekly baseline and labelled as such. It never
+  // sets the status word — the beat used to read this while the station read
+  // the weekly mean, so the same week came out "falling" on one tier and
+  // "rising" on the other.
   const monthly = ymRange(ymAdd(anchor, -11), anchor).map((ym) => {
     const hit = aggRows.find((r) => r.Ym === ym);
     return hit ? toNum(hit['SUM(CaseCount)']) : 0;
   });
-  const hasHistory = monthly.some((v) => v > 0);
-  const usualPerWeek = hasHistory ? round(mean(monthly) / WEEK_PER_MONTH, 1) : null;
-  const spreadPerWeek = hasHistory ? sd(monthly) / Math.sqrt(WEEK_PER_MONTH) : 0;
-  const count7 = recentRows.length;
-  const z7 = hasHistory ? swings(count7, usualPerWeek, spreadPerWeek) : null;
+  const longRun = monthly.some((v) => v > 0)
+    ? { usualPerWeek: round(mean(monthly) / WEEK_PER_MONTH, 1), months: monthly.length, basis: 'AggMonthly 12-month mean ÷ 365/12/7' }
+    : null;
 
   const byHead = new Map();
   for (const r of recentRows) {
@@ -318,6 +350,8 @@ async function beatHome(ctx, unit, employeeId) {
     usualPerWeek,
     swings: z7,
     statusWord: statusFromZ(z7),
+    weeks: unitWeeks,
+    longRun,
     byHead: [...byHead.entries()].map(([id, n]) => ({ crimeHeadId: id, headName: lk.headName(id), count: n })).sort((a, b) => b.count - a.count),
     cases: recentRows.slice(0, 25).map((r) => ({
       caseMasterId: r.CaseMasterID,
@@ -427,8 +461,8 @@ async function beatHome(ctx, unit, employeeId) {
     alerts,
     provenance: {
       asOn: asOf,
-      window: `${from7} → ${asOf}`,
-      method: 'CaseMaster last 7 days vs a 12-month AggMonthly weekly mean; StationRisk percentile among scored stations; HotspotCluster distance from the unit centroid',
+      window: `${from7} → ${asOf} · baseline ${from56} → ${dayAdd(from7, -1)} (7 weeks)`,
+      method: 'CaseMaster weekly buckets: the last 7 days against the mean and spread of the seven weeks before it with a Poisson floor — the same baseline /tiers/station reports; a 12-month AggMonthly weekly mean beside it as a long-run comparison; StationRisk percentile among scored stations; HotspotCluster distance from the unit centroid',
       provisional: true,
       tables: ['CaseMaster', 'AggMonthly', 'StationRisk', 'HotspotCluster', 'AnomalyAlert']
     }
@@ -486,12 +520,7 @@ async function stationHome(ctx, unit) {
   ]);
 
   // Weekly buckets: week index 0 = oldest … 7 = this week (ending asOf).
-  const weekIndex = (iso) => {
-    const back = daysBetween(iso, asOf);
-    if (back === null || back < 0) return null;
-    const idx = 7 - Math.floor(back / 7);
-    return idx >= 0 && idx <= 7 ? idx : null;
-  };
+  const weekIndex = (iso) => weekIndexOf(iso, asOf);
   const weeks = Array.from({ length: 8 }, (_, i) => ({ from: dayAdd(from56, i * 7), to: dayAdd(from56, i * 7 + 6) }));
 
   // This week by crime head vs the usual level (weeks 1–7).

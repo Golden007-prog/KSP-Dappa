@@ -18,7 +18,7 @@
 // values are never printed.
 //
 // Two more things the plain CLI gets wrong for this repo:
-//   - client/dist/demo holds ~1,500 static JSON fixtures for the GitHub Pages
+//   - client/dist/demo holds ~5,200 static JSON fixtures for the GitHub Pages
 //     demo; the Catalyst web-client zip sanitizer rejects that many files
 //     (ZIPSANITIZER_FILES_COUNT_EXCEEDED), so the folder is moved aside for
 //     the duration of the deploy and restored afterwards.

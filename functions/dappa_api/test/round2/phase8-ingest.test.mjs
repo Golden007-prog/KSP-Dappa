@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 
 const require = createRequire(import.meta.url);
 const ingest = require('../../lib/ingest.js');
+const { ymOf, ymAdd } = require('../../lib/util.js');
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_CSV = path.join(HERE, '..', '..', '..', '..', 'data', 'ingest_demo', 'CaseMaster_sample.csv');
@@ -261,6 +262,91 @@ export async function run(h) {
     const lj = await ld.json();
     check('prerequisites: load refused with ORDER_REFERENCE_FIRST', ld.status === 409 && lj.error.code === 'ORDER_REFERENCE_FIRST', JSON.stringify(lj));
     server.close();
+  }
+
+  // --- what changed: the fixture anchors where the pipeline does -------------
+  {
+    // pipeline/out's AggMonthly stops at the last complete month; the fixture
+    // must anchor there too, or a batch dated in the bundled demo CSV's month
+    // lands one month before the anchor and the tiles read "N -> N, delta 0".
+    check('ingest: the fixture AggMonthly ends at the last complete month, as pipeline/out does', curYm === ymAdd(ymOf(), -1), `${curYm} vs now ${ymOf()}`);
+    // A batch dated in the anchor month moves the anchor tiles.
+    const inAnchor = [1, 2, 3, 4, 5].map((i) => toArr(mk(i)));
+    const v = await post('/ingest/validate', { table: 'CaseMaster', columns: HEADER, rows: inAnchor });
+    const w = v.json.data.whatChanged;
+    check('ingest: a batch in the anchor month moves the anchor tiles and reports no separate batch month',
+      w.applicable && w.batch.month === curYm && w.kpis.delta.totalFirs === 5 && w.kpis.after.totalFirs === w.kpis.before.totalFirs + 5 && w.kpis.batchMonth === null,
+      JSON.stringify({ batch: w.batch, delta: w.kpis.delta, bm: w.kpis.batchMonth }));
+
+    // A back-dated batch must not read "N -> N, delta 0" beside a moved momPct.
+    const backYm = ymAdd(curYm, -1);
+    const back = [1, 2, 3].map((i) => toArr(mk(200 + i, {
+      CrimeRegisteredDate: `${backYm}-1${i}`,
+      IncidentFromDate: `${backYm}-1${i} 22:10:00`, IncidentToDate: `${backYm}-1${i} 22:40:00`, InfoReceivedPSDate: `${backYm}-1${i} 23:00:00`,
+      CrimeNo: `101011011${backYm.slice(0, 4)}8${String(i).padStart(4, '0')}`, CaseNo: `${backYm.slice(0, 4)}8${String(i).padStart(4, '0')}`
+    })));
+    const v2 = await post('/ingest/validate', { table: 'CaseMaster', columns: HEADER, rows: back });
+    const w2 = v2.json.data.whatChanged;
+    check('ingest: a back-dated batch reports before/after for its OWN month, so the tiles can never read "N -> N" beside a moved momPct',
+      w2.applicable && w2.batch.month === backYm && w2.kpis.delta.totalFirs === 0 && w2.kpis.batchMonth
+      && w2.kpis.batchMonth.ym === backYm && w2.kpis.batchMonth.delta.totalFirs === 3
+      && w2.kpis.batchMonth.after.totalFirs === w2.kpis.batchMonth.before.totalFirs + 3,
+      JSON.stringify({ batch: w2.batch, anchorDelta: w2.kpis.delta, bm: w2.kpis.batchMonth }));
+    check('ingest: the back-dated batch still moves the anchor month-on-month figure, which is why the batch-month block exists',
+      w2.kpis.after.momPct !== w2.kpis.before.momPct, JSON.stringify({ before: w2.kpis.before.momPct, after: w2.kpis.after.momPct }));
+  }
+
+  // --- the coordinate profile accounts for every point ----------------------
+  {
+    const rows = [1, 2, 3].map((i) => toArr(mk(300 + i)));
+    const v = await post('/ingest/validate', { table: 'CaseMaster', columns: HEADER, rows });
+    const g = v.json.data.profile.coordinates;
+    check('ingest: the coordinate profile is complete — every point with coordinates lands in exactly one bucket',
+      g.withCoords === g.inDistrict + g.outOfDistrict + g.outOfState + g.invalid + g.unknownPolygon, JSON.stringify(g));
+    check('ingest: the server profile says the polygon test actually ran', g.polygonChecked === true, JSON.stringify(g));
+  }
+
+  // --- the checker must not reject its own template -------------------------
+  {
+    const tpl = await getRaw('/ingest/template/CaseMaster.csv?example=1');
+    const lines = tpl.text.trim().split(/\r?\n/);
+    const cols = lines[0].split(',');
+    const cells = lines[1].split(',');
+    // BriefFacts is quoted (it has spaces but no comma), so the naive split
+    // still yields one cell per column here.
+    check('ingest: the CaseMaster template example row has one value per official column', cols.length === HEADER.length && cells.length === HEADER.length, `${cols.length}/${cells.length} vs ${HEADER.length}`);
+    const row = Object.fromEntries(cols.map((c, i) => [c, cells[i].replace(/^"|"$/g, '')]));
+    check('ingest: the template example CrimeNo agrees with its own category, station and year',
+      row.CrimeNo === '101013009202690001' && row.PoliceStationID === '3009' && row.CaseCategoryID === '1'
+      && row.CrimeRegisteredDate.slice(0, 4) === '2026' && row.CaseNo === '202690001', JSON.stringify(row));
+    check('ingest: the template example coordinate is a Karnataka point, not latitude twice',
+      Number(row.latitude) > 11.5 && Number(row.latitude) < 18.5 && Number(row.longitude) > 74 && Number(row.longitude) < 78.6, `${row.latitude},${row.longitude}`);
+    const tv = await post('/ingest/validate', { table: 'CaseMaster', columns: cols, rows: [cells.map((c) => c.replace(/^"|"$/g, ''))] });
+    check('ingest: the CaseMaster template example row passes every row-level check', tv.status === 200 && tv.json.data.counts.rejected === 0, JSON.stringify(tv.json.data && { counts: tv.json.data.counts, issues: tv.json.data.rows[0].issues }));
+    for (const table of ['Accused', 'Victim']) {
+      // Varchar(5) PersonID / Varchar(1) VictimPolice used to get the column
+      // name as their example value and overflow their own max.
+      const r2 = await getRaw(`/ingest/template/${table}.csv?example=1`);
+      const l2 = r2.text.trim().split(/\r?\n/);
+      const v2 = await post('/ingest/validate', { table, columns: l2[0].split(','), rows: [l2[1].split(',')] });
+      check(`ingest: the ${table} template example row is not rejected by its own column limits`, v2.status === 200 && v2.json.data.counts.rejected === 0, JSON.stringify(v2.json.data && v2.json.data.rows[0].issues));
+    }
+  }
+
+  // --- the rejection report never carries a PII cell value -------------------
+  {
+    const cols = ['EmployeeID', 'DistrictID', 'UnitID', 'RankID', 'DesignationID', 'KGID', 'FirstName', 'EmployeeDOB', 'GenderID', 'BloodGroupID', 'PhysicallyChallenged', 'AppointmentDate'];
+    // dd-mm-yyyy DOB (normalised, echoed in the detail) on a row rejected for
+    // an unrelated reason: the report must not carry the date of birth out.
+    const rows = [['', '9999', '1011', '1', '1', 'KG1', 'Anitha', '12-03-1965', '2', '1', 'false', '2001-06-01']];
+    const v = await post('/ingest/validate', { table: 'Employee', columns: cols, rows });
+    check('ingest: the Employee row is rejected (missing key) and its DOB was normalised', v.status === 200 && v.json.data.counts.rejected === 1
+      && v.json.data.rows[0].issues.some((i) => i.code === 'DATE_NORMALISED' && i.column === 'EmployeeDOB'), JSON.stringify(v.json.data && v.json.data.rows[0].issues));
+    const csv = await getRaw(`/ingest/batches/${v.json.data.batchId}/rejections.csv`);
+    check('ingest: the rejection CSV redacts the PII detail and never prints the date of birth',
+      csv.status === 200 && !/1965/.test(csv.text) && !/12-03-1965/.test(csv.text) && /redacted/.test(csv.text), csv.text.slice(0, 300));
+    check('ingest: the rejection CSV still names the column and the code so the row stays fixable',
+      /EmployeeDOB/.test(csv.text) && /DATE_NORMALISED/.test(csv.text), csv.text.slice(0, 300));
   }
 
   // --- the demo dataset itself ------------------------------------------------

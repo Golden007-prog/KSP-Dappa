@@ -34,7 +34,7 @@ export default {
   'table.neverUsed': '{n} never-used columns',
   'table.whatChanged': 'shows what changed',
   'table.template': 'Download {table} template CSV',
-  'table.templateHint': 'The header row in the official column order — fill it in Excel and upload it here.',
+  'table.templateHint': 'The header row in the official column order — fill it in Excel and upload it here. Add ?example=1 for one sample row that passes the row-level checks; its reference ids (station, officer, state) still have to be real ones from your own loaded reference tables.',
 
   // ——— file ———
   'file.sub': 'A CSV for {table}. UTF-8 with or without BOM; Excel exports are fine.',
@@ -122,7 +122,7 @@ export default {
   'severity.info': 'note',
 
   // ——— result ———
-  'result.browserOnly': 'Static demo: these checks ran in the browser — foreign keys, duplicates against the store, district polygons and the before/after KPIs need the live Catalyst API.',
+  'result.browserOnly': 'Static demo: these checks ran in the browser. Skipped here and needing the live Catalyst API: foreign keys, duplicates against the store, district polygons, the CrimeNo district-vs-station cross-check, the sub-head-belongs-to-head check, the load-order prerequisites and the before/after KPIs.',
   'result.orderFirst': 'Load {list} before {table} — the foreign keys point at those tables.',
   'result.rows': 'Rows in file',
   'result.accepted': 'Accepted',
@@ -151,7 +151,8 @@ export default {
   'profile.units': 'Stations',
   'profile.unitsValue': '{known} of {total} known · {districts} districts',
   'profile.coords': 'Coordinates',
-  'profile.coordsValue': '{withCoords} with a point · {inside} inside their district · {outside} outside · {state} outside Karnataka · {invalid} invalid',
+  'profile.coordsValue': '{withCoords} with a point · {inside} inside their district · {outside} outside · {unknown} with no district polygon · {state} outside Karnataka · {invalid} invalid',
+  'profile.coordsValueNoPolygon': '{withCoords} with a point · {unknown} inside Karnataka but not checked against a district polygon (the browser has none) · {state} outside Karnataka · {invalid} invalid',
   'profile.encoding': 'Encoding',
   'profile.replacement': '{n} cells with replacement characters',
   'profile.nulls': 'Blank cells by column',
@@ -215,7 +216,9 @@ export default {
   'changed.alertsHint': '{k} would be raised by this batch',
   'changed.delta': 'change',
   'changed.byMonth': 'Rows by month',
+  'changed.firsIn': 'FIRs in {month}',
   'changed.otherMonth': 'These rows are dated {month}; the tiles show the anchor month {asOf}, whose totals move only for rows dated in it.',
+  'changed.otherMonthShown': 'These rows are dated {month}, not the anchor month {asOf} — the count tiles below show what they do to {month}.',
   'changed.tableTitle': 'District × crime head months touched by this batch',
   'changed.colWhere': 'District · crime head',
   'changed.colMonth': 'Month',
@@ -231,6 +234,7 @@ export default {
   'preview.sub': 'First {n} rows through the mapping, with a mark on every cell the checker commented on',
   'preview.caption': 'Mapped preview of the first {n} rows',
   'preview.verdict': 'Verdict',
+  'preview.otherReasons': '+{n} not on a shown column',
 
   // ——— batch history ———
   'history.title': 'Batches',

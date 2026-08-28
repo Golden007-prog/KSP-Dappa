@@ -103,7 +103,7 @@ export default function TriageBoard({
           <section
             key={lane.key}
             aria-label={t('alerts.board.laneAria', { lane: lane.title, n: lane.items.length })}
-            className="flex min-w-0 flex-col rounded-xl border border-grid bg-base/40"
+            className="flex min-w-0 flex-col rounded-xl border border-grid bg-canvas/40"
           >
             <header className="flex items-center gap-2 border-b border-grid/60 px-3 py-2">
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink">{lane.title}</h2>

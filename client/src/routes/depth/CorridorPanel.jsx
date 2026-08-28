@@ -6,7 +6,7 @@ import { useDepthCorridors } from '../../lib/depthApi.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
 import { fmtInt, fmtPct } from '../../lib/format.js';
 import ArcMap from './ArcMap.jsx';
-import { PanelFrame, StatTile } from './DepthBits.jsx';
+import { PanelFrame, SampleLine, StatTile } from './DepthBits.jsx';
 
 export default function CorridorPanel() {
   const t = useT();
@@ -61,13 +61,15 @@ export default function CorridorPanel() {
               <ol className="space-y-1 text-[12px]">
                 {d.travellers.slice(0, 6).map((p) => (
                   <li key={p.personKey} className="flex items-baseline justify-between gap-2">
-                    <Link to={`/offenders/${encodeURIComponent(p.personKey)}`} className="text-primary hover:underline truncate">{p.name}</Link>
+                    {/* py keeps the row link ≥ 24 px tall — at the bare 18 px
+                        line box the stacked links failed WCAG 2.5.8 spacing. */}
+                    <Link to={`/offenders/${encodeURIComponent(p.personKey)}`} className="text-primary hover:underline truncate py-[3px]">{p.name}</Link>
                     <span className="num text-muted whitespace-nowrap">{t('depth.corridor.travellerMeta', { hops: fmtInt(p.hops), d: fmtInt(p.districts) })}</span>
                   </li>
                 ))}
               </ol>
             </div>
-            <p className="text-[11px] text-muted">{t('depth.common.sample', { persons: fmtInt(d.scan?.personsAdmitted || 0), cases: fmtInt(d.scan?.casesResolved || 0) })}</p>
+            <SampleLine scan={d.scan} />
           </div>
         </div>
       )}

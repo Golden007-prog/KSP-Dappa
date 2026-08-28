@@ -174,7 +174,7 @@ export default function AlertCard({
             {t('alerts.spark.legend')}
           </p>
           <MiniCompareBar observed={a.observed} expected={a.expected} zScore={a.zScore} />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {a.districtId && (
               <Link
                 className={`btn ${actionBtn}`}
@@ -198,7 +198,7 @@ export default function AlertCard({
             )}
           </div>
           {(onCopy || drill || (!acked && (onSnooze || onUnsnooze || onDismiss))) && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {onCopy && (
                 <button type="button" className={`btn ${actionBtn}`} onClick={() => onCopy(a)}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

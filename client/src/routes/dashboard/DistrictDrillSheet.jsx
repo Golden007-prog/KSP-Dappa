@@ -27,7 +27,7 @@ const SEV_TONE = { critical: 'red', high: 'red', medium: 'amber', low: 'neutral'
 
 function Stat({ label, children }) {
   return (
-    <div className="rounded-lg border border-grid bg-base/40 px-2.5 py-2">
+    <div className="rounded-lg border border-grid bg-canvas/40 px-2.5 py-2">
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="num mt-0.5 text-sm font-semibold text-ink">{children}</p>
     </div>

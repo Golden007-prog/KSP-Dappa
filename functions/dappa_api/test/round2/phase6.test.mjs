@@ -16,7 +16,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const png = (name) => fs.readFileSync(path.join(here, 'fixtures', name));
 const b64 = (name) => png(name).toString('base64');
 
-const CASE = { caseNo: '202600017', legalBasis: 'investigation-fir' };
+// Rule R6 already binds every search to a case number, and the two-signal rule
+// now reads THAT record for its corroboration (faces.js "Step 2b"), so the
+// suite binds to a real fixture FIR: CaseMaster row 20 is registered in
+// Bengaluru City (0101) with a two-wheeler / gold-mangalsutra / knife
+// narrative. The year moves with the fixture clock, so it is read, not typed.
+let CASE = { caseNo: '202600020', legalBasis: 'investigation-fir' };
+let FIR_CRIME_NO = null;
 
 async function withApp(h, options, fn) {
   const app = h.createApp(Object.assign({ clientFactory: () => h.createStubClient(h.buildFixtureTables()) }, options));
@@ -34,6 +40,20 @@ async function withApp(h, options, fn) {
 
 export async function run(h) {
   const { check, hasKeys } = h;
+
+  const fir = (h.tables.CaseMaster || []).find((c) => Number(c.CaseMasterID) === 20);
+  CASE = { caseNo: fir ? String(fir.CaseNo) : '202600020', legalBasis: 'investigation-fir' };
+  FIR_CRIME_NO = fir ? String(fir.CrimeNo) : null;
+  // A ds that answers equality WHEREs out of the fixture tables, for the pure
+  // resolveCase() checks below (no HTTP, no app).
+  const fixtureCtx = {
+    ds: {
+      query: async (q) => (h.tables[q.table] || [])
+        .filter((r) => (q.where || []).every((w) => String(r[w.col]) === String(w.val)))
+        .slice(0, (q.limit && q.limit.count) || 50)
+        .map((r) => Object.assign({}, r))
+    }
+  };
 
   // --- pure engine -----------------------------------------------------------
   {
@@ -60,6 +80,24 @@ export async function run(h) {
     const big = Buffer.alloc(faces.MAX_PROBE_BYTES + 16, 1).toString('base64');
     check('decodeProbe rejects > 4 MB', faces.decodeProbe(big).code === 'PAYLOAD_TOO_LARGE');
     check('rules and legal bases are data', faces.RULES.length === 9 && faces.RULES.every((r) => r.id && r.title && r.statement && r.enforcedBy) && faces.LEGAL_BASES.length === 5);
+    const r3 = faces.RULES.find((r) => r.id === 'R3');
+    check('R3 says what the API really does with limit > 25 — refused, not silently clamped', /BAD_REQUEST for limit > 25/.test(r3.enforcedBy) && !/clamped to 25/.test(r3.enforcedBy), r3.enforcedBy);
+    check('MO tags match on whole tokens: two-wheeler corroborates "two-wheeler without plate", gold-chain does not corroborate a gold mangalsutra',
+      faces.tagOverlap('two-wheeler', 'vehicle:two-wheeler-without-plate') === true
+      && faces.tagOverlap('otp-fraud', 'approach:otp') === true
+      && faces.tagOverlap('gold-chain', 'item:gold-mangalsutra') === false
+      && faces.normTag('Two Wheeler') === 'two-wheeler');
+    const rc = await faces.resolveCase(fixtureCtx, CASE.caseNo, null);
+    check('resolveCase reads the FIR behind the case number — district and MO words come from the record, not from the officer\'s filter',
+      rc.resolved === true && rc.crimeNo === FIR_CRIME_NO && rc.districtId === '0101'
+      && rc.moTags.includes('two-wheeler-without-plate') && rc.moTags.includes('gold-mangalsutra'), JSON.stringify(rc));
+    const rcMissing = await faces.resolveCase(fixtureCtx, '999900001', null);
+    check('an unknown case number resolves to nothing rather than to a guess', rcMissing.resolved === false && rcMissing.reason === 'not-found' && rcMissing.matches === 0);
+    const twoRows = [{ CaseMasterID: 1, CrimeNo: 'a', CaseNo: 'x', PoliceStationID: '1011' }, { CaseMasterID: 2, CrimeNo: 'b', CaseNo: 'x', PoliceStationID: '1031' }];
+    const rcAmbiguous = await faces.resolveCase({ ds: { query: async () => twoRows } }, '202600020', null);
+    check('a case number matching several registrations is reported ambiguous, never averaged into one district', rcAmbiguous.resolved === false && rcAmbiguous.reason === 'ambiguous' && rcAmbiguous.matches === 2, JSON.stringify(rcAmbiguous));
+    const rcDown = await faces.resolveCase({ ds: { query: async () => { throw new Error('ZCQL down'); } } }, '202600020', null);
+    check('an unreachable case register degrades to "could not check", not to a false negative', rcDown.resolved === false && rcDown.reason === 'lookup-failed');
     const cf = faces.cleanFilters({ districtId: '101', moTag: 'Two-Wheeler', riskBand: 'high', yearFrom: 2019, yearTo: 2026 });
     check('filters normalise (district padded, tag lower-cased)', cf.any && cf.filters.districtId === '0101' && cf.filters.moTag === 'two-wheeler' && cf.errors.length === 0, JSON.stringify(cf));
     check('filters reject a bad band', faces.cleanFilters({ riskBand: 'extreme' }).errors.length === 1);
@@ -67,6 +105,16 @@ export async function run(h) {
     check('model card carries measured calibration', card.calibration && card.calibration.faces >= 40 && card.calibration.paths.length === 3
       && typeof card.calibration.paths[0].atFloor.falseAccept === 'number' && card.calibration.rankTest['pixel/pixel'].top1 > 0.5, JSON.stringify(card.calibration && card.calibration.paths && card.calibration.paths[0] && card.calibration.paths[0].atFloor));
     check('model card says a match is a lead, not identity', card.statements.some((s) => /investigative lead, not evidence of identity/.test(s)) && card.statements.some((s) => /demographic/.test(s)));
+    // The 28 Aug live probe is a measured model output and belongs on the card
+    // (docs/benchmarks/face_zia_probe.json). ModelCardView renders this block.
+    const zo = card.ziaObserved;
+    check('model card carries what Zia actually returned: the failed detection and both comparison pairs with the floor between them',
+      zo && zo.measuredAt === '2026-08-28' && zo.calls === 3
+      && zo.analyseFace.ok === false && zo.analyseFace.status === 400
+      && Array.isArray(zo.compareFace) && zo.compareFace.length === 2
+      && zo.compareFace[0].confidence === 0.8407 && zo.compareFace[0].confidence >= faces.floorFor()
+      && zo.compareFace[1].confidence === 0.6171 && zo.compareFace[1].confidence < faces.floorFor()
+      && zo.compareFace[1].matched === 'true' && /1 of 5/.test(zo.availability), JSON.stringify(zo));
     check('SVG stand-in renders from a seed', /^<svg /.test(spec.renderSvg(spec.specFromSeed('v1:2026:P001'), 96)));
   }
 
@@ -83,15 +131,63 @@ export async function run(h) {
       && d.candidates.every((c) => typeof c.confidence === 'number' && c.engine === 'local-descriptor' && Array.isArray(c.reasonCodes) && hasKeys(c.corroboration, ['districtHit', 'moHit', 'twoSignals']) && typeof c.matched === 'boolean'));
     check('the true person (P001 probe) ranks first above the floor', d.candidates[0].personKey === 'P001' && d.candidates[0].confidence >= 0.7 && d.candidates[0].band === 'lead' && d.decision === 'candidates', JSON.stringify(d.candidates.map((c) => [c.personKey, c.confidence])));
     check('pixel/pixel path used (gallery QualityJson.pixel)', d.candidates[0].reasonCodes.includes('gallery-pixel') && d.probe.descriptor === 'pixel-descriptor');
-    check('two-signal rule: face + district', d.candidates[0].corroboration.districtHit === true && d.candidates[0].corroboration.twoSignals === true && d.candidates[0].reasonCodes.includes('two-signals'));
+    // The second signal must come from evidence the shortlist did NOT consume.
+    // Here the officer filtered on district 0101 and the FIR is registered in
+    // 0101, so the district hit is true but flagged as their own filter and
+    // does not count; the MO words shared with the FIR narrative are what earn
+    // the "independent" verdict.
+    const corr0 = d.candidates[0].corroboration;
+    check('two-signal rule is read off the FIR, and a hit that only restates the officer\'s filter is flagged, not counted',
+      corr0.basis === 'case-record'
+      && corr0.districtHit === true && corr0.fromFilter.district === true
+      && corr0.moHit === true && corr0.fromFilter.mo === false && corr0.moMatches.includes('two-wheeler')
+      && corr0.independent === true && corr0.twoSignals === true
+      && d.candidates[0].reasonCodes.includes('district-hit-from-filter') && d.candidates[0].reasonCodes.includes('mo-hit') && d.candidates[0].reasonCodes.includes('two-signals'),
+      JSON.stringify(corr0));
+    check('the corroboration varies per candidate instead of being constant across the shortlist',
+      d.candidates[1].corroboration.moHit === false && d.candidates[1].corroboration.independent === false
+      && d.candidates[0].corroboration.moHit === true,
+      JSON.stringify(d.candidates.map((c) => [c.personKey, c.corroboration.districtHit, c.corroboration.moHit])));
+    check('the response names the record the second signal was checked against',
+      d.case && d.case.resolved === true && d.case.crimeNo === FIR_CRIME_NO && d.case.districtName === 'Bengaluru City' && d.case.moTags.length >= 2, JSON.stringify(d.case));
     check('the wrong person is below the floor', d.candidates[1].personKey === 'P002' && d.candidates[1].band === 'below' && d.candidates[1].matched === false);
     check('meta names the real engine and the synthetic gallery', r.json.meta.engine === 'local-descriptor' && r.json.meta.synthetic === true && r.json.meta.accountability.probeStored === false && r.json.meta.floor === 0.7);
     check('no probe image in the response', !JSON.stringify(r.json).includes(probe.slice(0, 40)));
     check('no caste/religion anywhere', !/caste|religion/i.test(JSON.stringify(r.json)));
 
+    // Mirror image of the check above: with only the MO filter set, the MO hit
+    // is the officer's own filter and the FIR's district is what corroborates.
+    const moOnly = await h.post('/identify', Object.assign({ image: probe, filters: { moTag: 'two-wheeler' } }, CASE));
+    const corrMo = moOnly.json.data.candidates[0].corroboration;
+    check('which signal counts follows what the filter consumed, not which chip is prettier',
+      corrMo.moHit === true && corrMo.fromFilter.mo === true
+      && corrMo.districtHit === true && corrMo.fromFilter.district === false
+      && corrMo.independent === true && corrMo.twoSignals === true, JSON.stringify(corrMo));
+
+    // The UI never sends probeSeed (D-phase6-16): a sample capture is scored
+    // from its pixels like any upload. Same bytes, both paths, one check.
+    const sample = await h.post('/identify', Object.assign({ image: probe, samplePerson: 'P001', filters: { districtId: '0101' } }, CASE));
     const seedRun = await h.post('/identify', Object.assign({ image: probe, probeSeed: 'v1:2026:P001', filters: { districtId: '0101', moTag: 'two-wheeler' } }, CASE));
-    check('a probe drawn from a gallery seed scores 1.0 on the spec path', seedRun.status === 200 && seedRun.json.data.candidates[0].confidence === 1 && seedRun.json.data.candidates[0].reasonCodes.includes('spec-descriptor') && seedRun.json.data.candidates[0].reasonCodes.includes('mo-hit'), JSON.stringify(seedRun.json.data && seedRun.json.data.candidates));
+    check('a sample capture is measured from its pixels — it does NOT score 1.0 by construction',
+      sample.status === 200 && sample.json.data.probe.source === 'sample-capture' && sample.json.data.probe.samplePerson === 'P001'
+      && sample.json.data.probe.descriptor === 'pixel-descriptor' && sample.json.data.probe.exactParameterMatch === false
+      && sample.json.data.candidates[0].personKey === 'P001' && sample.json.data.candidates[0].confidence < 1 && sample.json.data.candidates[0].confidence >= 0.7,
+      JSON.stringify(sample.json.data && [sample.json.data.probe, sample.json.data.candidates.map((c) => [c.personKey, c.confidence])]));
+    check('the same bytes score exactly 1.0 only on the debug probeSeed path, and that answer is labelled an exact parameter match rather than a similarity',
+      seedRun.status === 200 && seedRun.json.data.candidates[0].confidence === 1
+      && seedRun.json.data.probe.exactParameterMatch === true
+      && seedRun.json.data.candidates[0].reasonCodes.includes('spec-descriptor')
+      && seedRun.json.data.candidates[0].reasonCodes.includes('exact-parameter-match')
+      && seedRun.json.data.candidates[0].reasonCodes.includes('mo-hit-from-filter'),
+      JSON.stringify(seedRun.json.data && seedRun.json.data.candidates));
     check('MO filter narrows and the description says so', seedRun.json.data.shortlist.description === '1 candidate from Bengaluru City, two-wheeler cases', seedRun.json.data.shortlist.description);
+
+    const noFir = await h.post('/identify', { image: probe, filters: { districtId: '0101' }, caseNo: '999900001', legalBasis: 'investigation-fir' });
+    check('a case number that is not in the register claims no second signal at all — the chips say "not checked", never ✕',
+      noFir.status === 200 && noFir.json.data.case.resolved === false && noFir.json.data.case.reason === 'not-found'
+      && noFir.json.data.candidates.length > 0
+      && noFir.json.data.candidates.every((c) => c.corroboration.basis === 'unresolved' && c.corroboration.districtHit === null && c.corroboration.moHit === null && c.corroboration.independent === false && c.corroboration.twoSignals === false && c.reasonCodes.includes('corroboration-not-found')),
+      JSON.stringify(noFir.json.data && noFir.json.data.candidates.map((c) => c.corroboration)));
 
     const wrong = await h.post('/identify', Object.assign({ image: b64('probe_P004_160.png'), filters: { districtId: '0101' } }, CASE));
     check('a different person\'s probe is "no reliable match", never a weak best guess', wrong.status === 200 && wrong.json.data.decision === 'no-reliable-match' && wrong.json.data.noReliableMatch && typeof wrong.json.data.noReliableMatch.topConfidence === 'number' && wrong.json.data.candidates.every((c) => c.matched === false), JSON.stringify(wrong.json.data && wrong.json.data.candidates.map((c) => [c.personKey, c.confidence, c.band])));
@@ -124,7 +220,7 @@ export async function run(h) {
     const sweep = await h.post('/identify', Object.assign({ image: probe, filters: {} }, CASE));
     check('no filter -> 400 FILTER_REQUIRED (R3, never a gallery sweep)', sweep.status === 400 && sweep.json.error.code === 'FILTER_REQUIRED');
     const over = await h.post('/identify', Object.assign({ image: probe, filters: { districtId: '0101' }, limit: 26 }, CASE));
-    check('limit > 25 -> 400', over.status === 400);
+    check('limit > 25 -> 400 BAD_REQUEST (refused, exactly as R3 now says — not silently clamped)', over.status === 400 && over.json.error.code === 'BAD_REQUEST' && /between 1 and 25/.test(over.json.error.message), JSON.stringify(over.json.error));
     const badFilter = await h.post('/identify', Object.assign({ image: probe, filters: { riskBand: 'extreme' } }, CASE));
     check('bad filter value -> 400', badFilter.status === 400 && /riskBand/.test(badFilter.json.error.message));
 
@@ -152,6 +248,17 @@ export async function run(h) {
     check('audit filters to confirmed searches', confirmed.json.data.items.length >= 2 && confirmed.json.data.items.every((it) => it.decisions.some((x) => x.decision === 'confirm')));
     const byPerson = await h.get('/identify/audit?personKey=P001');
     check('audit filters by person', byPerson.json.data.items.length >= 2 && byPerson.json.data.items.every((it) => it.topPersonKey === 'P001' || (it.shortlistKeys || []).includes('P001') || it.decisions.some((x) => x.personKey === 'P001')));
+    // Offender 360 shows "searches that shortlisted this person": that has to
+    // survive the container, so the key list lives in the ActionLog Payload
+    // and is read back by parseAuditRow — not only the top-ranked person.
+    const shortlisted = await h.get('/identify/audit?personKey=P002');
+    check('the audit finds a search that SHORTLISTED a person and not only the one it ranked first (shortlistKeys round-trip through the ActionLog payload)',
+      shortlisted.json.data.items.some((it) => it.searchId === 'fs-demo01-a3f2c9d1' && ['datastore', 'fixture'].includes(it.source) && (it.shortlistKeys || []).includes('P002') && it.topPersonKey !== 'P002'),
+      JSON.stringify(shortlisted.json.data.items.map((it) => [it.searchId, it.source, it.topPersonKey, it.shortlistKeys])));
+    const sampleAudited = await h.get('/identify/audit?limit=100');
+    check('the audit records that a probe was a built-in sample capture, not a case photo',
+      sampleAudited.json.data.items.some((it) => it.probeSource === 'sample-capture' && it.samplePerson === 'P001'),
+      JSON.stringify(sampleAudited.json.data.items.slice(0, 3).map((it) => [it.searchId, it.probeSource, it.samplePerson])));
 
     // --- gallery, thumbs, rules, model card, cost ----------------------------
     const gal = await h.get('/identify/gallery?perPage=4');
@@ -210,8 +317,17 @@ export async function run(h) {
         check('flag on: top candidate compared through the Identity Scanner, matched kept as the string Zia sent', d.candidates[0].engine === 'zia-identity-scanner' && d.candidates[0].confidence === 0.9464 && d.candidates[0].zia.matched === 'true' && d.candidates[0].reasonCodes.includes('zia-compare'), JSON.stringify(d.candidates[0]));
         check('flag on: Zia compares capped at FACE_ZIA_MAX_COMPARES=1, the rest local', calls.compare === 1 && d.candidates[1].engine === 'local-descriptor' && r.json.meta.engines.zia === 1 && r.json.meta.engines.local === 1);
         check('flag on: gallery image of record fetched from the bucket by object key', galleryHits.length === 1 && galleryHits[0] === 'face-gallery/v1/P001.png');
-        check('flag on: meta.engine names the Identity Scanner', r.json.meta.engine === 'zia-identity-scanner' && r.json.meta.ziaMaxCompares === 1);
+        // One Zia comparison plus one local one is a MIXED answer, and saying
+        // so is the point: a single successful Zia call must never label a
+        // ranked list the local engine mostly produced (28 Aug live measurement
+        // in docs/benchmarks/face_zia_probe.json — 1 of 5 compares succeeded).
+        check('flag on: meta.engine says mixed when Zia scored some candidates and the local engine the rest',
+          r.json.meta.engine === 'mixed' && r.json.meta.engines.zia === 1 && r.json.meta.engines.local === 1 && r.json.meta.ziaMaxCompares === 1,
+          JSON.stringify({ engine: r.json.meta.engine, engines: r.json.meta.engines }));
         check('flag on: search persisted as an ActionLog row through the writer (face-search, sha only)', inserted.length === 1 && inserted[0].ActionType === 'face-search' && inserted[0].AlertKey === `face:${d.searchId}` && /probeSha256/.test(inserted[0].Payload) && !inserted[0].Payload.includes(probe.slice(0, 30)), JSON.stringify(inserted[0] || {}).slice(0, 200));
+        check('flag on: the persisted row carries the whole shortlist, so Offender 360 still finds the search after a restart',
+          (JSON.parse(inserted[0].Payload).shortlistKeys || []).join(',') === d.candidates.map((c) => c.personKey).join(','),
+          inserted[0].Payload.slice(0, 300));
         const again = await a.post('/identify', Object.assign({ image: probe, filters: { districtId: '0101' } }, CASE));
         check('flag on: a repeat search re-uses the cached comparison (no second compareFace)', calls.compare === 1 && again.json.data.candidates[0].zia.cached === true && again.json.meta.engines.ziaCached === 1, JSON.stringify(again.json.meta.engines));
         const cost = await a.get('/identify/cost?limit=10');

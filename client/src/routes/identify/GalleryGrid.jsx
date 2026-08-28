@@ -37,14 +37,14 @@ export default function GalleryGrid() {
           <p className="text-[11px] text-muted mb-3">{q.data.disclaimer}</p>
           <ul className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">
             {items.map((it) => (
-              <li key={it.personKey} className="rounded-xl border border-grid bg-base/50 p-2">
+              <li key={it.personKey} className="rounded-xl border border-grid bg-canvas/50 p-2">
                 <img
                   src={`${API_BASE}${it.thumbUrl}?size=160`}
                   alt={t('identify.cand.thumbAlt', { name: it.name || it.personKey })}
                   width="160"
                   height="160"
                   loading="lazy"
-                  className={`w-full aspect-square rounded-lg border border-grid bg-base object-cover ${it.active ? '' : 'opacity-50 grayscale'}`}
+                  className={`w-full aspect-square rounded-lg border border-grid bg-canvas object-cover ${it.active ? '' : 'opacity-50 grayscale'}`}
                 />
                 <Link to={`/offenders/${encodeURIComponent(it.personKey)}`} className="mt-1.5 block text-xs font-medium text-ink hover:text-amber truncate min-h-[24px]">{it.name || it.personKey}</Link>
                 <p className="num text-[10px] text-muted">{it.personKey}{typeof it.riskScore === 'number' ? ` · ${t('identify.cand.risk', { n: Math.round(it.riskScore) })}` : ''}</p>

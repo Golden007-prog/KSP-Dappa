@@ -87,7 +87,7 @@ export default function PinnedViews() {
         ) : (
           <ul className="space-y-1.5">
             {pins.map((p) => (
-              <li key={p.name} className="flex items-center gap-2 rounded-lg border border-grid bg-base/40 px-3 py-1.5">
+              <li key={p.name} className="flex items-center gap-2 rounded-lg border border-grid bg-canvas/40 px-3 py-1.5">
                 <button
                   type="button"
                   className="flex-1 min-w-0 min-h-[44px] text-left text-sm text-ink hover:text-primary transition-colors"

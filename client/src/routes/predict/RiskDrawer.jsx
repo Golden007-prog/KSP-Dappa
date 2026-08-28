@@ -163,7 +163,7 @@ export default function RiskDrawer({ open, row, rows, onClose, onOpenMap }) {
         </div>
 
         {ctx.distRank !== null && ctx.distCount > 1 && (
-          <div className="rounded-lg border border-grid bg-base/40 px-3 py-2.5">
+          <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2.5">
             <p className="text-[11px] uppercase tracking-wide text-muted">{t('trends.predict.drawer.districtContext')}</p>
             <p className="text-xs text-ink mt-1">
               {t('trends.predict.drawer.districtRank', {

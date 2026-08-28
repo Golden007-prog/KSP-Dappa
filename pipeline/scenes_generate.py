@@ -8,6 +8,9 @@ silhouette on a road, a knife outline on a table — and writes:
   functions/dappa_api/assets/scenes_manifest.json            (same manifest,
       bundled with the function because the client tree is not deployed
       with it — lib/objects.js reads this copy for the fixture path)
+  functions/dappa_api/assets/scenes/scene_01.png … 03.png    (the same bytes,
+      bundled for the same reason — lib/objects.js reads them when a request
+      names a sceneId with no image, so the Zia leg has something to send)
 
 No photograph, no person, no real evidence: every pixel is generated here.
 Boxes are [x1, y1, x2, y2] in image pixels, the same convention Zia's
@@ -27,6 +30,7 @@ from PIL import Image, ImageDraw, ImageFilter
 ROOT = Path(__file__).resolve().parents[1]
 OUT_CLIENT = ROOT / "client" / "public" / "samples" / "scenes"
 OUT_FN = ROOT / "functions" / "dappa_api" / "assets"
+OUT_FN_SCENES = OUT_FN / "scenes"
 W, H = 960, 640
 SEED = 20260828
 
@@ -143,6 +147,7 @@ def main() -> None:
     rng = random.Random(SEED)
     OUT_CLIENT.mkdir(parents=True, exist_ok=True)
     OUT_FN.mkdir(parents=True, exist_ok=True)
+    OUT_FN_SCENES.mkdir(parents=True, exist_ok=True)
     scenes = []
     for i, (title, fn) in enumerate([
         ("Recovered handbag on a station floor", scene_bag),
@@ -152,6 +157,7 @@ def main() -> None:
         img, objects = fn(rng)
         file = f"scene_{i:02d}.png"
         img.save(OUT_CLIENT / file, optimize=True)
+        img.save(OUT_FN_SCENES / file, optimize=True)
         scenes.append({
             "sceneId": f"scene_{i:02d}",
             "file": file,

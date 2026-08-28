@@ -159,7 +159,11 @@ export default function DataTable({
           </div>
         </div>
       )}
-      <div className="overflow-x-auto">
+      {/* Wide tables scroll sideways on a phone. A table whose only focusable
+          content is a sort button or a row link is reachable anyway, but one
+          made of plain cells is not — so the scroller always takes tabindex=0
+          (WCAG 2.1.1) and a name for the landmark that creates. */}
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={t('a11y.scroll.rows')}>
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-grid">

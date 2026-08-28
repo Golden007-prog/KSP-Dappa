@@ -185,7 +185,12 @@ export default function BacktestPanel({ defaultDistrictId, defaultCrimeHeadId })
           : t('trends.predict.bt.empty')}
       />
       {bt && (
-        <div className="mt-3 overflow-x-auto">
+        <div
+          className="mt-3 overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label={t('a11y.scroll.table', { name: t('trends.predict.bt.title') })}
+        >
           <table className="w-full text-xs border-collapse min-w-[420px]">
             <thead>
               <tr className="border-b border-grid text-[11px] uppercase tracking-wide text-muted">

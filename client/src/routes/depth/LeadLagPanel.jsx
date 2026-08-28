@@ -15,6 +15,12 @@ export default function LeadLagPanel({ districtId }) {
   const d = q.data;
   const heads = useMemo(() => (d?.heads || []).map((h) => ({ key: String(h.headId), label: tName('crimeHeads', h.headId, h.name) })), [d, tName]);
   const pairIndex = useMemo(() => new Map((d?.pairs || []).map((p) => [`${p.leader}>${p.follower}`, p])), [d]);
+  // The significance screen itself — how many ordered pairs clear the 2/√n
+  // noise line. The matrix draws every r; this says which of them survive it.
+  const sig = useMemo(() => {
+    const pairs = (d?.pairs || []).filter((p) => p.bestR !== null);
+    return { tested: pairs.length, clear: pairs.filter((p) => p.significant).length };
+  }, [d]);
   return (
     <PanelFrame
       title={t('depth.ll.title')}
@@ -46,6 +52,7 @@ export default function LeadLagPanel({ districtId }) {
           />
           <div>
             <h3 className="text-xs font-semibold text-ink mb-1">{t('depth.ll.leadsTitle')}</h3>
+            <p className="text-[11px] text-muted mb-1">{t('depth.ll.screenLine', { k: fmtInt(sig.clear), total: fmtInt(sig.tested), r: fmtNum(d.threshold, 2), n: fmtInt(d.n) })}</p>
             {d.leads.length === 0 ? (
               <p className="text-[12px] text-muted">{t('depth.ll.noLeads', { r: fmtNum(d.threshold, 2) })}</p>
             ) : (
@@ -54,6 +61,9 @@ export default function LeadLagPanel({ districtId }) {
                   <li key={`${p.leader}-${p.follower}`} className="flex flex-wrap items-center gap-2 text-[12px]">
                     <StatusPill status="watch" label={t('depth.ll.leadWord')} />
                     <span className="text-ink">{t('depth.ll.leadLine', { a: tName('crimeHeads', p.leader, p.leaderName), b: tName('crimeHeads', p.follower, p.followerName), k: p.bestLag, r: fmtNum(p.bestR, 2) })}</span>
+                    {/* The matrix shows only the best-lag r; the same-month r says
+                        whether the pair simply moves together or genuinely leads. */}
+                    <span className="text-[11px] text-muted num">{t(p.r0 === null ? 'depth.ll.sameMonthNone' : Math.abs(p.r0) >= Math.abs(p.bestR) ? 'depth.ll.sameMonthStronger' : 'depth.ll.sameMonth', { r0: fmtNum(p.r0, 2) })}</span>
                   </li>
                 ))}
               </ul>

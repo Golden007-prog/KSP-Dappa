@@ -141,7 +141,7 @@ export default function NotificationBell({ variant = 'icon', className = '' }) {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="num text-xs text-muted">{t('actions.notif.unread', { n: count })}</span>
-            <button type="button" className="btn !text-xs min-h-[36px]" disabled={!count} onClick={n.markAllRead}>{t('actions.notif.markAll')}</button>
+            <button type="button" className="btn !text-xs min-h-[44px] sm:min-h-[36px]" disabled={!count} onClick={n.markAllRead}>{t('actions.notif.markAll')}</button>
           </div>
           <p className="text-[11px] italic leading-snug text-muted">{t('actions.framing')}</p>
           {n.error && <p className="text-xs text-signal" role="alert">{t('actions.notif.error')}</p>}
@@ -164,7 +164,7 @@ export default function NotificationBell({ variant = 'icon', className = '' }) {
                     >
                       <StatusPill status={status} label={kindLabel(e)} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-ink">{e.alertKey ? `${e.alertKey} · ` : ''}{e.title}</span>
+                        <span className="block truncate text-ink">{[e.alertKey, e.title].filter(Boolean).join(' · ')}</span>
                         {e.subtitle && <span className="block truncate text-muted">{e.subtitle}</span>}
                         <span className="num block text-[10px] text-muted">
                           {stamp(e.ts, lang)}{e.actor ? ` · ${e.actor}` : ''}{e.forMe ? ` · ${t('actions.notif.forMe')}` : ''}

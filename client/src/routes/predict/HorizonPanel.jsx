@@ -210,17 +210,17 @@ export default function HorizonPanel({ defaultDistrictId, defaultCrimeHeadId }) 
         {model && !forecast.isLoading && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-              <div className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+              <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
                 <p className="text-[10px] text-muted">{t('trends.predict.hz.outlook', { n: model.steps.length })}</p>
                 <p className="num text-base font-semibold text-ink">{fmtInt(Math.round(model.totalPredicted))}</p>
               </div>
-              <div className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+              <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
                 <p className="text-[10px] text-muted">{t('trends.predict.hz.planningRange')}</p>
                 <p className="num text-base font-semibold text-ink">
                   {fmtInt(Math.round(model.totalLo))} – {fmtInt(Math.round(model.totalHi))}
                 </p>
               </div>
-              <div className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+              <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
                 <p className="text-[10px] text-muted">{t('trends.predict.hz.spread')}</p>
                 <p className="num text-base font-semibold text-ink">
                   ±{fmtInt(Math.round((model.totalHi - model.totalLo) / 2))}
@@ -236,7 +236,12 @@ export default function HorizonPanel({ defaultDistrictId, defaultCrimeHeadId }) 
             {model.steps[0]?.lo !== null && model.steps[0]?.hi !== null && (
               <PlainSentence term="interval" vars={{ mid: fmtInt(Math.round(model.steps[0].predicted)), lo: fmtInt(Math.round(model.steps[0].lo)), hi: fmtInt(Math.round(model.steps[0].hi)) }} className="mt-3 text-muted" />
             )}
-            <div className="mt-3 overflow-x-auto">
+            <div
+              className="mt-3 overflow-x-auto"
+              tabIndex={0}
+              role="region"
+              aria-label={t('a11y.scroll.table', { name: t('trends.predict.hz.title') })}
+            >
               <table className="w-full min-w-[380px] text-xs">
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-muted">

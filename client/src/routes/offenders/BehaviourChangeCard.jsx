@@ -135,15 +135,15 @@ export default function BehaviourChangeCard({ timeline = [] }) {
         : <Badge tone="teal">{t('offenders.change.steadyBadge')}</Badge>}
     >
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('offenders.change.gravityHint')}>
+        <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('offenders.change.gravityHint')}>
           <p className="text-[10px] uppercase tracking-wide text-muted">{t('offenders.change.gravityNow')}</p>
           <p className="text-sm text-ink num">{fmtNum(analysis.gravityLate, 1)}</p>
         </div>
-        <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('offenders.change.tempoHint')}>
+        <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('offenders.change.tempoHint')}>
           <p className="text-[10px] uppercase tracking-wide text-muted">{t('offenders.change.tempoNow')}</p>
           <p className="text-sm text-ink num">{fmtNum(analysis.recentRate, 1)}</p>
         </div>
-        <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('offenders.change.gapHint')}>
+        <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('offenders.change.gapHint')}>
           <p className="text-[10px] uppercase tracking-wide text-muted">{t('offenders.change.longestGap')}</p>
           <p className="text-sm text-ink num">{fmtInt(analysis.longestGapDays)}</p>
         </div>
@@ -161,7 +161,7 @@ export default function BehaviourChangeCard({ timeline = [] }) {
           analysis.flags.map((f) => (
             <div
               key={f.id}
-              className={`bg-base/60 border border-grid border-l-2 ${TONE_BORDER[f.tone] || TONE_BORDER.slate} rounded-lg px-3 py-2`}
+              className={`bg-canvas/60 border border-grid border-l-2 ${TONE_BORDER[f.tone] || TONE_BORDER.slate} rounded-lg px-3 py-2`}
             >
               <div className="flex items-start gap-2">
                 <span
@@ -178,7 +178,7 @@ export default function BehaviourChangeCard({ timeline = [] }) {
             </div>
           ))
         ) : (
-          <div className="bg-base/60 border border-grid border-l-2 border-l-teal rounded-lg px-3 py-2">
+          <div className="bg-canvas/60 border border-grid border-l-2 border-l-teal rounded-lg px-3 py-2">
             <p className="text-xs font-medium text-ink">{t('offenders.change.noFlags')}</p>
             <p className="text-[11px] text-muted mt-0.5 leading-4">{t('offenders.change.noFlagsMsg')}</p>
           </div>

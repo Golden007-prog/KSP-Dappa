@@ -29,7 +29,8 @@ export default function FilterForm({ filters, onFilters, purpose, onPurpose, leg
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <span className={label}>{t('identify.purpose.caseNo')}</span>
-            <input className={field} value={purpose.caseNo} onChange={(e) => setP('caseNo', e.target.value)} placeholder={t('identify.purpose.caseNoPh')} inputMode="text" autoComplete="off" required aria-required="true" />
+            <input className={field} value={purpose.caseNo} onChange={(e) => setP('caseNo', e.target.value)} placeholder={t('identify.purpose.caseNoPh')} inputMode="text" autoComplete="off" required aria-required="true" aria-describedby="identify-caseno-hint" />
+            <span id="identify-caseno-hint" className="mt-1 block text-[11px] text-muted">{t('identify.purpose.caseNoHint')}</span>
           </label>
           <label className="block">
             <span className={label}>{t('identify.purpose.legalBasis')}</span>

@@ -131,15 +131,15 @@ export default function HotspotPanel({
       />
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-lg border border-grid bg-base/40 p-2">
+          <div className="rounded-lg border border-grid bg-canvas/40 p-2">
             <p className="text-[9px] uppercase tracking-wider text-muted truncate">{t('geointel.hotspot.cases')}</p>
             <p className="num text-base font-semibold text-ink">{fmtInt(hotspot.caseCount)}</p>
           </div>
-          <div className="rounded-lg border border-grid bg-base/40 p-2">
+          <div className="rounded-lg border border-grid bg-canvas/40 p-2">
             <p className="text-[9px] uppercase tracking-wider text-muted truncate">{t('geointel.hotspot.intensity')}</p>
             <p className="num text-base font-semibold text-amber">{fmtNum(hotspot.intensity, 2)}</p>
           </div>
-          <div className="rounded-lg border border-grid bg-base/40 p-2">
+          <div className="rounded-lg border border-grid bg-canvas/40 p-2">
             <p className="text-[9px] uppercase tracking-wider text-muted truncate">{t('geointel.hotspot.radius')}</p>
             <p className="num text-base font-semibold text-ink">{fmtNum(radiusKm, 1)}<span className="text-[9px] text-muted font-normal"> {t('geointel.hotspot.km')}</span></p>
           </div>
@@ -167,7 +167,7 @@ export default function HotspotPanel({
             <button
               type="button"
               onClick={() => onStationSelect(nearest.station)}
-              className="w-full text-left rounded-lg border border-grid bg-base/40 hover:border-amber/50 px-2.5 py-2 transition-colors"
+              className="w-full text-left rounded-lg border border-grid bg-canvas/40 hover:border-amber/50 px-2.5 py-2 transition-colors"
               title={t('geointel.hotspot.openStationDrill')}
             >
               <div className="flex items-center justify-between gap-2">
@@ -184,7 +184,7 @@ export default function HotspotPanel({
         )}
 
         {within && (
-          <div className="rounded-lg border border-grid bg-base/40 p-2.5">
+          <div className="rounded-lg border border-grid bg-canvas/40 p-2.5">
             <p className="text-[10px] uppercase tracking-wider text-muted">{t('geointel.hotspot.insideRadius')}</p>
             <p className="text-xs text-ink mt-0.5">
               <span className="num font-semibold">{fmtInt(within.count)}</span> {t('geointel.hotspot.insideSuffix')}

@@ -81,3 +81,30 @@ export function demoKey(method, path, params = {}, body = null) {
 export function demoFallbackKey(method, path) {
   return `${slugOf(method, path)}._fallback`;
 }
+
+/**
+ * POST paths whose snapshot key is built from a SUBSET of the request body.
+ * Only for bodies the generator cannot reproduce byte-for-byte or whose extra
+ * fields provably do not change the answer:
+ *   /identify  the probe image is a canvas PNG encoded by the browser, so its
+ *              bytes differ per engine; a sample capture is keyed on the
+ *              stand-in it was drawn from (samplePerson) plus the filters, and
+ *              caseNo / legalBasis are recorded, not matched on. The replay is
+ *              the live function's answer for that stand-in, so the figure can
+ *              differ by a point from what this browser's canvas would score.
+ */
+export const DEMO_POST_KEY_FIELDS = {
+  '/identify': ['samplePerson', 'filters', 'limit'],
+};
+
+/** The body a POST snapshot is keyed on — identity for everything unlisted. */
+export function demoPostKeyBody(path, body) {
+  const fields = DEMO_POST_KEY_FIELDS[path];
+  if (!fields) return body || {};
+  const out = {};
+  for (const k of fields) {
+    const v = body ? body[k] : undefined;
+    if (v !== undefined && v !== null && v !== '') out[k] = v;
+  }
+  return out;
+}

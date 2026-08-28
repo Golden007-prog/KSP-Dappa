@@ -13,6 +13,9 @@ import { rejectionsUrl } from './ingestApi.js';
 
 const TONE_BADGE = { signal: 'red', amber: 'amber', muted: 'neutral' };
 
+/** Browser-path rejection report. A `detail` from a PII or never-used column
+ * is redacted: this file is downloaded and shared, and the cell echo that makes
+ * a type error fixable would carry the value out with it. */
 export function buildRejectionCsv(result) {
   const keys = Object.keys((result.rows[0] && result.rows[0].keys) || {});
   const columns = ['rowNo', ...keys, 'verdict', 'codes', 'columns', 'details'];
@@ -20,7 +23,7 @@ export function buildRejectionCsv(result) {
     rowNo: r.rowNo, verdict: r.verdict, ...r.keys,
     codes: r.issues.map((i) => `${i.code}${i.severity === 'reject' ? '' : `(${i.severity})`}`).join('|'),
     columns: r.issues.map((i) => i.column || '').join('|'),
-    details: r.issues.map((i) => i.detail || '').join('|'),
+    details: r.issues.map((i) => (i.sensitive ? (i.detail ? 'redacted' : '') : (i.detail || ''))).join('|'),
   }));
   return toCsv(columns, rows);
 }
@@ -81,7 +84,7 @@ export default function ResultPanel({ result, meta, batchId, browserOnly }) {
             <dt className="text-muted">{t('ingest.profile.mapped')}</dt><dd className="num">{profile.columnsMapped} / {profile.columnsMapped + (profile.columnsUnmapped || []).length}</dd>
             {profile.dateRange && (<><dt className="text-muted">{t('ingest.profile.dates')}</dt><dd className="num">{profile.dateRange.min} → {profile.dateRange.max} <span className="text-muted">({profile.dateRange.column})</span></dd></>)}
             {profile.unitCoverage && (<><dt className="text-muted">{t('ingest.profile.units')}</dt><dd className="num">{t('ingest.profile.unitsValue', { known: profile.unitCoverage.knownUnits, total: profile.unitCoverage.distinctUnits, districts: profile.unitCoverage.districts })}</dd></>)}
-            {geo && (<><dt className="text-muted">{t('ingest.profile.coords')}</dt><dd className="num">{t('ingest.profile.coordsValue', { withCoords: geo.withCoords, inside: geo.inDistrict, outside: geo.outOfDistrict, state: geo.outOfState, invalid: geo.invalid })}</dd></>)}
+            {geo && (<><dt className="text-muted">{t('ingest.profile.coords')}</dt><dd className="num">{t(geo.polygonChecked === false ? 'ingest.profile.coordsValueNoPolygon' : 'ingest.profile.coordsValue', { withCoords: geo.withCoords, inside: geo.inDistrict, outside: geo.outOfDistrict, unknown: geo.unknownPolygon || 0, state: geo.outOfState, invalid: geo.invalid })}</dd></>)}
             <dt className="text-muted">{t('ingest.profile.encoding')}</dt><dd>{profile.encoding.bom ? 'UTF-8 BOM' : 'UTF-8'}{profile.encoding.kannadaCells ? ` · ${t('ingest.file.kannada', { n: fmtInt(profile.encoding.kannadaCells) })}` : ''}{profile.encoding.replacementChars ? ` · ${t('ingest.profile.replacement', { n: profile.encoding.replacementChars })}` : ''}</dd>
           </dl>
           {nullTop.length > 0 && (

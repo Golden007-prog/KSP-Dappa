@@ -37,16 +37,28 @@ export default function PreviewTable({ tableDef, headers, rows, mapping, verdict
               cur.push(is);
               issuesByCol.set(is.column, cur);
             }
-            const rowIssues = issuesByCol.get('CrimeNo') || [];
+            // An issue on a column that is not one of the shown cells (an
+            // unmapped required column, a dropped caste / phone header, a
+            // composite duplicate key) would otherwise leave a rejected row
+            // with no mark at all: those hang off the verdict pill instead.
+            const offCell = ((v && v.issues) || []).filter((is) => !is.column || !cols.some((c) => c.name === is.column));
+            const offLabel = offCell.map((is) => `${codeKey(is.code) ? t(codeKey(is.code)) : is.code}${is.column ? ` (${is.column})` : ''}`).join(' · ');
             return (
               <tr key={i} className="border-t border-grid/60 align-top">
                 <td className="sticky left-0 bg-panel num px-2 py-1 text-muted">{i + 1}</td>
                 <td className="px-2 py-1 whitespace-nowrap">
                   {v ? <StatusPill status={verdictStatus(v)} label={labelFor(v)} /> : <StatusPill status="nodata" label={t('ingest.verdict.pending')} />}
+                  {offCell.length > 0 && (
+                    <Tooltip label={offLabel} position="top">
+                      <button type="button" className="ml-1 min-h-[44px] sm:min-h-0 inline-flex items-center rounded text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber" aria-label={`${t('ingest.preview.otherReasons', { n: offCell.length })}: ${offLabel}`}>
+                        <span aria-hidden="true">{t('ingest.preview.otherReasons', { n: offCell.length })}</span>
+                      </button>
+                    </Tooltip>
+                  )}
                 </td>
                 {cols.map((c) => {
                   const raw = r[idx[c.name]];
-                  const list = (issuesByCol.get(c.name) || []).concat(c.name === 'CrimeNo' ? [] : []);
+                  const list = issuesByCol.get(c.name) || [];
                   const top = list.slice().sort((a, b) => RANK[b.severity] - RANK[a.severity])[0];
                   const text = raw === undefined || raw === null ? '' : String(raw);
                   const cell = (
@@ -60,12 +72,11 @@ export default function PreviewTable({ tableDef, headers, rows, mapping, verdict
                   return (
                     <td key={c.name} className="px-1 py-1">
                       <Tooltip label={label} position="top">
-                        <button type="button" className="text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber rounded" aria-label={`${c.name}: ${label}`}>{cell}</button>
+                        <button type="button" className="text-left min-h-[44px] sm:min-h-0 inline-flex items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber rounded" aria-label={`${c.name}: ${label}`}>{cell}</button>
                       </Tooltip>
                     </td>
                   );
                 })}
-                {rowIssues.length === 0 ? null : null}
               </tr>
             );
           })}

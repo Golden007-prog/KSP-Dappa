@@ -43,7 +43,7 @@ function ServiceRow({ svc, open, onToggle, searchNote }) {
   const t = useT();
   const bodyId = `svc-body-${svc.key}`;
   return (
-    <div className={`rounded-lg border bg-base/40 ${svc.status === 'live' ? 'border-teal/30' : svc.status === 'flag-gated' ? 'border-amber/30' : 'border-grid'}`}>
+    <div className={`rounded-lg border bg-canvas/40 ${svc.status === 'live' ? 'border-teal/30' : svc.status === 'flag-gated' ? 'border-amber/30' : 'border-grid'}`}>
       <button
         type="button"
         onClick={onToggle}
@@ -165,7 +165,7 @@ export default function ServiceMatrix({ query, searchSource }) {
               />
             </div>
 
-            <div className="rounded-lg border border-grid bg-base/40 p-3">
+            <div className="rounded-lg border border-grid bg-canvas/40 p-3">
               <p className="eyebrow mb-2">{t('about.svc.legend.title')}</p>
               <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-1.5">
                 {SERVICE_STATUS_ORDER.map((st) => (
@@ -231,14 +231,14 @@ export default function ServiceMatrix({ query, searchSource }) {
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     placeholder={t('about.svc.filter.searchPlaceholder')}
-                    className="w-full min-h-[40px] rounded-lg border border-grid bg-base/50 px-3 text-xs text-ink placeholder:text-muted focus:border-primary/60 focus:outline-none"
+                    className="w-full min-h-[40px] rounded-lg border border-grid bg-canvas/50 px-3 text-xs text-ink placeholder:text-muted focus:border-primary/60 focus:outline-none"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={toggleAll}
                   disabled={visible.length === 0}
-                  className="min-h-[40px] shrink-0 rounded-lg border border-grid bg-base/50 px-3 text-[11px] text-muted hover:text-ink hover:border-primary/60 transition-colors disabled:opacity-50"
+                  className="min-h-[40px] shrink-0 rounded-lg border border-grid bg-canvas/50 px-3 text-[11px] text-muted hover:text-ink hover:border-primary/60 transition-colors disabled:opacity-50"
                 >
                   {t(allOpen ? 'about.svc.collapseAll' : 'about.svc.expandAll')}
                 </button>
@@ -246,7 +246,7 @@ export default function ServiceMatrix({ query, searchSource }) {
             </div>
 
             {grouped.length === 0 ? (
-              <p className="rounded-lg border border-grid bg-base/40 px-3 py-4 text-center text-xs text-muted">
+              <p className="rounded-lg border border-grid bg-canvas/40 px-3 py-4 text-center text-xs text-muted">
                 {t('about.svc.noMatch')}
               </p>
             ) : grouped.map((g) => (
@@ -275,7 +275,7 @@ export default function ServiceMatrix({ query, searchSource }) {
               </section>
             ))}
 
-            <div className="rounded-lg border border-grid bg-base/40 p-3">
+            <div className="rounded-lg border border-grid bg-canvas/40 p-3">
               <div className="flex flex-wrap items-baseline gap-2">
                 <p className="eyebrow">{t('about.flags.title')}</p>
                 <p className="text-[11px] text-muted">{t('about.flags.subtitle')}</p>
@@ -300,7 +300,7 @@ export default function ServiceMatrix({ query, searchSource }) {
 function Metric({ value, label, tone = 'neutral' }) {
   const color = tone === 'teal' ? 'text-teal' : tone === 'amber' ? 'text-amber' : 'text-ink';
   return (
-    <div className="rounded-lg border border-grid bg-base/40 px-2.5 py-2 text-center">
+    <div className="rounded-lg border border-grid bg-canvas/40 px-2.5 py-2 text-center">
       <div className={`num text-base font-semibold ${color}`}>{value}</div>
       <div className="mt-0.5 text-[9px] uppercase leading-tight tracking-wider text-muted">{label}</div>
     </div>

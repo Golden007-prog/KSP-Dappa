@@ -49,7 +49,7 @@ html.light {
   --t-control: 123 136 159;    /* #7B889F — 3.6:1 on white, 3.3:1 on base */
   --t-ink: 19 27 46;           /* #131B2E */
   --t-muted: 92 107 132;       /* #5C6B84 — AA on white               */
-  --t-primary: 29 78 216;      /* #1D4ED8 — 6.3:1 on white, 5.5:1 on its
+  --t-primary: 29 78 216;      /* #1D4ED8 — 6.70:1 on white, 5.74:1 on its
                                   /10 filter-pill tint; #2563EB measured
                                   4.49 on the tint (1.4.3)             */
   --t-primary-on: 255 255 255;
@@ -83,7 +83,7 @@ html[data-fontsize='large'] {
   html.dark { color-scheme: dark; }
   html.light { color-scheme: light; }
   body {
-    @apply bg-base text-ink font-sans antialiased;
+    @apply bg-canvas text-ink font-sans antialiased;
     font-feature-settings: 'cv02', 'cv03';
   }
   /* keyboard focus is always visible — inputs/buttons with their own :focus
@@ -188,11 +188,17 @@ html[data-fontsize='large'] {
   #main-scroll {
     scroll-padding-top: 4.5rem;
     scroll-padding-bottom: 5rem;
+    /* the app never scrolls sideways: a tooltip bubble or a wide table that
+       pokes past the right edge is clipped instead of turning the whole page
+       into a horizontally scrollable region (WCAG 1.4.10 reflow) */
+    overflow-x: hidden;
   }
   /* text alternative for a chart: shown by the Table toggle, always under
      the chart in print (ChartTable.jsx) */
+  /* min-w-0: the table's min-content width would otherwise propagate through
+     the flex/grid item that holds the card and widen the whole page */
   .chart-table {
-    @apply mt-2 overflow-x-auto rounded-lg border border-grid/60;
+    @apply mt-2 min-w-0 overflow-x-auto rounded-lg border border-grid/60;
   }
   .chart-table th, .chart-table td {
     @apply px-2 py-1 text-[11px] whitespace-nowrap;
@@ -217,14 +223,24 @@ html[data-fontsize='large'] {
   color: rgb(var(--t-muted));
 }
 
-/* ---- CSS-only tooltip (components/Tooltip.jsx) --------------------------- */
+/* ---- CSS-only tooltip (components/Tooltip.jsx) ---------------------------
+   The bubble exists ONLY while the trigger is hovered or focused. A resting
+   ::after (opacity 0, white-space:nowrap, no max-width) still occupies a
+   full layout box, and the rightmost topbar tip pushed #main-scroll's
+   scrollable width ~30 px past a 360-px viewport on every route — a real
+   sideways scroll on a phone. `content: none` at rest removes the box;
+   the fade is an animation on the shown state, which runs because the
+   pseudo-element is created at that moment (a transition could not).
+   The bubble is also bounded (max-width + wrapping) so a long glossary
+   sentence cannot project past the screen edge while it is open. */
 .tt { position: relative; }
+@keyframes tt-in { from { opacity: 0; } to { opacity: 1; } }
 .tt::after {
-  content: attr(data-tip);
+  content: none;
   position: absolute;
   left: 50%;
   bottom: calc(100% + 6px);
-  transform: translateX(-50%) translateY(2px);
+  transform: translateX(-50%);
   background: var(--c-panel);
   color: var(--c-ink);
   border: 1px solid var(--c-grid);
@@ -232,16 +248,17 @@ html[data-fontsize='large'] {
   padding: 4px 8px;
   font-size: 11px;
   line-height: 1.35;
-  white-space: nowrap;
+  text-align: left;
+  white-space: normal;
+  width: max-content;
+  max-width: min(78vw, 320px);
   box-shadow: var(--shadow-lift);
-  opacity: 0;
   pointer-events: none;
   z-index: 70;
-  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 .tt:hover::after, .tt:focus-visible::after, .tt:focus-within::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  content: attr(data-tip);
+  animation: tt-in 0.12s ease-out both;
   /* WCAG 1.4.13 Hoverable: the pointer can move onto the tip without it
      vanishing (the trigger's :hover still holds while over ::after) */
   pointer-events: auto;
@@ -249,16 +266,11 @@ html[data-fontsize='large'] {
 /* WCAG 1.4.13 Dismissible: Tooltip.jsx sets data-tt-off on Escape until the
    pointer leaves / focus moves, so the tip can be closed without moving */
 .tt[data-tt-off]::after {
-  opacity: 0 !important;
-  pointer-events: none !important;
+  content: none !important;
 }
 .tt-bottom::after {
   bottom: auto;
   top: calc(100% + 6px);
-  transform: translateX(-50%) translateY(-2px);
-}
-.tt-bottom:hover::after, .tt-bottom:focus-visible::after, .tt-bottom:focus-within::after {
-  transform: translateX(-50%) translateY(0);
 }
 .tt-left::after {
   left: auto;
@@ -273,6 +285,14 @@ html[data-fontsize='large'] {
   bottom: auto;
   top: 50%;
   transform: translateY(-50%);
+}
+/* The topbar's last two triggers sit against the viewport edge, where a
+   centred bubble is cut off by #main-scroll's overflow-x. Anchor those tips to
+   the trigger's right edge so the whole sentence stays on screen. */
+#main-scroll > header > .tt:nth-last-child(-n + 2)::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 /* ---- red alert pulse ---------------------------------------------------- */
@@ -331,6 +351,15 @@ html[data-fontsize='large'] {
   box-shadow: var(--shadow-lift);
 }
 .leaflet-tooltip.dappa-tooltip::before { display: none; }
+
+/* On a phone the time-scrubber panel overlays the bottom of the map, and
+   Leaflet's bottom controls (attribution — a licensing requirement — and the
+   scale bar) ended up underneath it. Lift them clear of the panel. */
+@media (max-width: 767px) {
+  .leaflet-bottom {
+    margin-bottom: 4.25rem;
+  }
+}
 
 /* ---- theme switch transition (ThemeProvider adds .theme-anim briefly) ---- */
 @media (prefers-reduced-motion: no-preference) {

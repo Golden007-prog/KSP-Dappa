@@ -216,7 +216,7 @@ export default function CompareBoard({
           <DashChart option={option} height={narrow ? 210 : 250} />
           <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {tracks.filter((tr) => tr.stats).map((tr) => (
-              <li key={tr.districtId} className="flex min-h-[40px] items-center gap-2 rounded-lg border border-grid/60 bg-base/30 px-2 py-1.5">
+              <li key={tr.districtId} className="flex min-h-[40px] items-center gap-2 rounded-lg border border-grid/60 bg-canvas/30 px-2 py-1.5">
                 <span className="min-w-0 flex-1 truncate text-[11px] text-ink">{tr.name}</span>
                 <span className="num shrink-0 text-[10px] text-muted">
                   {t('dashboard.cmpboard.stat', {

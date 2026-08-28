@@ -282,7 +282,7 @@ export default function CorrelationMatrix({
             ) : (
               <ul className="space-y-1.5">
                 {model.ranked.slice(0, 5).map((c) => (
-                  <li key={`${c.rowId}-${c.indKey}`} className="rounded-lg border border-grid bg-base/40 px-2.5 py-1.5">
+                  <li key={`${c.rowId}-${c.indKey}`} className="rounded-lg border border-grid bg-canvas/40 px-2.5 py-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="min-w-0 text-[11px] text-ink truncate">{c.rowLabel}</span>
                       <span className={`num shrink-0 text-[11px] font-semibold ${c.r >= 0 ? 'text-signal' : 'text-teal'}`}>

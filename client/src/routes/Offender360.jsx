@@ -17,6 +17,7 @@ import MiniChoropleth from '../components/MiniChoropleth.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { fmtInt, fmtPct, dateLabel } from '../lib/format.js';
 import { useI18n } from '../lib/i18n.jsx';
+import { useDocumentTitle } from '../lib/a11y.js';
 import { communityColor } from './network/graphUtils.js';
 import { copyText } from './network/clipboard.js';
 import RiskGauge from './offenders/RiskGauge.jsx';
@@ -51,7 +52,7 @@ function districtCodeFromCrimeNo(crimeNo) {
 
 function Fact({ label, children }) {
   return (
-    <div className="bg-base/60 border border-grid rounded-lg px-3 py-2">
+    <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2">
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <div className="text-sm text-ink num mt-0.5">{children}</div>
     </div>
@@ -72,6 +73,10 @@ export default function Offender360() {
 
   const p = off.data || {};
   const timeline = p.timeline || [];
+
+  // Tab title carries the person, which the nav table (always "Offender 360")
+  // cannot; ShellA11y prefixes the pending-alert count and clears it on unmount.
+  useDocumentTitle(t('a11y.title.offender', { name: p.canonicalName || personKey }));
 
   // Recently-viewed ring for the /offenders chip row.
   useEffect(() => {
@@ -377,15 +382,15 @@ export default function Offender360() {
           <Card title={t('network.o360.operatingArea')} subtitle={t('network.o360.operatingAreaSub')}>
             <MiniChoropleth values={choroValues} markers={markers} height={260} />
             <div className="grid grid-cols-3 gap-2 mt-2.5">
-              <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.districtsHint')}>
+              <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.districtsHint')}>
                 <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.span.districts')}</p>
                 <p className="text-sm text-ink num">{fmtInt(span.districts)}</p>
               </div>
-              <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.movesHint')}>
+              <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.movesHint')}>
                 <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.span.moves')}</p>
                 <p className="text-sm text-ink num">{fmtInt(span.moves)}</p>
               </div>
-              <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.mobilityHint')}>
+              <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={t('network.span.mobilityHint')}>
                 <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.span.mobility')}</p>
                 <p className="text-sm text-ink num">
                   {span.hops > 1 ? fmtPct(span.mobility * 100, { digits: 0 }) : '—'}

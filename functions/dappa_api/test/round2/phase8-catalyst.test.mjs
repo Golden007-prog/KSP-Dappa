@@ -15,6 +15,7 @@ const { tierForRole } = require('../../lib/auth.js');
 const artifacts = require('../../lib/artifacts.js');
 const tiercache = require('../../lib/tiercache.js');
 const { buildRow } = require('../../lib/ocr_attach.js');
+const surfaces = require('../../lib/routes/surfaces.js');
 
 const ADMIN = { 'x-admin-token': 'demo-admin' };
 // 1x1 PNG (67 bytes) — a real image header for the moderation sniff.
@@ -48,8 +49,18 @@ export async function run(h) {
     const fw = composer.firewall('Chain snatching rose to 42 cases, up 127% from 18.5.', { answer: 'Observed 42 vs expected 18.5 (+127%)' });
     check('firewall passes numbers present in the facts', fw.passed === true && fw.checked === 3, JSON.stringify(fw));
     const bad = composer.firewall('There were 57 cases and 3 arrests.', { answer: 'Observed 42 cases' });
-    check('firewall rejects a fabricated number', bad.passed === false && bad.rejected.length === 1 && bad.rejected[0].value === 57, JSON.stringify(bad));
-    check('firewall tolerates small prose integers', composer.firewall('the top 5 districts over the last 3 months', { answer: 'nothing numeric' }).passed === true);
+    check('firewall rejects a fabricated number AND the small integer beside it', bad.passed === false && bad.rejected.length === 2
+      && bad.rejected[0].value === 57 && bad.rejected[1].value === 3, JSON.stringify(bad));
+    // The exact live fabrication that got through: both counts sit in 0..12,
+    // which is precisely the police-relevant range (arrests, chargesheets).
+    const invented = composer.firewall('There were 7 arrests and 11 chargesheets this month.', { answer: 'Chain snatching rose to 42 cases in Bengaluru City.' });
+    check('firewall rejects invented small counts (arrests / chargesheets)', invented.passed === false && invented.checked === 2
+      && invented.rejected.map((r) => r.value).join(',') === '7,11', JSON.stringify(invented));
+    check('firewall tolerates small prose integers only in an ordering phrase', composer.firewall('the top 5 districts over the last 3 months', { answer: 'nothing numeric' }).passed === true);
+    check('firewall allows "2 of the 3" style counts adjacent to of', composer.firewall('2 of the districts', { answer: 'nothing numeric' }).passed === true);
+    check('firewall rejects a bare small integer with no ordering word', composer.firewall('there were 4 murders', { answer: 'nothing numeric' }).passed === false);
+    check('firewall does not let a count be restated as a percentage', composer.firewall('a 42% share', { answer: '42 cases' }).passed === false, JSON.stringify(composer.firewall('a 42% share', { answer: '42 cases' })));
+    check('firewall passes a percentage that IS in the facts', composer.firewall('a 42% share', { answer: 'the share is 42%' }).passed === true);
     check('firewall canonicalises thousands separators', composer.firewall('1,245 FIRs', { answer: 'total 1245' }).passed === true);
     check('firewall rejects a changed decimal', composer.firewall('z of 4.3', { answer: 'z = 4.2' }).passed === false);
     check('collectNumbers walks nested chart payloads', composer.collectNumbers({ chart: { series: [{ data: [7, 19] }] } }).has('19'));
@@ -125,13 +136,25 @@ export async function run(h) {
 
     const samples = await get('/zia/objects/samples');
     check('object samples list the three scenes', samples.status === 200 && samples.json.data.scenes.length === 3 && samples.json.meta.source === 'fixture');
+    check('normaliseObjects keeps a null confidence null (Number(null) is 0)', objects.normaliseObjects([{ label: 'knife', confidence: null, box: [1, 2, 3, 4] }])[0].confidence === null
+      && objects.normaliseObjects([{ label: 'knife', confidence: undefined }])[0].confidence === null
+      && objects.normaliseObjects([{ label: 'knife', confidence: '' }])[0].confidence === null
+      && objects.normaliseObjects([{ label: 'knife', confidence: '99.82' }])[0].confidence === 0.9982);
     const sc = await post('/zia/objects', { sceneId: 'scene_03', caseId: '1' });
     check('objects fixture path tags the knife scene and merges narrative MO tags', sc.status === 200 && sc.json.meta.source === 'fixture' && sc.json.data.objects[0].label === 'knife'
       && sc.json.data.moTags.includes('weapon:knife') && sc.json.data.narrativeTags.length > 0 && sc.json.data.mergedMoTags.length >= sc.json.data.moTags.length, JSON.stringify(sc.json.data).slice(0, 300));
+    check('a drawn (manifest) box carries no confidence, never 0 out of 100', sc.json.data.objects.every((o) => o.confidence === null), JSON.stringify(sc.json.data.objects));
     check('objects 400 without input', (await post('/zia/objects', {})).status === 400);
     check('objects 404 on an unknown scene', (await post('/zia/objects', { sceneId: 'scene_99' })).status === 404);
     const raw = await post('/zia/objects', { imageBase64: PNG_B64 });
     check('objects flag-off with a raw upload reports no detector honestly', raw.status === 200 && raw.json.data.objects.length === 0 && raw.json.meta.source === 'fallback-local' && raw.json.data.moderation && raw.json.data.moderation.verdict === 'unscreened');
+
+    // p8-2: the scene PNGs ship WITH the function, so the only client call
+    // shape ({sceneId} and no bytes) can actually reach Zia.
+    check('every manifest scene has its PNG bundled with the function', objects.listScenes().every((sc2) => {
+      const buf = objects.sceneBuffer(objects.sceneById(sc2.sceneId));
+      return Buffer.isBuffer(buf) && buf.length > 1000 && buf.toString('ascii', 1, 4) === 'PNG';
+    }), JSON.stringify(objects.listScenes().map((x) => x.sceneId)));
 
     const ziaCalls = { detect: 0, moderate: 0 };
     await withApp(h, { FEATURE_ZIA: 'on' }, {
@@ -158,6 +181,61 @@ export async function run(h) {
       const r = await a.post('/zia/objects', { imageBase64: PNG_B64, sceneId: 'scene_01' });
       check('FLAG-ON Zia failure with a known scene falls back to the manifest', r.status === 200 && r.json.meta.source === 'fixture' && r.json.data.objects[0].label === 'handbag' && /failed/.test(r.json.data.note));
     });
+    // The client posts {sceneId, caseId} with no image. The bundled PNG is what
+    // it sends, so the Zia leg is reachable from the shipped call shape.
+    {
+      const sent = [];
+      await withApp(h, { FEATURE_ZIA: 'on' }, {
+        ziaClient: {
+          moderateImage: async () => ({ probability: {}, confidence: 0.9, prediction: 'safe_to_use' }),
+          detectObject: async (stream) => {
+            const chunks = [];
+            for await (const c of stream) chunks.push(c);
+            sent.push(Buffer.concat(chunks).length);
+            return { objects: [{ co_ordinates: [160, 250, 810, 370], object_type: 'knife', confidence: '91.5' }] };
+          }
+        }
+      }, async (a) => {
+        const r = await a.post('/zia/objects', { sceneId: 'scene_03', caseId: '1' });
+        check('FLAG-ON a sceneId with no image bytes still reaches Zia', r.status === 200 && r.json.meta.source === 'zia-objects'
+          && r.json.data.ziaRan === true && r.json.data.objects[0].confidence === 0.915 && sent[0] > 1000, JSON.stringify({ src: r.json.meta.source, sent: sent[0] }));
+      });
+      // The FIR-detail card asks for the same scene on every page view; without
+      // a cache that is one metered Zia call per view, per judge.
+      const calls = [];
+      surfaces.resetAiBudget();
+      await withApp(h, { FEATURE_ZIA: 'on' }, {
+        ziaClient: {
+          moderateImage: async () => ({ probability: {}, prediction: 'safe_to_use' }),
+          detectObject: async () => { calls.push(1); return { objects: [{ co_ordinates: [1, 2, 3, 4], object_type: 'knife', confidence: '90' }] }; }
+        }
+      }, async (a) => {
+        const first = await a.post('/zia/objects', { sceneId: 'scene_03', caseId: '1' });
+        const second = await a.post('/zia/objects', { sceneId: 'scene_03', caseId: '1' });
+        check('the scene path is cached, so a second FIR view spends no Zia call', calls.length === 1
+          && first.json.meta.cached === false && second.json.meta.cached === true
+          && second.json.data.objects[0].label === 'knife', `calls=${calls.length} cached=${second.json.meta.cached}`);
+      });
+      // A per-IP hourly budget stands in for the guard that /zia/objects and
+      // /zia/moderate cannot have (both are called anonymously by the client).
+      surfaces.resetAiBudget();
+      await withApp(h, { FEATURE_ZIA: 'on', AI_BUDGET_PER_HOUR: '2' }, {
+        ziaClient: { moderateImage: async () => ({ probability: {}, prediction: 'safe_to_use' }), detectObject: async () => ({ objects: [] }) }
+      }, async (a) => {
+        const codes = [];
+        for (let i = 0; i < 4; i += 1) codes.push((await a.post('/zia/moderate', { imageBase64: PNG_B64 })).status);
+        check('the anonymous Zia budget 429s past its hourly ceiling', codes.join(',') === '200,200,429,429', codes.join(','));
+      });
+      surfaces.resetAiBudget();
+      await withApp(h, { FEATURE_ZIA: 'on' }, {
+        ziaClient: { moderateImage: async () => ({ probability: {}, prediction: 'safe_to_use' }), detectObject: async () => ({ objects: [] }) }
+      }, async (a) => {
+        const r = await a.post('/zia/objects', { sceneId: 'scene_02' });
+        check('FLAG-ON an empty Zia answer on a demo scene shows the DRAWN boxes, labelled fixture', r.status === 200 && r.json.meta.source === 'fixture'
+          && r.json.data.ziaRan === true && r.json.data.ziaObjects === 0 && r.json.data.objects[0].label === 'motorcycle'
+          && r.json.data.objects[0].confidence === null && /recognised nothing/.test(r.json.data.note), JSON.stringify(r.json.data).slice(0, 300));
+      });
+    }
   }
 
   // --- OCR surface -------------------------------------------------------------
@@ -245,22 +323,55 @@ export async function run(h) {
     });
     artifacts.resetArtifacts();
 
-    const snap = await post('/reports/map-snapshot', { districtId: '0101' });
+    // p8-6: this route spends a metered SmartBrowz render AND writes a Stratus
+    // object, so it is guarded like the other write-ish routes.
+    check('map snapshot is admin-only (it spends a render and mints an object)', (await post('/reports/map-snapshot', { districtId: '0101' })).status === 403);
+    const snap = await post('/reports/map-snapshot', { districtId: '0101' }, ADMIN);
     check('map snapshot flag-off returns the static map', snap.status === 200 && snap.json.data.mode === 'static' && snap.json.data.imagePath === artifacts.STATIC_MAP && snap.json.meta.source === 'fallback-local', JSON.stringify(snap.json).slice(0, 200));
-    check('map snapshot 400 on a bad district id', (await post('/reports/map-snapshot', { districtId: 'xx' })).status === 400);
+    check('map snapshot 400 on a bad district id', (await post('/reports/map-snapshot', { districtId: 'xx' }, ADMIN)).status === 400);
+    check('map snapshot reports that ?nocache is not honoured', snap.json.meta.nocacheHonoured === false);
+    check('the Stratus map key is an IST hour bucket, not a millisecond stamp', /^\d{10}$/.test(artifacts.istHourStamp(new Date('2026-08-29T04:30:00Z')))
+      && artifacts.istHourStamp(new Date('2026-08-29T04:30:00Z')) === artifacts.istHourStamp(new Date('2026-08-29T04:59:00Z')), artifacts.istHourStamp(new Date('2026-08-29T04:30:00Z')));
     const shots = [];
     await withApp(h, { FEATURE_SMARTBROWZ: 'on', APP_BASE_URL: 'https://example.invalid/app' }, {
       smartbrowz: { screenshot: async (url, opts) => { shots.push({ url, opts }); return Buffer.from('PNGBYTES'); } },
       artifactBucket: { putBinary: async () => true, signedUrl: async (key) => `https://stratus.example.invalid/${key}` }
     }, async (a) => {
-      const r = await a.post('/reports/map-snapshot', { districtId: '0103' });
-      check('FLAG-ON map snapshot screenshots the hash route and stores the PNG', r.status === 200 && r.json.data.mode === 'screenshot' && /index\.html#\/map\?district=0103$/.test(shots[0].url) && shots[0].opts.page_options.viewport.width === 1280 && /^briefs\/map-0103-/.test(r.json.data.key) && r.json.data.url && r.json.meta.source === 'catalyst-smartbrowz', JSON.stringify(r.json.data).slice(0, 300));
+      const r = await a.post('/reports/map-snapshot', { districtId: '0103' }, ADMIN);
+      check('FLAG-ON map snapshot screenshots the hash route and stores the PNG', r.status === 200 && r.json.data.mode === 'screenshot' && /index\.html#\/map\?district=0103$/.test(shots[0].url) && shots[0].opts.page_options.viewport.width === 1280 && /^briefs\/map-0103-\d{10}\.png$/.test(r.json.data.key) && r.json.data.url && r.json.meta.source === 'catalyst-smartbrowz', JSON.stringify(r.json.data).slice(0, 300));
+      // Five anonymous ?nocache=1 calls used to mean five renders and five objects.
+      for (let i = 0; i < 4; i += 1) await a.post('/reports/map-snapshot?nocache=1', { districtId: '0103' }, ADMIN);
+      check('?nocache cannot force a second render on the map snapshot', shots.length === 1, `renders=${shots.length}`);
     });
     await withApp(h, { FEATURE_SMARTBROWZ: 'on', APP_BASE_URL: 'https://example.invalid/app' }, {
       smartbrowz: { screenshot: async () => { throw new Error('either the request body or parameters is in wrong format'); } }
     }, async (a) => {
-      const r = await a.post('/reports/map-snapshot', {});
+      const r = await a.post('/reports/map-snapshot', {}, ADMIN);
       check('FLAG-ON screenshot failure falls back to the static map with the reason', r.json.data.mode === 'static' && /wrong format/.test(r.json.data.note));
+    });
+    // p8-5: the snapshot rides on the weekly brief in BOTH modes — it used to
+    // be taken only after a successful PDF render, i.e. never in the mode the
+    // live deployment actually takes.
+    await withApp(h, { FEATURE_SMARTBROWZ: 'on', APP_BASE_URL: 'https://example.invalid/app' }, {
+      smartbrowz: {
+        renderBrief: async () => { throw new Error('No such User with the given id exists'); },
+        screenshot: async () => Buffer.from('PNGBYTES')
+      }
+    }, async (a) => {
+      const r = await a.post('/reports/weekly-brief', { window: 'last7' });
+      check('weekly brief carries mapSnapshot even when the PDF render fails', r.status === 200 && r.json.data.mode === 'print-css'
+        && /No such User/.test(r.json.data.fallbackReason) && r.json.data.mapSnapshot && r.json.data.mapSnapshot.mode === 'screenshot', JSON.stringify(r.json.data).slice(0, 300));
+    });
+    await withApp(h, { FEATURE_SMARTBROWZ: 'on', APP_BASE_URL: 'https://example.invalid/app' }, {
+      smartbrowz: {
+        renderBrief: async () => { throw new Error('No such User with the given id exists'); },
+        screenshot: async () => { throw new Error('No such User with the given id exists'); }
+      }
+    }, async (a) => {
+      const r = await a.post('/reports/weekly-brief', {});
+      check('with both SmartBrowz legs failing the brief still names the static stand-in', r.json.data.mapSnapshot
+        && r.json.data.mapSnapshot.mode === 'static' && r.json.data.mapSnapshot.imagePath === artifacts.STATIC_MAP
+        && r.json.data.mapSnapshot.source === 'fallback-local', JSON.stringify(r.json.data.mapSnapshot).slice(0, 200));
     });
   }
 

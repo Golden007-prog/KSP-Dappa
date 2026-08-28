@@ -83,7 +83,7 @@ export default function CrimeNoBreakdown({ crimeNo, caseNo, districtName, unitNa
             {parts.map((p) => (
               <div
                 key={p.key}
-                className="flex-1 min-w-[5.5rem] rounded-lg border border-grid bg-base/60 px-3 py-2 text-center"
+                className="flex-1 min-w-[5.5rem] rounded-lg border border-grid bg-canvas/60 px-3 py-2 text-center"
                 style={{ borderTop: `2px solid ${p.cssColor}` }}
               >
                 <div className="num text-xl sm:text-2xl font-semibold tracking-[0.2em]" style={{ color: p.cssColor }}>

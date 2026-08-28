@@ -232,7 +232,7 @@ export default function EmergingPanel({
                 type="button"
                 onClick={() => onMoverClick(m)}
                 disabled={m.headId === null || m.headId === undefined}
-                className="w-full min-h-[40px] text-left rounded-lg border border-grid bg-base/40 px-3 py-2 transition-colors hover:border-amber/40 disabled:pointer-events-none"
+                className="w-full min-h-[40px] text-left rounded-lg border border-grid bg-canvas/40 px-3 py-2 transition-colors hover:border-amber/40 disabled:pointer-events-none"
                 title={m.head ? t('trends.emerging.rowTip', { head: m.head }) : undefined}
               >
                 <div className="flex items-start justify-between gap-2">

@@ -32,7 +32,7 @@ const SECOND_CAP = 10;
 // wrapping them in the tooltip's inline-flex span breaks the stretch.
 function Cell({ label, value, hint }) {
   return (
-    <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={hint}>
+    <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={hint}>
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="text-sm text-ink num">{value}</p>
     </div>

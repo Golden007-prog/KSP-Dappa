@@ -6,7 +6,7 @@
 // and rendered as-is, so no claim on this page can outlive the deployment that
 // backs it.
 //
-//   GET /meta/services  → the 28-service Catalyst coverage matrix, grouped by
+//   GET /meta/services  → the Catalyst coverage matrix (35 rows), grouped by
 //                         status. flag-gated is NOT presented as live: it means
 //                         the code path is wired and exercised but the service
 //                         needs a console step or an env var first.
@@ -177,7 +177,7 @@ const ARCH_BOXES = {
 
 function Stat({ value, label }) {
   return (
-    <div className="rounded-lg border border-grid bg-base/40 px-3 py-2.5 text-center">
+    <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2.5 text-center">
       <div className="num text-lg font-semibold text-ink">{value}</div>
       <div className="text-[10px] uppercase tracking-wider text-muted mt-0.5">{label}</div>
     </div>
@@ -212,7 +212,7 @@ function AnchorNav() {
   };
 
   return (
-    <nav aria-label={t('copilot.about.nav.aria')} className="no-print sticky top-14 z-30 -mx-4 px-4 md:-mx-6 md:px-6 bg-base/85 backdrop-blur-md">
+    <nav aria-label={t('copilot.about.nav.aria')} className="no-print sticky top-14 z-30 -mx-4 px-4 md:-mx-6 md:px-6 bg-canvas/85 backdrop-blur-md">
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-2">
         {SECTIONS.map((id) => {
           const on = active === id;
@@ -244,7 +244,7 @@ function ExtLink({ href, title, sub, accent = false }) {
       target="_blank"
       rel="noreferrer noopener"
       className={`flex flex-1 min-w-0 items-center gap-3 rounded-lg border p-3 transition-colors group ${
-        accent ? 'border-amber/50 bg-amber/5 hover:border-amber' : 'border-grid bg-base/40 hover:border-primary/60'
+        accent ? 'border-amber/50 bg-amber/5 hover:border-amber' : 'border-grid bg-canvas/40 hover:border-primary/60'
       }`}
     >
       <div className={`grid place-items-center h-8 w-8 shrink-0 rounded-lg border ${accent ? 'border-amber/40 text-amber' : 'border-grid text-muted group-hover:text-primary'}`}>
@@ -278,7 +278,7 @@ function LinkRow({ href, title, sub, accent = false }) {
           type="button"
           onClick={copy}
           aria-label={t('copilot.about.links.copyAria', { title })}
-          className="grid place-items-center w-11 min-h-[44px] shrink-0 rounded-lg border border-grid bg-base/40 text-muted hover:text-primary hover:border-primary/60 transition-colors"
+          className="grid place-items-center w-11 min-h-[44px] shrink-0 rounded-lg border border-grid bg-canvas/40 text-muted hover:text-primary hover:border-primary/60 transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="9" y="9" width="11" height="11" rx="2" />
@@ -292,7 +292,7 @@ function LinkRow({ href, title, sub, accent = false }) {
 
 function Tier({ label, children, tint = 'border-grid' }) {
   return (
-    <div className={`rounded-xl border ${tint} bg-base/60 p-3`}>
+    <div className={`rounded-xl border ${tint} bg-canvas/60 p-3`}>
       <p className="text-[10px] uppercase tracking-widest text-muted mb-2">{label}</p>
       <div className="flex flex-wrap gap-2">{children}</div>
     </div>
@@ -388,7 +388,7 @@ export default function About() {
           <button
             type="button"
             onClick={refreshAll}
-            className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg border border-grid bg-base/50 px-2.5 text-[11px] text-muted hover:text-ink hover:border-primary/60 transition-colors"
+            className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg border border-grid bg-canvas/50 px-2.5 text-[11px] text-muted hover:text-ink hover:border-primary/60 transition-colors"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6" />
@@ -420,7 +420,7 @@ export default function About() {
               </p>
               <ol className="grid grid-cols-1 sm:grid-cols-2 gap-2 list-none">
                 {FLOW.map((step, i) => (
-                  <li key={step} className="flex gap-2.5 rounded-lg border border-grid bg-base/40 p-2.5">
+                  <li key={step} className="flex gap-2.5 rounded-lg border border-grid bg-canvas/40 p-2.5">
                     <span className="num shrink-0 grid place-items-center h-6 w-6 rounded-full border border-amber/40 text-amber text-[11px] font-bold">{i + 1}</span>
                     <span>
                       <strong className="text-ink">{t(`copilot.about.flow.${step}`)}.</strong>{' '}
@@ -538,7 +538,7 @@ export default function About() {
           <ol className="flex flex-col md:flex-row md:items-stretch gap-1 list-none">
             {LINEAGE.map(([stage, descKey], i) => (
               <li key={stage} className="flex flex-col md:flex-row md:items-stretch md:flex-1 min-w-0 gap-1">
-                <div className="flex-1 min-w-0 rounded-lg border border-grid bg-base/40 p-2.5">
+                <div className="flex-1 min-w-0 rounded-lg border border-grid bg-canvas/40 p-2.5">
                   <p className="text-[11px] font-mono font-semibold text-teal break-words">{stage}</p>
                   <p className="text-[10px] text-muted mt-1 leading-relaxed">{t(`copilot.about.lineage.${descKey}`)}</p>
                 </div>
@@ -574,7 +574,7 @@ export default function About() {
               <p className="eyebrow">{t('copilot.about.ai.colFallback')}</p>
             </div>
             {AI_DESIGN.map((row) => (
-              <div key={row} className="grid grid-cols-1 md:grid-cols-[1.1fr_1.4fr_1.4fr] gap-1.5 md:gap-2 rounded-lg border border-grid bg-base/40 p-3">
+              <div key={row} className="grid grid-cols-1 md:grid-cols-[1.1fr_1.4fr_1.4fr] gap-1.5 md:gap-2 rounded-lg border border-grid bg-canvas/40 p-3">
                 <p className="text-xs font-semibold text-ink">{t(`copilot.about.ai.${row}.feature`)}</p>
                 <p className="text-[11px] text-muted leading-relaxed">
                   <span className="md:hidden text-[9px] uppercase tracking-wider text-amber mr-1.5">{t('copilot.about.ai.tagLive')}</span>
@@ -656,11 +656,11 @@ export default function About() {
                     {sec.rows.map((row) => {
                       const keys = row.keysKey ? t(`copilot.about.shortcuts.${row.keysKey}`) : row.keys;
                       return (
-                        <li key={`${sec.group}-${row.d}`} className="flex items-start justify-between gap-3 py-1.5">
+                        <li key={`${sec.group}-${row.d}`} className="flex flex-wrap items-start justify-between gap-3 py-1.5">
                           <span className="text-xs text-muted leading-relaxed">{t(`copilot.about.shortcuts.${row.d}`)}</span>
-                          <span className="shrink-0 flex flex-wrap justify-end gap-1">
+                          <span className="max-w-full grow shrink-0 flex flex-wrap justify-end gap-1">
                             {keys.split(' · ').map((k) => (
-                              <kbd key={k} className="num rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-ink whitespace-nowrap">{k}</kbd>
+                              <kbd key={k} className="num rounded border border-grid bg-canvas/60 px-1.5 py-0.5 text-[10px] text-ink whitespace-nowrap">{k}</kbd>
                             ))}
                           </span>
                         </li>
@@ -682,7 +682,7 @@ export default function About() {
               {TEAM.length > 0 ? (
                 <div className="space-y-2">
                   {TEAM.map((m) => (
-                    <div key={m.name} className="flex items-center gap-3 rounded-lg border border-grid bg-base/40 p-3">
+                    <div key={m.name} className="flex items-center gap-3 rounded-lg border border-grid bg-canvas/40 p-3">
                       <div className="w-9 h-9 shrink-0 rounded-full bg-amber/15 border border-amber/30 text-amber grid place-items-center text-xs font-bold">
                         {initials(m.name)}
                       </div>
@@ -694,7 +694,7 @@ export default function About() {
                   ))}
                 </div>
               ) : (
-                <div className="flex items-center gap-3 rounded-lg border border-grid bg-base/40 p-3">
+                <div className="flex items-center gap-3 rounded-lg border border-grid bg-canvas/40 p-3">
                   <div className="w-9 h-9 shrink-0 rounded-full bg-amber/15 border border-amber/30 text-amber grid place-items-center text-xs font-bold">R</div>
                   <div className="min-w-0">
                     <p className="text-xs text-ink font-semibold">{t('copilot.about.team.name')}</p>

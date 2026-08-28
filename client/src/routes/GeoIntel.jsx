@@ -101,7 +101,7 @@ const METRIC_PROPS = {
   bivar: { key: 'bivar', diverging: false, valueKey: 'geointel.metric.valueRate', fmt: (v) => fmtNum(v, 1) },
 };
 
-const DOCK_TABS = ['hotspots', 'grid', 'catchment', 'spacetime'];
+const DOCK_TABS = ['hotspots', 'grid', 'catchment', 'spacetime', 'depth'];
 const CATCHMENT_COLS = [
   { key: 'unitId', label: 'unitId' },
   { key: 'unitName', label: 'unitName' },
@@ -1257,7 +1257,7 @@ export default function GeoIntel() {
   const wantIncidents = mapLayers.heat || mapLayers.incidents;
 
   const shellCls = fullscreen
-    ? 'fixed inset-0 z-50 bg-base overflow-hidden'
+    ? 'fixed inset-0 z-50 bg-canvas overflow-hidden'
     : 'relative -m-4 md:-m-6 h-[calc(100dvh-10rem)] min-h-[22rem] md:h-[calc(100vh-5.5rem)] overflow-hidden';
 
   const printFilterSummary = [

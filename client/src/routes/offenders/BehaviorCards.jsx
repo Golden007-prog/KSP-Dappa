@@ -21,7 +21,7 @@ function parseDay(s) {
 
 function Tile({ label, children }) {
   return (
-    <div className="bg-base/60 border border-grid rounded-lg px-3 py-2 min-w-0">
+    <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2 min-w-0">
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <div className="text-sm text-ink num mt-0.5 flex items-baseline gap-1.5 flex-wrap">{children}</div>
     </div>

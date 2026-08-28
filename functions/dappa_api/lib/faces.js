@@ -34,6 +34,7 @@ const spec = require('./faces_spec');
 const { decodePng, imageSize, sniffMime } = require('./png');
 const { withTimeout, AI_TIMEOUT_MS, parseJsonSafe, toNum, round, logJson, hash32 } = require('./util');
 const { getLookups } = require('./lookups');
+const { extractLocal } = require('./zia');
 const constants = require('./constants');
 
 // fixture.js is required lazily: it pulls in the whole fixture graph (and the
@@ -83,7 +84,7 @@ const LEGAL_BASES = [
 const RULES = [
   { id: 'R1', title: 'Generated faces only', statement: 'Every gallery image is a procedural, synthetic face. No photograph of a real person is stored, compared or shown.', enforcedBy: 'pipeline/faces_generate.py · FaceGallery.Source = procedural-v1 · meta.synthetic on every response' },
   { id: 'R2', title: 'Never auto-identify', statement: 'The system returns ranked candidates with a confidence each. A human confirms or rejects, and that decision is recorded with the officer\'s identity and rationale.', enforcedBy: 'POST /identify never writes an identity; POST /identify/audit/:id/decision requires a rationale and records the actor' },
-  { id: 'R3', title: 'Bounded shortlist, never a sweep', statement: 'At least one structured filter is required and at most 25 candidates are compared. The response states how the shortlist was narrowed.', enforcedBy: 'buildShortlist() — 400 FILTER_REQUIRED without a filter; limit clamped to 25; meta.shortlist.description' },
+  { id: 'R3', title: 'Bounded shortlist, never a sweep', statement: 'At least one structured filter is required and at most 25 candidates are compared. The response states how the shortlist was narrowed.', enforcedBy: 'validateSearch() / buildShortlist() — 400 FILTER_REQUIRED without a filter; 400 BAD_REQUEST for limit > 25 (refused, not silently reduced); meta.shortlist.description' },
   { id: 'R4', title: 'No "match" without its confidence', statement: 'The word match never appears alone: every candidate carries a numeric confidence, the engine that produced it and the reason codes behind it.', enforcedBy: 'candidate.confidence is always present (a number or null with a reason); the UI renders the figure beside the word' },
   { id: 'R5', title: 'Confidence floor with an honest dead band', statement: 'Below the visible floor the answer is "no reliable match", not a weak best guess; the 0.10 band under the floor is labelled borderline.', enforcedBy: 'floorFor() (env FACE_MATCH_FLOOR, default 0.70) · bandFor() · decision = no-reliable-match' },
   { id: 'R6', title: 'Purpose binding', statement: 'A case number and a legal basis from a fixed list are required before a search runs.', enforcedBy: '400 CASE_REQUIRED / LEGAL_BASIS_REQUIRED · LEGAL_BASES list' },
@@ -630,6 +631,103 @@ async function buildShortlist(ctx, filters, limit) {
 }
 
 // ---------------------------------------------------------------------------
+// Step 2b — corroboration source: the case the search is bound to
+// ---------------------------------------------------------------------------
+// The two-signal rule is only worth something if the second signal comes from
+// somewhere the shortlist did NOT already consume. Testing a candidate against
+// the officer's own district / MO filter cannot do that: buildShortlist()
+// selected on exactly that predicate, so every candidate carries it and the
+// "signal" is decided by which filter was picked. The corroboration therefore
+// reads the FIR the search is bound to (rule R6 already demands its number)
+// and tests each candidate against THAT record: the district the case was
+// registered in, and the MO vocabulary in its BriefFacts. Where the case value
+// happens to equal the filter value, the hit is still reported but flagged
+// `fromFilter` and never counted as independent.
+//
+// CaseNo (9 digits) is only unique per unit+category+year in the real
+// numbering, so an ambiguous lookup is reported as ambiguous rather than
+// guessed at; the 18-digit CrimeNo resolves uniquely.
+
+const CASE_LOOKUP_LIMIT = 6;
+
+/** 'entry:gas-cutter' / 'Two Wheeler' -> 'gas-cutter' / 'two-wheeler'. */
+function normTag(s) {
+  return String(s || '').toLowerCase().replace(/^[a-z]+:/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/** Token-set containment, so 'two-wheeler' matches 'two-wheeler-without-plate'
+ * but 'gold-chain' does not match 'gold-mangalsutra'. */
+function tagOverlap(a, b) {
+  const ta = normTag(a).split('-').filter((x) => x.length >= 3);
+  const tb = normTag(b).split('-').filter((x) => x.length >= 3);
+  if (!ta.length || !tb.length) return false;
+  return ta.every((x) => tb.includes(x)) || tb.every((x) => ta.includes(x));
+}
+
+/** MO vocabulary of a FIR narrative — the same extractor /surfaces uses. Only
+ * the MO tags are taken: names, amounts and dates in the narrative are not. */
+function caseMoTags(briefFacts) {
+  try {
+    return (extractLocal(briefFacts).moTags || []).map(normTag).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Resolve the bound case to the record behind it. Two bounded, indexed
+ * queries at most (CrimeNo then CaseNo — search.js:23 lists both as the
+ * indexable case columns). Never throws: an unreachable store degrades to
+ * "unresolved" and the UI says the second signal could not be checked.
+ */
+async function resolveCase(ctx, caseNo, lk) {
+  const raw = String(caseNo || '').trim();
+  const out = {
+    caseNo: raw || null, resolved: false, reason: 'no-case', matches: 0, queries: 0,
+    crimeNo: null, districtId: null, districtName: null, unitId: null, unitName: null, crimeType: null, moTags: []
+  };
+  if (!raw) return out;
+  out.reason = 'not-found';
+  const columns = ['CaseMasterID', 'CrimeNo', 'CaseNo', 'CrimeRegisteredDate', 'PoliceStationID', 'CrimeMinorHeadID', 'BriefFacts'];
+  let rows = [];
+  try {
+    if (/^\d{12,20}$/.test(raw)) {
+      rows = await ctx.ds.query({ table: 'CaseMaster', columns, where: [{ col: 'CrimeNo', op: '=', val: raw }], limit: { count: 2 } });
+      out.queries += 1;
+    }
+    if (!rows.length) {
+      rows = await ctx.ds.query({ table: 'CaseMaster', columns, where: [{ col: 'CaseNo', op: '=', val: raw }], limit: { count: CASE_LOOKUP_LIMIT } });
+      out.queries += 1;
+    }
+  } catch (e) {
+    out.reason = 'lookup-failed';
+    return out;
+  }
+  out.matches = rows.length;
+  if (!rows.length) return out;
+  if (rows.length > 1) { out.reason = 'ambiguous'; return out; }
+  const r = rows[0];
+  const crimeNo = r.CrimeNo === null || r.CrimeNo === undefined ? '' : String(r.CrimeNo);
+  const unitId = r.PoliceStationID === null || r.PoliceStationID === undefined || r.PoliceStationID === '' ? null : String(r.PoliceStationID);
+  const unit = unitId && lk && lk.unitById ? lk.unitById.get(unitId) : null;
+  // Unit master first; the CrimeNo carries the district in digits 2–5
+  // (cat + district + unit + year + serial) when the Unit table is short.
+  const districtId = (unit && unit.districtId) || (/^\d{18}$/.test(crimeNo) ? crimeNo.slice(1, 5) : null);
+  out.resolved = true;
+  out.reason = null;
+  out.caseMasterId = r.CaseMasterID === undefined ? null : String(r.CaseMasterID);
+  out.crimeNo = crimeNo || null;
+  out.registeredOn = r.CrimeRegisteredDate ? String(r.CrimeRegisteredDate).slice(0, 10) : null;
+  out.unitId = unitId;
+  out.unitName = unit ? unit.unitName : null;
+  out.districtId = districtId ? String(districtId).padStart(4, '0') : null;
+  out.districtName = districtId ? districtOf(lk, districtId) : null;
+  out.crimeType = r.CrimeMinorHeadID === undefined || r.CrimeMinorHeadID === null ? null : (lk && lk.subHeadName ? lk.subHeadName(r.CrimeMinorHeadID) : String(r.CrimeMinorHeadID));
+  out.moTags = caseMoTags(r.BriefFacts);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Step 3 — comparison
 // ---------------------------------------------------------------------------
 
@@ -733,7 +831,7 @@ async function mapLimit(items, limit, fn) {
  * then the Zia Identity Scanner for the top-N when the flag is on — inside a
  * total time budget and with parallelism ≤3.
  */
-async function compareCandidates(ctx, req, deps, probe, probeDesc, shortlist, floor) {
+async function compareCandidates(ctx, req, deps, probe, probeDesc, shortlist, floor, caseCtx) {
   const started = Date.now();
   const scored = shortlist.candidates.map((c) => {
     // Same measurement on both sides whenever possible: a pixel probe against
@@ -746,7 +844,12 @@ async function compareCandidates(ctx, req, deps, probe, probeDesc, shortlist, fl
     const reasonCodes = [];
     if (!gDesc) reasonCodes.push('gallery-seed-missing');
     else if (sim.confidence === null) reasonCodes.push(probeDesc.source);
-    else reasonCodes.push('local-descriptor', probeDesc.source, usePixel ? 'gallery-pixel' : 'gallery-spec', `dims-${sim.dims}`);
+    else {
+      reasonCodes.push('local-descriptor', probeDesc.source, usePixel ? 'gallery-pixel' : 'gallery-spec', `dims-${sim.dims}`);
+      // The debug seed path compares the generator's parameters with
+      // themselves: say so rather than letting 1.0 read as a similarity.
+      if (probeDesc.source === 'spec-descriptor' && !usePixel && sim.confidence === 1) reasonCodes.push('exact-parameter-match');
+    }
     return Object.assign({}, c, {
       local: { confidence: sim.confidence, cosine: sim.cosine, dims: sim.dims },
       confidence: sim.confidence,
@@ -778,17 +881,35 @@ async function compareCandidates(ctx, req, deps, probe, probeDesc, shortlist, fl
     });
   }
   scored.sort((a, b) => (b.confidence === null ? -1 : b.confidence) - (a.confidence === null ? -1 : a.confidence));
+  // Corroboration is measured against the CASE record, never against the
+  // filter that built the shortlist (see "Step 2b" above).
   const f = shortlist.filters;
-  const districtName = f.districtId ? districtOf(null, f.districtId).toLowerCase() : null;
-  const bare = f.districtId ? f.districtId.replace(/^0+(?=\d)/, '') : null;
+  const cc = caseCtx && caseCtx.resolved ? caseCtx : null;
+  const caseBare = cc && cc.districtId ? cc.districtId.replace(/^0+(?=\d)/, '') : null;
+  const caseDistrictName = cc && cc.districtName ? String(cc.districtName).toLowerCase() : null;
+  const caseTags = cc ? (cc.moTags || []) : [];
+  // A value the officer already filtered on is carried by every candidate by
+  // construction, so it corroborates nothing even when it is true.
+  const districtFromFilter = Boolean(caseBare && f.districtId && f.districtId.replace(/^0+(?=\d)/, '') === caseBare);
+  const filterTag = f.moTag ? normTag(f.moTag) : null;
   const candidates = scored.map((c, i) => {
     const band = bandFor(c.confidence, floor);
-    const districtHit = Boolean(districtName) && c.districts.some((d) => d.toLowerCase() === districtName || d.replace(/^0+(?=\d)/, '') === bare);
-    const moHit = Boolean(f.moTag) && c.moTags.some((t) => t.includes(f.moTag));
-    const twoSignals = band === 'lead' && (districtHit || moHit);
+    const districtHit = caseBare === null
+      ? null
+      : c.districts.some((d) => String(d).replace(/^0+(?=\d)/, '') === caseBare || String(d).toLowerCase() === caseDistrictName);
+    const moMatches = caseTags.length
+      ? [...new Set(c.moTags.map(normTag).filter((t) => caseTags.some((ct) => tagOverlap(t, ct))))]
+      : [];
+    const moHit = caseTags.length ? moMatches.length > 0 : null;
+    // The MO signal is only the officer's own filter when EVERY matching tag
+    // is the one they filtered on.
+    const moFromFilter = Boolean(moHit && filterTag && moMatches.every((t) => tagOverlap(t, filterTag)));
+    const independent = Boolean((districtHit === true && !districtFromFilter) || (moHit === true && !moFromFilter));
+    const twoSignals = band === 'lead' && independent;
     const codes = c.reasonCodes.slice();
-    if (districtHit) codes.push('district-hit');
-    if (moHit) codes.push('mo-hit');
+    if (districtHit === true) codes.push(districtFromFilter ? 'district-hit-from-filter' : 'district-hit');
+    if (moHit === true) codes.push(moFromFilter ? 'mo-hit-from-filter' : 'mo-hit');
+    if (!cc) codes.push(`corroboration-${(caseCtx && caseCtx.reason) || 'unresolved'}`);
     if (twoSignals) codes.push('two-signals');
     if (band === 'borderline') codes.push('dead-band');
     if (band === 'below') codes.push('below-floor');
@@ -805,7 +926,15 @@ async function compareCandidates(ctx, req, deps, probe, probeDesc, shortlist, fl
       thumbUrl: `/identify/thumb/${encodeURIComponent(c.personKey)}.svg`,
       imageOfRecord: c.gallery.objectKey,
       reasonCodes: codes,
-      corroboration: { districtHit, moHit, twoSignals },
+      corroboration: {
+        basis: cc ? 'case-record' : 'unresolved',
+        districtHit,
+        moHit,
+        moMatches,
+        fromFilter: { district: districtHit === true && districtFromFilter, mo: moFromFilter },
+        independent,
+        twoSignals
+      },
       riskScore: c.riskScore,
       caseCount: c.caseCount,
       districts: c.districts,
@@ -814,7 +943,14 @@ async function compareCandidates(ctx, req, deps, probe, probeDesc, shortlist, fl
       traits: c.gallery.seed ? spec.traits(spec.specFromSeed(String(c.gallery.seed))) : []
     };
   });
-  const primary = engines.zia > 0 ? 'zia-identity-scanner' : 'local-descriptor';
+  // Naming the engine honestly matters more here than anywhere else in the app:
+  // Zia's comparison is unreliable under the shortlist's parallelism (measured
+  // 1 of 5 succeeding on 28 Aug — docs/benchmarks/face_zia_probe.json), so a
+  // single success must not label an answer that the local engine mostly
+  // produced. 'mixed' is the truth when both scored candidates in one search.
+  const primary = engines.zia > 0
+    ? (engines.local > 0 ? 'mixed' : 'zia-identity-scanner')
+    : 'local-descriptor';
   return { candidates, engines, primary, elapsedMs: Date.now() - started };
 }
 
@@ -927,8 +1063,14 @@ async function recordSearch(ctx, req, rec) {
   const persisted = await persistActionRow(ctx, req, actionRow('face-search', rec, {
     outcome: rec.decision,
     payload: {
-      probeSha256: rec.probeSha256, caseNo: rec.caseNo, legalBasis: rec.legalBasis, filters: rec.filters,
+      probeSha256: rec.probeSha256, probeSource: rec.probeSource || 'upload', samplePerson: rec.samplePerson || null,
+      exactParameterMatch: Boolean(rec.exactParameterMatch),
+      caseNo: rec.caseNo, legalBasis: rec.legalBasis, filters: rec.filters,
       shortlist: rec.shortlist, candidates: rec.candidates, topConfidence: rec.topConfidence, topPersonKey: rec.topPersonKey,
+      // The key list is what makes "searches that shortlisted this person"
+      // survive a container restart: without it only the top-ranked person
+      // matches when the row is read back from the Data Store.
+      shortlistKeys: Array.isArray(rec.shortlistKeys) ? rec.shortlistKeys.slice(0, MAX_SHORTLIST) : [],
       engine: rec.engine, gate: rec.gate, floor: rec.floor
     }
   }));
@@ -944,9 +1086,12 @@ function parseAuditRow(row) {
   if (row.ActionType === 'face-search') {
     return {
       searchId, ts, source: 'datastore',
-      probeSha256: payload.probeSha256 || null, caseNo: payload.caseNo || row.Note || null, legalBasis: payload.legalBasis || null,
+      probeSha256: payload.probeSha256 || null, probeSource: payload.probeSource || 'upload', samplePerson: payload.samplePerson || null,
+      exactParameterMatch: Boolean(payload.exactParameterMatch),
+      caseNo: payload.caseNo || row.Note || null, legalBasis: payload.legalBasis || null,
       officer: { actor: row.Actor, role: row.ActorRole }, unit: row.Unit || null,
       filters: payload.filters || {}, shortlist: payload.shortlist || null, candidates: toNum(payload.candidates, 0),
+      shortlistKeys: Array.isArray(payload.shortlistKeys) ? payload.shortlistKeys.map(String) : [],
       topConfidence: payload.topConfidence === undefined ? null : payload.topConfidence, topPersonKey: payload.topPersonKey || null,
       decision: row.OutcomeLabel || payload.decision || null, engine: payload.engine || null, gate: payload.gate || null, floor: payload.floor || null,
       decisions: []
@@ -969,6 +1114,9 @@ async function listAudit(ctx, opts) {
     if (!cur) { byId.set(rec.searchId, Object.assign({ decisions: [] }, rec)); return; }
     // Prefer the richer copy; union the decisions.
     const merged = Object.assign({}, cur, rec, { decisions: cur.decisions || [] });
+    // A copy written before shortlistKeys was persisted carries an empty list;
+    // never let it blank out a copy that knows the keys.
+    if (!(merged.shortlistKeys || []).length && (cur.shortlistKeys || []).length) merged.shortlistKeys = cur.shortlistKeys;
     for (const d of rec.decisions || []) if (!merged.decisions.some((x) => x.personKey === d.personKey && x.ts === d.ts)) merged.decisions.push(d);
     merged.source = cur.source === 'memory' ? 'memory' : rec.source;
     byId.set(rec.searchId, merged);
@@ -1055,9 +1203,18 @@ function validateSearch(body) {
   if (!cf.any && !cf.errors.length) errors.push({ code: 'FILTER_REQUIRED', message: 'at least one filter (districtId, moTag, riskBand, ageBand, gender, yearFrom/yearTo) must narrow the shortlist — a whole-gallery sweep is not allowed (rule R3)' });
   const limit = b.limit === undefined ? MAX_SHORTLIST : toNum(b.limit, NaN);
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_SHORTLIST) errors.push({ code: 'BAD_REQUEST', message: `limit must be an integer between 1 and ${MAX_SHORTLIST}` });
+  // probeSeed is a DEBUG / calibration input only: it skips the pixels and
+  // compares the generator's parameters directly, so a probe drawn from a
+  // gallery seed scores exactly 1.0 by construction. The UI never sends it
+  // (D-phase6-16) and every response that used it is labelled as an exact
+  // parameter match rather than a similarity.
   const probeSeed = b.probeSeed ? String(b.probeSeed).slice(0, 64) : null;
   if (probeSeed && !/^v\d+:\d+:[A-Za-z0-9_-]+$/.test(probeSeed)) errors.push({ code: 'BAD_REQUEST', message: 'probeSeed is malformed' });
-  return { errors, caseNo, legalBasis, filters: cf.filters, limit, probeSeed };
+  // Provenance of the probe: which built-in sample capture it was re-drawn
+  // from, or null for a real upload. Recorded in the audit, never matched on.
+  const samplePerson = b.samplePerson ? String(b.samplePerson).slice(0, 64) : null;
+  if (samplePerson && !/^[A-Za-z0-9_-]{1,64}$/.test(samplePerson)) errors.push({ code: 'BAD_REQUEST', message: 'samplePerson is malformed' });
+  return { errors, caseNo, legalBasis, filters: cf.filters, limit, probeSeed, samplePerson };
 }
 
 /** Deterministic demo answer when the caller asks for fixture mode explicitly (meta.source 'fixture'). */
@@ -1074,6 +1231,8 @@ async function identify(ctx, req, body, deps) {
   const searchId = `fs-${Date.now().toString(36)}-${decoded.sha256.slice(0, 8)}`;
   const base = {
     searchId, ts: new Date().toISOString(), probeSha256: decoded.sha256, probeBytes: decoded.buf.length, probeMime: decoded.mime,
+    probeSource: v.samplePerson ? 'sample-capture' : 'upload', samplePerson: v.samplePerson,
+    exactParameterMatch: Boolean(v.probeSeed),
     caseNo: v.caseNo, legalBasis: v.legalBasis, officer: who, unit: body.unitId ? String(body.unitId).slice(0, 64) : null,
     filters: v.filters, floor, gate: { mode: gate.mode, passed: gate.passed, reasons: gate.reasons }
   };
@@ -1082,12 +1241,15 @@ async function identify(ctx, req, body, deps) {
     await recordSearch(ctx, req, rec);
     return {
       ok: true,
-      data: { searchId, decision: 'rejected-by-quality-gate', gate: stripRaw(gate), candidates: [], floor, deadBand: DEAD_BAND, shortlist: null, probe: { sha256: decoded.sha256, bytes: decoded.buf.length, mime: decoded.mime, descriptor: probeDesc.source } },
+      data: { searchId, decision: 'rejected-by-quality-gate', gate: stripRaw(gate), candidates: [], floor, deadBand: DEAD_BAND, shortlist: null, case: null, probe: { sha256: decoded.sha256, bytes: decoded.buf.length, mime: decoded.mime, descriptor: probeDesc.source, source: base.probeSource, samplePerson: v.samplePerson, exactParameterMatch: Boolean(v.probeSeed) } },
       meta: metaFor(ctx, gate, null, floor, deps, rec)
     };
   }
   const shortlist = await buildShortlist(ctx, v.filters, v.limit);
-  const cmp = await compareCandidates(ctx, req, deps, decoded, probeDesc, shortlist, floor);
+  // Corroboration evidence the shortlist did NOT consume (rule R6 already
+  // bound this search to a case number, so the record is there to be read).
+  const caseCtx = await resolveCase(ctx, v.caseNo, await getLookups(ctx));
+  const cmp = await compareCandidates(ctx, req, deps, decoded, probeDesc, shortlist, floor, caseCtx);
   const top = cmp.candidates[0] || null;
   const decision = top && top.confidence !== null && top.confidence >= floor ? 'candidates' : 'no-reliable-match';
   const rec = Object.assign(base, {
@@ -1114,7 +1276,16 @@ async function identify(ctx, req, body, deps) {
         count: shortlist.count, cap: shortlist.cap, narrowed: shortlist.narrowed, withoutGallery: shortlist.withoutGallery,
         filters: shortlist.filters, applied: shortlist.applied, description: shortlist.description, scan: shortlist.scan
       },
-      probe: { sha256: decoded.sha256, bytes: decoded.buf.length, mime: decoded.mime, width: decoded.size ? decoded.size.width : null, height: decoded.size ? decoded.size.height : null, descriptor: probeDesc.source, measured: probeDesc.descriptor && probeDesc.descriptor.measured ? probeDesc.descriptor.measured : (probeDesc.descriptor ? 'spec' : null) },
+      case: caseCtx,
+      probe: {
+        sha256: decoded.sha256, bytes: decoded.buf.length, mime: decoded.mime,
+        width: decoded.size ? decoded.size.width : null, height: decoded.size ? decoded.size.height : null,
+        descriptor: probeDesc.source, measured: probeDesc.descriptor && probeDesc.descriptor.measured ? probeDesc.descriptor.measured : (probeDesc.descriptor ? 'spec' : null),
+        source: base.probeSource, samplePerson: v.samplePerson,
+        // True only on the debug seed path: the figures below are an exact
+        // parameter match (1.0 by construction), not a measured similarity.
+        exactParameterMatch: Boolean(v.probeSeed)
+      },
       noReliableMatch: decision === 'no-reliable-match'
         ? { reason: top && top.confidence !== null ? `top candidate ${top.confidence} is below the floor ${floor}` : (top ? 'no candidate could be scored' : 'no candidate carried a gallery image'), topConfidence: top ? top.confidence : null }
         : null
@@ -1222,6 +1393,19 @@ function modelCard() {
       { key: 'local-descriptor', name: 'Local descriptor engine', flag: null, role: 'honest default — cosine similarity over the generator\'s own parameter space (skin, hair, face width/height, jaw, glasses, facial hair, hair mass)' }
     ],
     calibration: cal,
+    // Measured on the deployed Development function on 28 Aug 2026 — three
+    // pooled Zia calls, verbatim responses in docs/benchmarks/face_zia_probe.json.
+    ziaObserved: {
+      measuredAt: '2026-08-28',
+      calls: 3,
+      analyseFace: { ok: false, status: 400, error: 'Please try again later', reading: 'Zia Face Analytics does not detect a face in a procedurally drawn portrait, so the quality gate runs in advisory mode for this gallery.' },
+      compareFace: [
+        { pair: 'same person (gallery P00001 vs its second capture)', confidence: 0.8407, matched: 'true', verdict: 'accepted — above the 0.70 floor' },
+        { pair: 'different people (gallery P00001 vs gallery P00002)', confidence: 0.6171, matched: 'true', verdict: 'refused by the floor — Zia calls it a match at its own 0.5 threshold, DAPPA does not at 0.70' }
+      ],
+      reading: 'One observed pair each way, not an error rate. It is the evidence for the floor: Zia\'s own threshold accepted two different generated people at 0.617; the published floor of 0.70 is what stopped that becoming a lead on the officer\'s screen.',
+      availability: 'In a live 5-candidate search on the same day, 1 of 5 comparisons succeeded and 4 returned the same transient error; those four fell back to the local engine and said so per candidate, and meta.engine reported "mixed".'
+    },
     statements: [
       'A face match is an investigative lead, not evidence of identity.',
       'Face comparison systems have documented demographic performance variation (NIST FRVT Part 3, 2019: false-positive rates differ by sex, age and ancestry by one to two orders of magnitude across algorithms); nothing here has been measured on real faces, and no real face is in the gallery.',
@@ -1249,6 +1433,6 @@ function demoSeedFor(personKey) {
 module.exports = {
   MAX_PROBE_BYTES, MAX_SHORTLIST, DEFAULT_FLOOR, DEAD_BAND, LEGAL_BASES, RULES, RISK_BANDS, AGE_BANDS,
   floorFor, ziaMaxCompares, decodeProbe, specDescriptor, pixelDescriptor, probeDescriptor, similarity, bandFor, openStream, closeStream,
-  qualityGate, cleanFilters, buildShortlist, compareCandidates, identify, validateSearch,
+  qualityGate, cleanFilters, buildShortlist, resolveCase, normTag, tagOverlap, compareCandidates, identify, validateSearch,
   recordSearch, listAudit, recordDecision, actorOf, galleryPage, thumbSvg, modelCard, calibration, demoSeedFor, hash32
 };

@@ -3,9 +3,7 @@
 // Every hook's exact return shape is documented in client/CONTRACT.md — route
 // fillers code against that file, not against guesses.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { demoKey, demoFallbackKey, normalizeUtterance } from './demoKey.js';
-
-export const API_BASE = import.meta.env.VITE_API_BASE || '/server/dappa_api/api/v1';
+import { demoKey, demoFallbackKey, demoPostKeyBody, normalizeUtterance } from './demoKey.js';
 
 // Static demo (GitHub Pages): built with VITE_STATIC_DEMO=1 every request is
 // answered from pre-generated JSON under BASE_URL/demo/api/ (written by
@@ -14,6 +12,15 @@ export const API_BASE = import.meta.env.VITE_API_BASE || '/server/dappa_api/api/
 // Catalyst builds compile this whole branch away — zero behavior change.
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === '1';
 const DEMO_BASE = `${import.meta.env.BASE_URL}demo/api/`;
+// Raw (non-envelope) API assets: the gallery / candidate thumbnails are plain
+// <img src={`${API_BASE}${thumbUrl}`}> requests that never pass through
+// request(). demo_snapshot.mjs mirrors them under client/public/demo/raw/ with
+// the identical path suffix, so pointing API_BASE there keeps them alive on
+// Pages instead of 404-ing to an absolute /server/... path that does not exist.
+const DEMO_RAW_BASE = `${import.meta.env.BASE_URL}demo/raw`;
+
+export const API_BASE = import.meta.env.VITE_API_BASE
+  || (STATIC_DEMO ? DEMO_RAW_BASE : '/server/dappa_api/api/v1');
 
 export class ApiError extends Error {
   constructor(code, message, status = 0) {
@@ -52,8 +59,8 @@ function buildQuery(params) {
 // degrades to broader data instead of erroring (e.g. an arbitrary date range
 // falls back to the endpoint's full window for the same district).
 const DEMO_STRIP_ORDER = [
-  ['from', 'to'], ['crimeSubHeadId'], ['crimeHeadId'], ['status'], ['bbox'],
-  ['communityId'], ['personKey', 'depth'], ['unitId'], ['district'],
+  ['from', 'to'], ['crimeSubHeadId'], ['gravityId'], ['crimeHeadId'], ['status'],
+  ['bbox'], ['communityId'], ['personKey', 'depth'], ['unitId'], ['district'],
   ['districtId'], ['repeatOnly'],
 ];
 
@@ -66,6 +73,11 @@ async function fetchSnapshot(key, signal) {
     return null;
   }
   if (!res.ok) return null;
+  // A missing key does not necessarily 404: a host that serves the SPA
+  // fallback answers 200 with index.html. Reject anything that is not JSON
+  // before parsing so a key drift surfaces as a miss, not as a silent null.
+  const type = res.headers.get('content-type') || '';
+  if (!/\bjson\b/i.test(type)) return null;
   try {
     return await res.json();
   } catch {
@@ -98,6 +110,11 @@ async function demoGet(path, params, signal) {
     const json = await fetchSnapshot(key, signal);
     if (json) return unwrapSnapshot(json);
   }
+  // Name the request that had no snapshot: the keys are hashes, so a 404 in the
+  // network panel cannot be traced back to an endpoint without this line. It is
+  // the only way to spot a generator gap while driving the built demo.
+  // eslint-disable-next-line no-console
+  console.warn('[demo] no snapshot for GET', path, JSON.stringify(prune(params || {})));
   throw new ApiError('DEMO_MISS', 'This view is not part of the static demo snapshot — reset the filters, or use the live Catalyst deployment.', 404);
 }
 
@@ -116,8 +133,26 @@ async function demoPost(path, body, signal) {
       meta: { source: 'demo-static', demoStatic: true },
     };
   }
-  const exact = await fetchSnapshot(demoKey('POST', path, {}, body || {}), signal);
+  // A face search on an image the snapshot never saw cannot be answered: the
+  // matcher runs inside the Catalyst function and it scores the PIXELS
+  // (D-phase6-16 — no probeSeed shortcut). Only the built-in sample captures
+  // name their stand-in, and the generator draws a probe to that stand-in's own
+  // measured parameters (scripts/demo_snapshot.mjs buildSampleProbe), so only
+  // those replay; anything else is refused rather than answered with another
+  // person's candidate list.
+  if (path === '/identify' && !(body && body.samplePerson)) {
+    throw new ApiError('DEMO_STATIC', 'Static demo: the face matcher runs in the Catalyst function and scores the pixels you upload, so only the built-in "Sample capture" probes have a pre-computed answer here. Use the live deployment to search your own image.', 403);
+  }
+  const exact = await fetchSnapshot(demoKey('POST', path, {}, demoPostKeyBody(path, body || {})), signal);
   if (exact) return unwrapSnapshot(exact);
+  // Writes that record an accountability decision must never look like they
+  // were recorded: there is nothing to write to in a static bundle.
+  if (/^\/alerts\/[^/]+\/actions$/.test(path)) {
+    throw new ApiError('FEATURE_DISABLED', 'Static demo: decisions need the live Catalyst deployment — nothing is recorded here.', 403);
+  }
+  if (/^\/identify\/audit\/[^/]+\/decision$/.test(path)) {
+    throw new ApiError('FEATURE_DISABLED', 'Static demo: a confirm / reject is written to the Catalyst audit table — nothing is recorded here.', 403);
+  }
   const fallback = await fetchSnapshot(demoFallbackKey('POST', path), signal);
   if (fallback) {
     const r = unwrapSnapshot(fallback);
@@ -131,12 +166,20 @@ async function demoPost(path, body, signal) {
   if (path === '/ai/narrative') {
     throw new ApiError('DEMO_MISS', 'This case is outside the static demo snapshot.', 404);
   }
+  if (path === '/identify') {
+    throw new ApiError('DEMO_MISS', 'Static demo: this filter combination was not pre-computed. Search a single filter (district, risk band, age band, gender or MO tag) with the shortlist limit left at 25.', 404);
+  }
+  if (path === '/zia/ocr' || path === '/zia/moderate') {
+    throw new ApiError('DEMO_STATIC', 'Static demo: only the three bundled sample scans are pre-computed — the live Catalyst deployment reads your own upload or pasted text.', 403);
+  }
   const ack = path.match(/^\/alerts\/([^/]+)\/ack$/);
   if (ack) {
     // Simulated write — nothing persists in the static demo, so the alert
     // reappears as OPEN after the invalidated queries refetch the snapshot.
     return { data: { alertId: decodeURIComponent(ack[1]), status: 'ACK', demoStatic: true }, meta: { source: 'demo-static', demoStatic: true } };
   }
+  // eslint-disable-next-line no-console
+  console.warn('[demo] no snapshot for write', path, 'body keys', Object.keys(body || {}).join(','));
   return { data: { ok: true, demoStatic: true }, meta: { source: 'demo-static', demoStatic: true } };
 }
 

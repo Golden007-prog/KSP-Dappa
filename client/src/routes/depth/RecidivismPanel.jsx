@@ -7,7 +7,7 @@ import { useT, useNames } from '../../lib/i18n.jsx';
 import { fmtInt, fmtPct } from '../../lib/format.js';
 import { useTheme } from '../../components/ThemeProvider.jsx';
 import { seriesColors } from '../trends/palettes.js';
-import { PanelFrame, StatTile, StepCurve } from './DepthBits.jsx';
+import { PanelFrame, SampleLine, StatTile, StepCurve } from './DepthBits.jsx';
 
 export default function RecidivismPanel() {
   const t = useT();
@@ -61,6 +61,7 @@ export default function RecidivismPanel() {
             <StatTile label={t('depth.recid.kpiCensored')} value={fmtInt(summary.censored)} hint={t('depth.recid.kpiCensoredHint')} />
           </div>
           <StepCurve series={series} grid={d.grid} maxT={730} ariaLabel={t('depth.recid.chartAria')} />
+          <SampleLine scan={d.scan} />
         </div>
       )}
     </PanelFrame>

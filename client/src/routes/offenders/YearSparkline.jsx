@@ -29,7 +29,7 @@ export default function YearSparkline({ timeline = [], height = 40 }) {
 
   const bw = 100 / data.years.length;
   return (
-    <div className="bg-base/60 border border-grid rounded-lg px-3 py-2 min-w-0">
+    <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2 min-w-0">
       <p className="text-[10px] uppercase tracking-wide text-muted">{t('network.spark.title')}</p>
       <svg
         viewBox="0 0 100 30"

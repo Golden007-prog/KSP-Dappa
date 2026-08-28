@@ -48,20 +48,20 @@ export default function CrewSheet({ crew, analysis, onClose }) {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5">
+          <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5">
             <p className="text-[10px] uppercase tracking-wide text-muted">{t('offenders.crewSheet.repeatShare')}</p>
             <p className="text-sm text-ink num">{fmtPct(crew.repeatShare * 100, { digits: 0 })}</p>
           </div>
-          <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5">
+          <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5">
             <p className="text-[10px] uppercase tracking-wide text-muted">{t('offenders.crewSheet.avgRisk')}</p>
             <p className="text-sm text-ink num">{crew.avgRisk === null ? '—' : fmtNum(crew.avgRisk, 1)}</p>
           </div>
-          <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5">
+          <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5">
             <p className="text-[10px] uppercase tracking-wide text-muted">{t('offenders.crewSheet.moLinks')}</p>
             <p className="text-sm text-ink num">{fmtInt(crew.links.length)}</p>
           </div>
           <div
-            className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5"
+            className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5"
             title={t('offenders.crewSheet.corroboratedHint')}
           >
             <p className="text-[10px] uppercase tracking-wide text-muted">{t('offenders.crewSheet.corroborated')}</p>

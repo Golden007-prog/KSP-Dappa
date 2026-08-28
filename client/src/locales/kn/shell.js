@@ -24,6 +24,8 @@ export default {
   'refresh.aria': 'ಎಲ್ಲಾ ದತ್ತಾಂಶ ನವೀಕರಿಸಿ — {freshness}',
   'refresh.busy': 'ನವೀಕರಿಸುತ್ತಿದೆ…',
   'refresh.agoMins': '{n} ನಿ ಹಿಂದೆ ನವೀಕೃತ',
+  'refresh.agoMinsShort': '{n} ನಿ ಹಿಂದೆ',
+  'refresh.justNowShort': 'ಈಗಷ್ಟೇ',
   'refresh.done': 'ದತ್ತಾಂಶ ನವೀಕರಿಸಲಾಗಿದೆ.',
   'refresh.failed': 'ನವೀಕರಣ ವಿಫಲ — API ಸಂಪರ್ಕ ಪರಿಶೀಲಿಸಿ.',
 
@@ -47,6 +49,9 @@ export default {
   'more.title': 'ಇನ್ನಷ್ಟು ನೋಟಗಳು',
   'more.aria': 'ಇನ್ನಷ್ಟು ನೋಟಗಳು',
   'more.language': 'Language · ಭಾಷೆ',
+
+  'display.title': 'ಪ್ರದರ್ಶನ ಸೆಟ್ಟಿಂಗ್‌ಗಳು',
+  'display.aria': 'ಪ್ರದರ್ಶನ ಸೆಟ್ಟಿಂಗ್‌ಗಳು — ಭಾಷೆ, ಕೋಷ್ಟಕ ಸಾಂದ್ರತೆ, ಅಕ್ಷರ ಗಾತ್ರ',
 
   'install.done': 'ಡ್ಯಾಪ್ಪಾ ಸ್ಥಾಪನೆಯಾಗಿದೆ — ಯಾವುದೇ ಆ್ಯಪ್‌ನಂತೆ ತೆರೆಯಿರಿ.',
 

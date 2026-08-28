@@ -9,7 +9,7 @@ import LoadingSkeleton from '../../components/LoadingSkeleton.jsx';
 import PlainSentence from '../../components/PlainSentence.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { useT } from '../../lib/i18n.jsx';
-import { fmtNum } from '../../lib/format.js';
+import { fmtInt, fmtNum } from '../../lib/format.js';
 
 const INFO = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -60,7 +60,9 @@ export function PanelFrame({
         </>
       )}
     >
-      {term && <PlainSentence term={term} vars={termVars} className="mb-3" />}
+      {/* size="lg" keeps the (i) a 44 px target on the mobile-first depth
+          screens; the -my-3 inside PlainSentence keeps the line height. */}
+      {term && <PlainSentence term={term} vars={termVars} size="lg" className="mb-3" />}
       {loading && <LoadingSkeleton lines={4} />}
       {!loading && error && (
         <EmptyState
@@ -81,7 +83,7 @@ export function PanelFrame({
 /** Small labelled figure. */
 export function StatTile({ label, value, hint, tone = '' }) {
   return (
-    <div className="bg-base/60 border border-grid rounded-lg px-3 py-2 min-w-0">
+    <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2 min-w-0">
       <p className="text-[10px] uppercase tracking-wide text-muted truncate">{label}</p>
       <p className={`text-base font-semibold num text-ink ${tone}`}>{value}</p>
       {hint && <p className="text-[11px] text-muted leading-snug">{hint}</p>}
@@ -89,10 +91,28 @@ export function StatTile({ label, value, hint, tone = '' }) {
   );
 }
 
+/** The one-line "how much of the store did this walk?" footer every corpus
+ * panel owes the reader (D-1: the corpus is a bounded sample and every answer
+ * says so). Takes the endpoint's own `scan` block; appends the truncation flag
+ * when the walk hit its edge budget. */
+export function SampleLine({ scan, className = '' }) {
+  const t = useT();
+  if (!scan) return null;
+  const truncated = scan.edgesTruncated || scan.profilesTruncated || scan.truncated;
+  return (
+    <p className={`text-[11px] text-muted ${className}`}>
+      {t('depth.common.sample', { persons: fmtInt(scan.personsAdmitted || 0), cases: fmtInt(scan.casesResolved || 0) })}
+      {truncated ? ` · ${t('depth.common.truncated')}` : ''}
+    </p>
+  );
+}
+
 /** Amber-intensity heat table. rows/cols = [{key,label}], value(r,c) → {v, label, sub?}. */
 export function HeatMatrix({ rows, cols, value, caption, max = 1, corner = '', className = '' }) {
   return (
-    <div className={`overflow-x-auto ${className}`}>
+    // Nothing in a heat matrix is focusable, so the scroller takes tabindex=0
+    // (WCAG 2.1.1) and borrows the table's caption as the landmark name.
+    <div className={`overflow-x-auto ${className}`} tabIndex={0} role="region" aria-label={caption}>
       <table className="w-full text-[11px] border-separate border-spacing-0.5">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -117,7 +137,10 @@ export function HeatMatrix({ rows, cols, value, caption, max = 1, corner = '', c
                     title={cell.title || ''}
                   >
                     <span>{cell.label ?? (Number.isFinite(v) ? fmtNum(v, 2) : '—')}</span>
-                    {cell.sub !== undefined && <span className="block text-[9px] text-muted">{cell.sub}</span>}
+                    {/* ink/80, not muted: the cell sits on an amber tint, and
+                        muted (#8A94A8) over the warmer cells measured 3.51–4.42
+                        in the dark theme — under the 4.5 bar for 9-px text. */}
+                    {cell.sub !== undefined && <span className="block text-[9px] text-ink/80">{cell.sub}</span>}
                   </td>
                 );
               })}
@@ -262,6 +285,8 @@ export function statusOf(word) {
       return 'stable';
     case 'de-escalating': case 'dip': case 'diminishing': case 'historical': case 'cooled': case 'weak':
       return 'falling';
+    case 'out-of-block':
+      return 'nodata';
     default:
       return 'nodata';
   }

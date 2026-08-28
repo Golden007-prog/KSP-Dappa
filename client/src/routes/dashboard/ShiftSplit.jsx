@@ -53,7 +53,7 @@ export default function ShiftSplit({ query }) {
           <div
             key={s.key}
             className={`rounded-lg border p-2 ${
-              analysis.dominant?.key === s.key ? 'border-amber/50 bg-amber/5' : 'border-grid/60 bg-base/30'
+              analysis.dominant?.key === s.key ? 'border-amber/50 bg-amber/5' : 'border-grid/60 bg-canvas/30'
             }`}
           >
             <p className="truncate text-[10px] uppercase tracking-wide text-muted">

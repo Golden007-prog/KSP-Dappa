@@ -189,7 +189,35 @@ export async function run(h) {
       const kx = r.json.data.knox;
       check('depth: Knox observed 3 close pairs against 6×3/10 expected (ratio 1.67), permutation p in (0,1]', kx.n === 5 && kx.pairs === 10 && kx.spaceClose === 6 && kx.timeClose === 3 && kx.observed === 3 && kx.expected === 1.8 && kx.ratio === 1.67 && kx.pValue > 0 && kx.pValue <= 1 && kx.perms === 99, JSON.stringify(kx));
       const z = r.json.data.zones;
-      check('depth: one prediction zone stays open (D on the scope\'s last day), older originators expired', z.asOf === '2026-07-20' && z.zones.length === 1 && z.zones[0].caseId === '4' && z.zones[0].radiusM === 500 && z.zones[0].daysLeft === 14 && z.zones[0].until === '2026-08-03', JSON.stringify(z));
+      // D is isolated -- no partner in either band -- so it casts no prediction
+      // zone even though it is the newest case in scope, and A's chain zone
+      // closed 40 days before the scope end. A near-repeat prediction zone is a
+      // circle around a case that has actually repeated on.
+      check('depth: an isolated case at the scope end casts no prediction zone, and the expired chain originator none either', z.asOf === '2026-07-20' && z.zones.length === 0, JSON.stringify(z));
+    });
+  }
+
+  // ------------------------------------- prediction zones: originators only
+  // P repeats on 6 days later, so P's band is still open at the scope end and P
+  // casts a zone; R is the newest case in scope but isolated, so it does not.
+  {
+    const t = h.buildFixtureTables();
+    const mk = (id, date, lat, lng) => ({ CaseMasterID: id, CrimeNo: `1010110112026${String(id).padStart(5, '0')}`, CrimeRegisteredDate: date, PoliceStationID: '1011', CrimeMajorHeadID: 3, CrimeMinorHeadID: 305, GravityOffenceID: 2, CaseStatusID: 1, latitude: lat, longitude: lng });
+    t.CaseMaster = [
+      mk(1, '2026-07-10', 12.97, 77.59),      // P originator
+      mk(2, '2026-07-16', 12.9702, 77.59),    // Q repeat of P (22 m, 6 days)
+      mk(3, '2026-07-20', 13.5, 76.0)         // R isolated, newest in scope
+    ];
+    await withApp(h, t, async (g) => {
+      const r = await g('/depth/near-repeat?from=2026-06-01&to=2026-08-31&distM=500&days=14&sameM=50&perms=9');
+      const d = r.json.data;
+      const byId = new Map(d.classification.cases.map((c) => [String(c.id), c.cls]));
+      check('depth: only the originator casts a zone -- the isolated newest case does not',
+        r.status === 200 && d.zones.zones.length === 1 && d.zones.zones[0].caseId === '1'
+        && byId.get('1') === 'originator' && byId.get('3') === 'isolated'
+        && d.zones.zones[0].until === '2026-07-24' && d.zones.zones[0].daysLeft === 4, JSON.stringify({ zones: d.zones.zones, tally: d.classification.tally }));
+      check('depth: every prediction zone belongs to an originator',
+        d.zones.zones.every((z2) => byId.get(String(z2.caseId)) === 'originator'), JSON.stringify(d.zones.zones.map((z2) => byId.get(String(z2.caseId)))));
     });
   }
 
@@ -267,6 +295,52 @@ export async function run(h) {
     });
   }
 
+  // -------------------------------------------- festival: overlapping windows
+  // Dasara 2025-10-02 and Deepavali 2025-10-20 sit 18 days apart, so each
+  // festival's +/-31-day fetch covers most of the other's. Concatenating the
+  // two fetches double-counts every shared day (the 7-day window entirely, the
+  // baseline only partly), which inflates the uplift. mergeDaily is what stops
+  // that, and the endpoint must recover the planted rate exactly.
+  {
+    check('depth: mergeDaily keeps one row per (date, head) across fetches, taking the complete count',
+      JSON.stringify(festival.mergeDaily([
+        [{ date: '2025-10-02', headId: 3, count: 9 }, { date: '2025-10-03', headId: 3, count: 4 }],
+        [{ date: '2025-10-02', headId: 3, count: 9 }, { date: '2025-10-02', headId: 5, count: 2 }],
+        [{ date: '2025-10-02', headId: 3, count: 5 }]
+      ]).sort((a, b) => a.headId - b.headId || a.date.localeCompare(b.date)))
+      === JSON.stringify([{ date: '2025-10-02', headId: 3, count: 9 }, { date: '2025-10-03', headId: 3, count: 4 }, { date: '2025-10-02', headId: 5, count: 2 }]));
+    check('depth: foldDaily sums per-case rows inside one fetch before the merge',
+      JSON.stringify(festival.foldDaily([{ date: '2025-10-02', headId: 3, count: 1 }, { date: '2025-10-02', headId: 3, count: 1 }, { date: '2025-10-05', headId: 3, count: 1 }]))
+      === JSON.stringify([{ date: '2025-10-02', headId: 3, count: 2 }, { date: '2025-10-05', headId: 3, count: 1 }]));
+
+    const t2 = h.buildFixtureTables();
+    const rows2 = [];
+    let id2 = 500000;
+    const both = ['2025-10-02', '2025-10-20'];
+    const winDays = new Set();
+    for (const f of both) { const w = festival.windowsFor(f); for (let d = w.winFrom; d <= w.winTo; d += 1) winDays.add(d); }
+    const span = both.map((f) => festival.windowsFor(f));
+    const from = Math.min(...span.map((w) => w.baseFrom));
+    const to = Math.max(...span.map((w) => w.baseTo));
+    for (let d = from; d <= to; d += 1) {
+      const n = winDays.has(d) ? 6 : 4; // exactly +50 % inside every festival window
+      for (let k = 0; k < n; k += 1) {
+        rows2.push({ CaseMasterID: id2 += 1, CrimeNo: `1${id2}`, CrimeRegisteredDate: common.dayToIso(d), PoliceStationID: '1011', CrimeMajorHeadID: 3, CrimeMinorHeadID: 305, GravityOffenceID: 2, CaseStatusID: 1, latitude: 12.97, longitude: 77.59 });
+      }
+    }
+    t2.CaseMaster = rows2;
+    await withApp(h, t2, async (g) => {
+      const r = await g('/depth/festival-uplift');
+      const d = r.json.data;
+      const hd = d.heads.find((x) => x.headId === 3);
+      const per = hd ? hd.perFestival.filter((f) => both.includes(f.date)) : [];
+      check('depth: overlapping Dasara / Deepavali windows are de-duplicated — both recover the planted +50 %, not an inflated figure',
+        r.status === 200 && per.length === 2 && per.every((f) => f.upliftPct === 50), JSON.stringify(per));
+      check('depth: the festival scan reports how many fetched rows the overlap duplicated',
+        d.scan.overlapRows > 0 && d.scan.dailyRows + d.scan.overlapRows === d.scan.fetchedRows, JSON.stringify(d.scan));
+    });
+  }
+
   // ---------------------------------------------------------------- custom scenario: identity why-linked components
   {
     const t = h.buildFixtureTables();
@@ -290,6 +364,39 @@ export async function run(h) {
       const kr = byAlias['Kumar Ravi'];
       check('depth: identity "Kumar Ravi" passes the exact-name anchor (ts 1, Δage 1) despite a 0.76 score', kr && kr.components.tokenSortRatio === 1 && kr.score === 0.76 && kr.anchorPass === true && kr.aboveThreshold === true && kr.verdict === 'exact-anchor', JSON.stringify(kr));
       check('depth: identity rows are ranked by score', d.aliases[0].alias === 'R Kumar' && d.aliases[1].alias === 'Kumar Ravi' && d.aliases[2].alias === 'Ravi Kumar B');
+      check('depth: the card reports the pipeline gates it applies (token-sort cutoff 0.6, block age 2 years)',
+        d.gates && d.gates.tokenSortCutoff === 0.6 && d.gates.blockAgeYears === 2 && /out of block/i.test(d.formula), JSON.stringify(d.gates));
+    });
+  }
+
+  // ---------------------------------------- identity: the pipeline's own gates
+  // The pipeline scores a pair only inside a phonetic block walked in age
+  // order, with token_sort_ratio(score_cutoff=60) and a 2-year age window
+  // (analytics.py resolve_identities). A name it could never have compared must
+  // not be shown as linked here.
+  {
+    const t = h.buildFixtureTables();
+    t.Accused = [
+      { AccusedMasterID: 1, CaseMasterID: 1, AccusedName: 'Ravi Kumar', AgeYear: 29, GenderID: 1, PersonID: 'A1' },
+      { AccusedMasterID: 2, CaseMasterID: 4, AccusedName: 'Ravi Kumar', AgeYear: 29, GenderID: 1, PersonID: 'A1' },
+      // same sorted name, 9 years apart -- outside the pipeline's age block
+      { AccusedMasterID: 3, CaseMasterID: 2, AccusedName: 'Kumar Ravi', AgeYear: 38, GenderID: 1, PersonID: 'A2' },
+      // nothing like the canonical name -- below the 0.60 token-sort cutoff
+      { AccusedMasterID: 4, CaseMasterID: 2, AccusedName: 'Shivanna Bhat', AgeYear: 29, GenderID: 1, PersonID: 'A2' },
+      // no age at all -- the pipeline never blocks the row
+      { AccusedMasterID: 5, CaseMasterID: 4, AccusedName: 'R Kumar', AgeYear: null, GenderID: 1, PersonID: 'A2' }
+    ];
+    await withApp(h, t, async (g) => {
+      const r = await g('/depth/identity/P001');
+      const d = r.json.data;
+      const by = Object.fromEntries((d.aliases || []).map((a) => [a.alias, a]));
+      check('depth: a 9-year age gap is out of the pipeline block, never "linked"',
+        by['Kumar Ravi'] && by['Kumar Ravi'].blockedBy === 'age-gap' && by['Kumar Ravi'].verdict === 'out-of-block' && by['Kumar Ravi'].aboveThreshold === false, JSON.stringify(by['Kumar Ravi']));
+      check('depth: a name under the 0.60 token-sort cutoff scores 0 on the name component, as the pipeline does',
+        by['Shivanna Bhat'] && by['Shivanna Bhat'].components.tokenSortRatio === 0 && by['Shivanna Bhat'].components.tokenSortRaw > 0 && by['Shivanna Bhat'].blockedBy === 'name-below-cutoff', JSON.stringify(by['Shivanna Bhat']));
+      check('depth: a row with no age is out of block, not scored as a link',
+        by['R Kumar'] && by['R Kumar'].blockedBy === 'age-missing' && by['R Kumar'].verdict === 'out-of-block', JSON.stringify(by['R Kumar']));
+      check('depth: the panel counts how many names are out of block', d.outOfBlock === 4, String(d.outOfBlock));
     });
   }
 

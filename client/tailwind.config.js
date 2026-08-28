@@ -12,7 +12,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        base: v('--t-base'),
+        // The page-background key is `canvas`, NOT `base`: a colour named
+        // `base` makes Tailwind emit `.text-base` twice — once as the
+        // font-size utility, once as the colour — and the colour copy wins on
+        // every `text-base text-amber` tile because the colour block is
+        // ordered after `.text-amber`, painting the number in the page
+        // background (invisible). `--t-base` stays the token name.
+        canvas: v('--t-base'),
         panel: { DEFAULT: v('--t-panel'), raised: v('--t-panel-raised') },
         grid: v('--t-grid'),
         // ≥3:1 boundary for inputs/buttons (WCAG 1.4.11); hairlines stay `grid`

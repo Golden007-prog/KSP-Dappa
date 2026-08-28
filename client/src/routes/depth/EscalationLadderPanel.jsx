@@ -9,7 +9,7 @@ import PlainTerm from '../../components/PlainTerm.jsx';
 import { useDepthEscalation } from '../../lib/depthApi.js';
 import { useT } from '../../lib/i18n.jsx';
 import { fmtInt, fmtNum, fmtPct } from '../../lib/format.js';
-import { PanelFrame, HeatMatrix, StatTile, statusOf } from './DepthBits.jsx';
+import { PanelFrame, HeatMatrix, SampleLine, StatTile, statusOf } from './DepthBits.jsx';
 
 export default function EscalationLadderPanel() {
   const t = useT();
@@ -81,7 +81,7 @@ export default function EscalationLadderPanel() {
               emptyMessage={t('depth.ladder.watchEmpty')}
             />
           </div>
-          <p className="text-[11px] text-muted">{t('depth.common.sample', { persons: fmtInt(d.scan?.personsAdmitted || 0), cases: fmtInt(d.scan?.casesResolved || 0) })}</p>
+          <SampleLine scan={d.scan} />
         </div>
       )}
     </PanelFrame>

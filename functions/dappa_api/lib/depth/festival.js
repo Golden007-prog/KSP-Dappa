@@ -36,7 +36,9 @@ function windowsFor(festivalDate) {
 }
 
 /**
- * daily = [{ date, headId, count }] covering each festival's ±31 days.
+ * daily = [{ date, headId, count }] covering each festival's ±31 days, already
+ * de-duplicated across the per-festival fetches (see mergeDaily) — rows are
+ * summed here, so an overlapping day that arrived twice would be counted twice.
  * Returns per-head uplift with a 95% CI across festivals plus the pooled ratio.
  */
 function estimate(daily, festivals, heads) {
@@ -107,4 +109,46 @@ function estimate(daily, festivals, heads) {
   };
 }
 
-module.exports = { estimate, windowsFor, FESTIVALS, WINDOW_DAYS, BASE_DAYS, T95 };
+/**
+ * Merge the per-festival fetches into one de-duplicated daily series.
+ *
+ * Each fetch is a GROUP BY over its own ±31-day range, so a row is the COMPLETE
+ * count for that (date, head) — but Dasara and Deepavali sit 18–20 days apart,
+ * so their ranges overlap and the same day arrives twice. Summing them would
+ * double every day in the overlap (the window fully, the baseline only partly),
+ * which inflates the uplift. A day carries one true count however many fetches
+ * saw it, so merge by max: equal to either value when both are complete, and
+ * never the smaller of a complete and a row-capped read.
+ *
+ * `fetches` = [[{ date, headId, count }, …], …], one array per festival.
+ */
+function mergeDaily(fetches) {
+  const byKey = new Map();
+  for (const rows of fetches) {
+    for (const r of rows || []) {
+      const key = `${String(r.date).slice(0, 10)}|${Number(r.headId)}`;
+      const c = Number(r.count || 0);
+      const prev = byKey.get(key);
+      if (prev === undefined || c > prev.count) byKey.set(key, { date: String(r.date).slice(0, 10), headId: Number(r.headId), count: c });
+    }
+  }
+  return [...byKey.values()];
+}
+
+/** Per-case rows (count 1 each) folded into one row per (date, head), so a
+ * fetch's own rows are summed exactly once before mergeDaily de-duplicates
+ * across fetches. */
+function foldDaily(rows) {
+  const byKey = new Map();
+  for (const r of rows || []) {
+    const date = String(r.date).slice(0, 10);
+    const headId = Number(r.headId);
+    const key = `${date}|${headId}`;
+    const prev = byKey.get(key);
+    if (prev) prev.count += Number(r.count || 0);
+    else byKey.set(key, { date, headId, count: Number(r.count || 0) });
+  }
+  return [...byKey.values()];
+}
+
+module.exports = { estimate, mergeDaily, foldDaily, windowsFor, FESTIVALS, WINDOW_DAYS, BASE_DAYS, T95 };

@@ -282,6 +282,34 @@ function memoryRows() { return [...memory.values()]; }
 // reads
 // ---------------------------------------------------------------------------
 
+// PUBLIC_DEMO empty-table fallback (int-6 / D-phase7-12). A FAILED ZCQL read
+// already falls through to the fixture; an EMPTY one did not, so a deployment
+// where the ActionLog table exists but was never seeded served "0 decisions
+// recorded" on every phase-7 surface while the tests and the static demo saw
+// 44 rows. The probe is per container and one query at most: once any read
+// returns a row the table is known non-empty and this never runs again.
+// meta.source/meta.storage say `fixture` whenever it fires — a fixture row is
+// never reported as the Data Store's.
+let tableKnownNonEmpty = false;
+
+async function datastoreTableIsEmpty(ctx) {
+  if (tableKnownNonEmpty) return false;
+  const { getFallbackState } = require('./fixture');
+  const before = getFallbackState().queries;
+  try {
+    const probe = await ctx.ds.query({ table: TABLE, columns: ['ROWID'], limit: { count: 1 } });
+    // A fixture-answered probe proves nothing about the real table.
+    if (getFallbackState().queries > before) return false;
+    if (probe.length) { tableKnownNonEmpty = true; return false; }
+    return true;
+  } catch (e) {
+    return false; // an unknown is not an emptiness
+  }
+}
+
+/** Test hook — forget the per-container "table has rows" memo. */
+function resetEmptyProbe() { tableKnownNonEmpty = false; }
+
 async function readRows(ctx, opts) {
   const o = opts || {};
   const where = [];
@@ -303,6 +331,12 @@ async function readRows(ctx, opts) {
       orderBy: { col: 'ClientTs', desc: true }
     }, { maxRows: o.maxRows || 3000 });
     if (getFallbackState().queries > before) source = 'fixture';
+    else if (rows.length) tableKnownNonEmpty = true;
+    else if (ctx.flags && ctx.flags.publicDemo && await datastoreTableIsEmpty(ctx)) {
+      const { buildFixtureTables } = require('./fixture');
+      rows = buildFixtureTables().ActionLog || [];
+      source = 'fixture';
+    }
   } catch (e) {
     rows = [];
     source = 'unavailable';
@@ -747,6 +781,7 @@ module.exports = {
   inputFromRow,
   normalizeRow,
   resetMemory,
+  resetEmptyProbe,
   memoryRows,
   listActions,
   sourceOf,

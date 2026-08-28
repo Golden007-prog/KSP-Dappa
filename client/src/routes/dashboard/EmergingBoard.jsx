@@ -147,7 +147,7 @@ export default function EmergingBoard({ query, linkSearch = '', onPickHead, acti
                         })}
                       </span>
                       {vol !== null && (
-                        <span className="num shrink-0 rounded-full border border-grid bg-base/50 px-1.5 text-[9px] text-muted">
+                        <span className="num shrink-0 rounded-full border border-grid bg-canvas/50 px-1.5 text-[9px] text-muted">
                           {t('dashboard.emerging.vol', { pct: fmtNum(vol, 0) })}
                         </span>
                       )}

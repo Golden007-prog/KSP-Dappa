@@ -28,7 +28,7 @@ export default function PairAnalyzer({ edges = [], nodesById = new Map(), a = ''
   }
 
   const cell = (label, value, hint) => (
-    <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5" title={hint}>
+    <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5" title={hint}>
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="text-sm text-ink num">{value}</p>
     </div>

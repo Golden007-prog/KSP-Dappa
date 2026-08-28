@@ -1,5 +1,6 @@
 {
-  "title": "KSP DAPPA — 3-minute demo",
+  "title": "KSP DAPPA — 3-minute demo (Round 2)",
+  "revision": "round2-2026-08-29",
   "target_runtime_s": [
     170,
     178
@@ -8,129 +9,154 @@
     "model": "gemini-3.1-flash-tts-preview",
     "name": "Charon"
   },
-  "provenance": "Every claim below was verified against the live deployment on 2026-07-26. See video/logs/decisions.md for the command and output behind each one.",
+  "provenance": "Every claim below was verified against the live Development deployment on 2026-08-28/29. Numbers come from GET /healthz, GET /meta/services, docs/benchmarks/*.json and docs/capability_counts.json — not from memory. The Round-1 script (rendered 2026-07-26) is superseded; see changes_from_round1 for every line that changed and why.",
+  "render_note": "This is the narration + shot list. The rendered Round-1 cut (video/out/KSP_DAPPA_Demo_3min.mp4) predates the officer tiers, face identification, the action loop and CSV ingest, and still says 'Hindi' and 'Circuits' — both of which are now false. Re-render before submission.",
   "scenes": [
     {
       "id": 1,
-      "slot": "0:00-0:15",
+      "slot": "0:00-0:14",
       "visual": "Higgsfield b-roll — police records room at night",
-      "text": "Across Karnataka, crime records sit in silos. A repeat offender changes one letter of his name, crosses a district line, and disappears. The data exists. The intelligence doesn't.",
+      "text": "Across Karnataka, crime records sit in silos. An offender changes one letter of his name, crosses a district line, and disappears.",
       "lower_third": "Records everywhere. Intelligence nowhere."
     },
     {
       "id": 2,
-      "slot": "0:15-0:30",
+      "slot": "0:14-0:27",
       "visual": "Hero dashboard still, slow push-in",
-      "text": "KSP DAPPA changes that. Built on Zoho Catalyst, it turns forty-five thousand FIR records — modelled on the official Karnataka Police schema — into one live intelligence hub.",
+      "text": "KSP DAPPA turns forty-five thousand FIR records — on the official Karnataka Police schema — into one intelligence hub, built end to end on Zoho Catalyst.",
       "lower_third": "KSP DAPPA — From Records to Foresight"
     },
     {
       "id": 3,
-      "slot": "0:30-0:47",
-      "visual": "Animated architecture diagram (HTML)",
-      "text": "A Python pipeline precomputes everything heavy — hotspots, forecasts, anomaly alerts, the co-accused network. Data Store holds it. One Node API serves it in milliseconds. Caste and religion never enter a model.",
-      "lower_third": "Precompute heavy. Serve in milliseconds."
+      "slot": "0:27-0:47",
+      "visual": "Screen: tier switcher walking State → District → Station → Beat, ending on #/beat at phone width",
+      "text": "One app, four ranks. A DGP sees all thirty-eight units. A station officer sees this week against the usual. A head constable sees one card: what changed on my beat, what needs attention, what to do tonight — in plain words.",
+      "lower_third": "DGP to head constable — one app, four shapes"
     },
     {
       "id": 4,
-      "slot": "0:47-1:04",
-      "visual": "Screen #/ — command dashboard",
-      "text": "Live KPI tiles; anomaly districts pulse red. Where a table isn't fully loaded, we show a dash — not a wrong number. The sixth tile forecasts next month, with a confidence interval.",
+      "slot": "0:47-1:01",
+      "visual": "Screen #/ — command dashboard, then #/map hotspot fly-to and the month scrubber",
+      "text": "Anomaly districts pulse red. Where a number isn't trustworthy we print a dash, not a guess. Press play, and months of crime drift across Karnataka.",
       "lower_third": "A dash, not a wrong number"
     },
     {
       "id": 5,
-      "slot": "1:04-1:15",
-      "visual": "Screen #/map — GeoIntel",
-      "text": "GeoIntel ranks every hotspot in the state. Click one, the map flies to it. Press space, and months of crime drift animate across Karnataka.",
-      "lower_third": "Months of crime drift, in seconds"
+      "slot": "1:01-1:16",
+      "visual": "Screen #/network — co-accused graph, then an Offender-360 alias panel",
+      "text": "The network explorer maps who offends together — twenty-three thousand co-accused links. And the alias matcher's measured precision is printed on the screen that uses it.",
+      "lower_third": "23,833 links · 2,048 people · precision published"
     },
     {
       "id": 6,
-      "slot": "1:15-1:29",
-      "visual": "Screen #/network — co-accused graph",
-      "text": "The network explorer maps who offends together — nearly twenty-four thousand co-accused links across two thousand people. Open a person: the aliases no spreadsheet could join.",
-      "lower_third": "23,833 links · 2,047 people"
+      "slot": "1:16-1:32",
+      "visual": "Screen #/identify — upload, quality gate, shortlist, ranked candidates with confidence bars and the audit banner",
+      "text": "Face identification, done properly. Zia compares two faces; we never sweep a gallery. Filters narrow to twenty-five candidates, every result carries a confidence figure, and below the floor the answer is no reliable match. Every search needs a case number and a legal basis. Every search is logged.",
+      "lower_third": "A lead, never an identification"
     },
     {
       "id": 7,
-      "slot": "1:29-1:43",
-      "visual": "Screen #/copilot — Ask DAPPA",
-      "text": "Ask DAPPA speaks plain language. Top five districts for vehicle theft this year? A chart answers in under a second — and shows the exact query it ran. Every AI answer is auditable.",
-      "lower_third": "Every AI answer shows its query"
+      "slot": "1:32-1:46",
+      "visual": "Screen #/alerts — open an alert, record a decision with a reason, then the 'what happened to past alerts' panel",
+      "text": "An officer acknowledges, assigns or dismisses an alert — a dismissal needs a reason — and the decision is written to the Data Store. Below: what happened to every past alert. How many were real. How long they took.",
+      "lower_third": "It records what the officer decided"
     },
     {
       "id": 8,
-      "slot": "1:43-2:03",
-      "visual": "Screen #/predict → #/cases/45000 → #/alerts → language flip",
-      "text": "Predict scores case status from a live QuickML model — and publishes its real accuracy beside it, even when that number is weak. Zia reads the FIR narrative and pulls out entities, live. And the interface switches to Kannada or Hindi, instantly. ಇದು ಕರ್ನಾಟಕಕ್ಕಾಗಿ — this is for Karnataka.",
-      "lower_third": "English · ಕನ್ನಡ · हिंदी"
+      "slot": "1:46-1:58",
+      "visual": "Screen #/ingest — pick CaseMaster, drop the 200-row CSV, mapped preview with per-cell marks, rejection report, 'what changed' card",
+      "text": "Drop in a CSV in the official format. Every row is checked — the eighteen-digit crime number, the district a coordinate really falls in, the caste column accepted for fidelity and never used. Bad rows come back as a report.",
+      "lower_third": "Check first. Write later."
     },
     {
       "id": 9,
-      "slot": "2:03-2:26",
-      "visual": "Screen #/about + Chrome network-tab proof card",
-      "text": "One Zoho Catalyst project, end to end. Web Client Hosting serves the app; an Advanced I/O function serves the API. Data Store holds forty-five thousand records; Stratus holds every brief. QuickML and Zia answer the AI calls — every response names the engine behind it.",
-      "lower_third": "One Catalyst project, end to end"
+      "slot": "1:58-2:12",
+      "visual": "Screen #/copilot — a plain-language question answering with a chart and the ZCQL it ran; then the Kannada flip",
+      "text": "Ask in plain language, or out loud. A chart answers, and shows the query behind it. Then the interface turns Kannada. ಇದು ಕರ್ನಾಟಕಕ್ಕಾಗಿ.",
+      "lower_third": "English · ಕನ್ನಡ · every answer shows its query"
     },
     {
       "id": 10,
-      "slot": "2:26-2:45",
-      "visual": "Higgsfield b-roll — checkpost at dawn",
-      "text": "Just the start. Today, synthetic FIRs; tomorrow, CCTNS — same schema, column for column, with jurisdiction-scoped access and an audit trail. Circuits orchestrates the nightly chain. Ask DAPPA out loud, in Kannada.",
-      "lower_third": "Same schema, column for column"
+      "slot": "2:12-2:32",
+      "visual": "Screen #/about — the service matrix and the honesty ledger, scrolling",
+      "text": "One Catalyst project, end to end. Thirty-five services, each stating what it does and what it still needs. Every AI answer names the engine behind it — even when that engine was our own fallback.",
+      "lower_third": "35 services, each with an honest status"
     },
     {
       "id": 11,
-      "slot": "2:45-2:54",
+      "slot": "2:32-2:47",
+      "visual": "Higgsfield b-roll — checkpost at dawn",
+      "text": "Today, synthetic FIRs; tomorrow, real CCTNS exports through the same screen. The decisions officers record today are the labels the models learn tomorrow.",
+      "lower_third": "Same schema, column for column"
+    },
+    {
+      "id": 12,
+      "slot": "2:47-2:56",
       "visual": "Title card (HTML)",
-      "text": "KSP DAPPA. From records to foresight. Built end to end on Zoho Catalyst, for the KSP Datathon twenty twenty-six.",
+      "text": "KSP DAPPA never tells an officer what to do. It shows what it found, how sure it is, and records what they decided.",
       "lower_third": "KSP Datathon 2026 · ದತ್ತಾಂಶದಿಂದ ದೂರದೃಷ್ಟಿಗೆ"
     }
   ],
-  "changes_from_locked_script": [
+  "changes_from_round1": [
     {
-      "scene": 6,
-      "was": "showing the four hundred most connected",
-      "now": "across two thousand resolved people",
-      "why": "/network/graph returns nodeCount 2047 / edgeCount 3000 (capped from 23,833). '400 most connected' could not be substantiated from the endpoint, so the claim was replaced with the two numbers the API actually reports. Lower-third changed to match."
+      "scene": "8 (old)",
+      "was": "the interface switches to Kannada or Hindi, instantly … lower third 'English · ಕನ್ನಡ · हिंदी'",
+      "now": "Kannada only (new scene 9)",
+      "why": "BLOCKING TRUTH FIX. The Hindi locale was retired in commit 194bdd1 (decision D-008): Karnataka police work happens in Kannada and English, and an unmaintained third language reads as decoration. The old line would be contradicted by the language switcher on screen."
     },
     {
-      "scene": 7,
-      "was": "answers in a third of a second",
-      "now": "answers in under a second",
-      "why": "measured copilot latency did not reliably hit 0.3 s on the live deployment; 'under a second' is defensible at every sample taken."
+      "scene": "10 (old)",
+      "was": "Circuits orchestrates the nightly chain.",
+      "now": "cut; Job Scheduling named in the services scene instead",
+      "why": "BLOCKING TRUTH FIX. Catalyst documents Circuits as unavailable to IN-data-centre users and this project runs on .catalystserverless.in (decision D-019). The nightly chain runs as the dappa_nightly cron function with a Job Scheduling pool."
     },
     {
-      "scene": 8,
-      "was": "publishes its real accuracy beside it",
-      "now": "publishes its real accuracy beside it, even when that number is weak",
-      "why": "strengthens the honesty USP and pre-empts a judge noticing AUC 0.500 unaided."
+      "scene": "10 (old)",
+      "was": "Ask DAPPA out loud, in Kannada. (as a future item)",
+      "now": "moved into scene 9 as shipped",
+      "why": "Read-aloud and voice input ship via the browser Web Speech API (decision D-014). It is present tense now, and the roadmap line would understate the build."
     },
     {
-      "scene": 9,
-      "was": "Advanced I/O, Event and Cron functions do the compute — register a case, and Signals raises the alert live. Data Store, NoSQL, Stratus and Cache hold every byte.",
-      "now": "an Advanced I/O function serves the API. Data Store holds all forty-five thousand records, and Stratus holds every generated brief.",
-      "why": "BLOCKING TRUTH FIX. Measured on the live deployment 2026-07-26: NoSQL reports mode 'fixture-demo' and /network/graph returns meta.source 'datastore'; Cache reports backend 'memory' on a warm instance; Data Store Search returns source 'fallback-zcql-like'; Authentication returns source 'fallback-local'; the nightly Cron reports mode 'fixture', last run 2026-07-01, 40 of 45,000 cases read; and zero EVT- alerts exist, so the Signals event function has not created anything filmable. /meta/services badges all of these 'live' because servicemap.js keys status off loader configuration rather than off a successful call. Only Advanced I/O, Data Store/ZCQL, Stratus, Zia Text Analytics and QuickML case-status are provably serving, plus Web Client Hosting and API Gateway as platform facts."
+      "scene": "9 (old) → 10",
+      "was": "forty-five thousand records; Stratus holds every brief; QuickML and Zia answer the AI calls",
+      "now": "thirty-five services are mapped, and every row states what it is doing and what it still needs",
+      "why": "The service map grew from 28 to 35 rows in Round 2 and now carries a distinct 'unavailable' status for services the IN data centre does not offer. The scene now sells the honesty of the matrix, which is the defensible claim, rather than a service list a judge could tick off against /meta/services."
     },
     {
-      "scene": 9,
-      "was": "And every service's real status is published, right here.",
-      "now": "and every response names the engine that produced it, so nothing here is a black box.",
-      "why": "the /about matrix currently overstates five services as live, so claiming it publishes real status would contradict the measured truth while that very page is on screen. meta.source naming the engine IS verifiably true on every AI endpoint tested."
+      "scene": "new 3",
+      "why": "Officer tiers are the highest-scoring requirement of the Round-2 brief ('usable by a head constable as well as a DGP') and there was no beat in the Round-1 cut. The tier switcher is also the single most demonstrable thing on screen."
     },
     {
-      "scene": 9,
-      "was": "Signals live-alert insert beat on camera",
-      "now": "cut",
-      "why": "POST /admin/bulk-insert returns 403 for the anonymous demo session, and no EVT- alerts exist to film instead."
+      "scene": "new 6",
+      "why": "Face identification did not exist in Round 1. The narration deliberately leads with the constraints (no sweep, a cap, a floor, a purpose binding, an audit) rather than the capability, because that is what makes it defensible to a police jury."
     },
     {
-      "scene": 8,
-      "was": "alert acknowledgement beat",
-      "now": "cut",
-      "why": "POST /alerts/:id/ack returns 403 anonymous; /auth/me shows acknowledgeAlerts false. Narration never mentioned it, so no rewording needed."
+      "scene": "new 7",
+      "why": "The action loop converts the dashboard into a system, and 'what happened to past alerts' is the single most persuasive screen for a police evaluator. Round 1 had no write path at all."
+    },
+    {
+      "scene": "new 8",
+      "why": "CSV ingest is what moves DAPPA from an impressive demo to a pilot candidate; the Round-2 brief calls out that twenty seconds of it outscores fifty features nobody opens."
+    },
+    {
+      "scene": "5",
+      "was": "the aliases no spreadsheet could join",
+      "now": "the alias matcher's measured precision is published on the screen that uses it",
+      "why": "The measured identity-resolution precision is 0.032 at the deployed threshold (docs/benchmarks/identity_metrics.json). Claiming the joins are a triumph would be contradicted by our own published number; claiming the publication is the triumph is both true and stronger."
+    },
+    {
+      "scene": "12",
+      "was": "Built end to end on Zoho Catalyst, for the KSP Datathon twenty twenty-six.",
+      "now": "It never tells an officer what to do. It shows what it found, how sure it is, and records what they decided.",
+      "why": "The Round-2 brief names this as the closing line and it is the correct posture on predictive policing; the Catalyst claim is already made in scene 2 and scene 10."
     }
   ],
-  "trim_note": "Narration cut 440 -> 348 words over two passes. First VO pass measured 220.1 s, second 184.3 s, against a 176 s ceiling; Charon reads ~1.94 words/sec. Scenes 7 and 8 were protected per the brief. A 1.03x atempo is applied in the mix to close the last few seconds."
+  "shot_capture_notes": [
+    "Scenes 3-9 are screen captures of the live Development deployment (https://project-rainfall-60079891305.development.catalystserverless.in/app/index.html). Record scene 3's beat card at 360x640 device emulation so the phone framing is real, not a scaled desktop.",
+    "Scene 6: use the Identify screen's 'Use a sample capture' control so no real photograph is ever on camera, and hold on the synthetic-gallery banner for at least one second.",
+    "Scene 7: record against the live deployment AFTER the ActionLog seed has been imported, otherwise the outcomes panel is legitimately empty.",
+    "Scene 8: the bundled 200-row file is data/ingest_demo/CaseMaster_sample.csv — 12 rows are deliberately broken so the rejection report has something to show.",
+    "Keep the Chrome network tab out of shot except where the Round-1 cut used it; the basemap tile requests are declared in the README but do not need airtime."
+  ],
+  "trim_note": "Narration is 370 words. At Charon's measured ~1.94 words/sec that is ~191 s of voice; the Round-1 mix closed its last few seconds with a 1.03x atempo, which brings this to ~185 s against the 178 s ceiling. Scenes 3, 6, 7 and 8 are the Round-2 differentiators and were protected during the trim. If a VO pass still overruns: cut scene 4's second sentence, then scene 11's second sentence, then scene 5's second sentence — in that order, each is restated elsewhere on screen."
 }

@@ -80,7 +80,7 @@ export default function OcrResult({ result, meta, moderation, fromTruth, isLoadi
             </div>
           )}
         </div>
-        <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-grid bg-base/40 p-3 text-xs leading-relaxed text-ink font-mono" aria-label={t('surfaces.ocr.result')}>
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-grid bg-canvas/40 p-3 text-xs leading-relaxed text-ink font-mono" aria-label={t('surfaces.ocr.result')}>
           {text || '—'}
         </pre>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

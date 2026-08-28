@@ -19,6 +19,7 @@ import PulseDot from '../components/PulseDot.jsx';
 import { useToast } from '../components/ToastProvider.jsx';
 import { dateLabel, fmtInt } from '../lib/format.js';
 import { useT } from '../lib/i18n.jsx';
+import { useDocumentTitle } from '../lib/a11y.js';
 import { useCaseNames } from './cases/names.js';
 import CrimeNoBreakdown, { splitCrimeNo } from './cases/CrimeNoBreakdown.jsx';
 import PartyList, { ARREST_FIELDS, NAME_KEYS } from './cases/PartyList.jsx';
@@ -141,14 +142,12 @@ export default function CaseDetail() {
     return () => window.removeEventListener('keydown', onKey);
   }, [goSibling]);
 
-  // Tab title mirrors the case; restored on unmount.
-  useEffect(() => {
-    const prev = document.title;
-    return () => { document.title = prev; };
-  }, []);
-  useEffect(() => {
-    document.title = t('cases.detail.docTitle', { no: d.crimeNo || id });
-  }, [d.crimeNo, id, t]);
+  // Tab title mirrors the FIR number — the nav table can only say "FIR detail",
+  // so this route registers its own (lib/a11y.js). ShellA11y adds the pending-
+  // alert prefix and the app suffix and clears it when the route unmounts;
+  // setting document.title here directly would be overwritten by ShellA11y's
+  // own effect on the next render.
+  useDocumentTitle(t('a11y.title.case', { no: d.crimeNo || id }));
 
   // Recently-viewed trail for the explorer's Recent row.
   const loaded = !c.isLoading && !c.error && !!c.data;

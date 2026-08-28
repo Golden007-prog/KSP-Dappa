@@ -392,7 +392,7 @@ export default function OutcomePanel() {
               return (
                 <li
                   key={r.t.getTime()}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted"
                   title={t('trends.predict.runlog.scoredBy', {
                     source: t(r.source === 'fallback-local'
                       ? 'trends.predict.runlog.sourceFallback'

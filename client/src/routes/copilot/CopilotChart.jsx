@@ -123,7 +123,7 @@ export default function CopilotChart({ chart }) {
   const fmtCell = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-IN'));
 
   return (
-    <div className="mt-3 rounded-lg border border-grid bg-base/60 p-2">
+    <div className="mt-3 rounded-lg border border-grid bg-canvas/60 p-2">
       <div className="flex flex-wrap items-center gap-x-1 gap-y-0 px-1">
         <p className="flex-1 min-w-[8rem] text-[11px] text-muted truncate">{chart.title || ''}</p>
         {baseType !== 'pie' && (

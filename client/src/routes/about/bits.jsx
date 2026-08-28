@@ -47,7 +47,7 @@ export function PanelState({ isLoading, error, retry, skeletonHeight = 180, chil
         title={t('about.state.errorTitle')}
         message={`${t('about.state.errorBody')}${error.message ? ` — ${error.message}` : ''}`}
         action={retry ? (
-          <button type="button" onClick={retry} className="min-h-[40px] rounded-lg border border-grid bg-base/50 px-3.5 text-xs text-ink hover:border-primary/60 transition-colors">
+          <button type="button" onClick={retry} className="min-h-[40px] rounded-lg border border-grid bg-canvas/50 px-3.5 text-xs text-ink hover:border-primary/60 transition-colors">
             {t('about.state.retry')}
           </button>
         ) : null}
@@ -72,7 +72,7 @@ export function Field({ label, children, mono = false }) {
 export function CodeChip({ children, tone = 'grid' }) {
   const border = tone === 'amber' ? 'border-amber/40 text-amber' : tone === 'teal' ? 'border-teal/40 text-teal' : 'border-grid text-muted';
   return (
-    <span className={`inline-block rounded border ${border} bg-base/50 px-1.5 py-0.5 font-mono text-[10px] leading-relaxed break-all`}>
+    <span className={`inline-block rounded border ${border} bg-canvas/50 px-1.5 py-0.5 font-mono text-[10px] leading-relaxed break-all`}>
       {children}
     </span>
   );
@@ -100,7 +100,7 @@ export function FlagLamp({ name, on, envName }) {
   const t = useT();
   return (
     <Tooltip label={envName ? t('about.flags.tip', { env: envName, state: t(on ? 'about.flags.on' : 'about.flags.off') }) : ''}>
-      <span className="inline-flex min-h-[32px] w-full items-center gap-1.5 rounded-lg border border-grid bg-base/40 px-2">
+      <span className="inline-flex min-h-[32px] w-full items-center gap-1.5 rounded-lg border border-grid bg-canvas/40 px-2">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? 'bg-teal' : 'bg-muted/50'}`} aria-hidden="true" />
         <span className="font-mono text-[10px] text-ink/90 truncate">{name}</span>
         <span className={`ml-auto text-[10px] shrink-0 ${on ? 'text-teal' : 'text-muted'}`}>
@@ -124,7 +124,7 @@ export function CopyButton({ text, label, okMessage, className = '' }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 min-h-[36px] rounded-lg border border-grid bg-base/50 px-2.5 text-[11px] text-muted hover:text-ink hover:border-primary/60 transition-colors ${className}`}
+      className={`inline-flex items-center gap-1.5 min-h-[36px] rounded-lg border border-grid bg-canvas/50 px-2.5 text-[11px] text-muted hover:text-ink hover:border-primary/60 transition-colors ${className}`}
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="9" y="9" width="11" height="11" rx="2" />

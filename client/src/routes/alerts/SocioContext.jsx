@@ -49,7 +49,7 @@ export default function SocioContext({ query, alert: a }) {
   const name = tName('districts', s.districtId, s.districtName || raw) || s.districtName || raw;
 
   return (
-    <div className="rounded-lg border border-grid/70 bg-base/20 p-2.5">
+    <div className="rounded-lg border border-grid/70 bg-canvas/20 p-2.5">
       <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
           {t('alerts.socio.title')}

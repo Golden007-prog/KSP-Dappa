@@ -63,10 +63,15 @@ export default function HeatCalendar({ query, onPickMonth, activeFrom, activeTo 
       />
 
       {/* The grid is intentionally allowed to scroll inside its own box: 12
-          month columns plus a year label never fit 360px, and shrinking the
-          cells below 20px makes them untappable. */}
+          month columns plus a year label never fit 360px. The cell buttons carry
+          their own min-width so the column can never squeeze below the WCAG
+          2.5.8 target size — at the old 22rem table width they measured 20 × 24
+          on a 360 px phone and axe failed target-size; the table min-width alone
+          could not guarantee it, because the year and total columns size to
+          their content. The box scrolls, but its buttons are focusable, so it
+          stays keyboard-reachable without a tabindex of its own. */}
       <div className="-mx-1 overflow-x-auto px-1">
-        <table className="w-full min-w-[22rem] border-separate border-spacing-[2px] text-[10px]">
+        <table className="w-full min-w-[25rem] border-separate border-spacing-[2px] text-[10px]">
           <caption className="sr-only">{t('dashboard.calendar.tableAria')}</caption>
           <thead>
             <tr>
@@ -88,7 +93,7 @@ export default function HeatCalendar({ query, onPickMonth, activeFrom, activeTo 
                     if (!c) {
                       return (
                         <td key={mi} className="p-0">
-                          <span className="block h-6 rounded-sm border border-dashed border-grid/50 bg-transparent" aria-hidden="true" />
+                          <span className="block h-6 min-w-[24px] rounded-sm border border-dashed border-grid/50 bg-transparent" aria-hidden="true" />
                         </td>
                       );
                     }
@@ -111,7 +116,7 @@ export default function HeatCalendar({ query, onPickMonth, activeFrom, activeTo 
                             n: fmtInt(c.value),
                             z: fmtNum(c.z, 1),
                           })}
-                          className={`block h-6 w-full rounded-sm border transition-transform hover:scale-110 focus:outline-none focus:ring-1 focus:ring-amber ${
+                          className={`block h-6 w-full min-w-[24px] rounded-sm border transition-transform hover:scale-110 focus:outline-none focus:ring-1 focus:ring-amber ${
                             on ? 'border-teal ring-1 ring-teal'
                               : hot ? 'border-signal'
                                 : cold ? 'border-teal/70'

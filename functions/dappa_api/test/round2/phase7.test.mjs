@@ -208,6 +208,14 @@ export async function run(h) {
     const tl = await get('/alerts/AL-003/actions');
     const mem = tl.json.data.timeline.filter((x) => x.source === 'memory');
     check('timeline merges seeded and memory rows', tl.json.data.timeline.length === 6 + 5 && mem.length === 5, `${tl.json.data.timeline.length} / ${mem.length}`);
+    // p7-3: the header label is the LIST's read source; a memory-only row under
+    // a "Data Store" header used to read as if the Data Store held it, so every
+    // row has to carry its own engine and the client renders that per row.
+    check('timeline rows carry their own engine, which can differ from the read source', tl.json.data.meta === undefined
+      && tl.json.data.timeline.every((x) => ['datastore', 'fixture', 'memory'].includes(x.source))
+      && new Set(tl.json.data.timeline.map((x) => x.source)).size === 2, JSON.stringify([...new Set(tl.json.data.timeline.map((x) => x.source))]));
+    check('the read source reported for the list is not the source of every row', tl.json.meta.storage === 'datastore'
+      && tl.json.data.timeline.some((x) => x.source !== tl.json.meta.storage), `${tl.json.meta.storage}`);
     check('timeline summary reflects the new decisions', tl.json.data.summary.dismissed === true && tl.json.data.summary.latestOutcome === 'false_alarm' && tl.json.data.summary.assignedTo === '1012');
 
     const recent = await get('/actions/recent?days=2&limit=100');
@@ -293,6 +301,81 @@ export async function run(h) {
       for (const [k, v] of [['FEATURE_MAIL', prev.mail], ['FEATURE_PUSH', prev.push], ['MAIL_FROM', prev.from], ['DIGEST_TO', prev.to]]) {
         if (v === undefined) delete process.env[k]; else process.env[k] = v;
       }
+    }
+  }
+
+  // --- p7-12: an anonymous caller records but never flips the alert's status,
+  // in PUBLIC_DEMO or out of it (the decision's title was stricter than the
+  // code, which keyed the permission off the demo flag alone). --------------
+  {
+    actionlog.resetMemory();
+    actionlog.resetEmptyProbe();
+    const app = h.createApp({ clientFactory: () => h.createStubClient(h.buildFixtureTables()), flags: { publicDemo: false } });
+    const server = app.listen(0);
+    await new Promise((r) => server.once('listening', r));
+    const B = `http://127.0.0.1:${server.address().port}/api/v1`;
+    try {
+      const r = await fetch(`${B}/alerts/AL-001/actions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionType: 'acknowledge', actor: 'walk-in', clientTs: '2026-08-28T10:00:00Z' })
+      }).then((x) => x.json());
+      check('PUBLIC_DEMO off: an anonymous decision is still recorded', r.ok === true && r.data.action.actionType === 'acknowledge' && r.data.identity.actorSource === 'client');
+      check('PUBLIC_DEMO off: an anonymous caller still cannot flip AnomalyAlert.Status', r.data.statusUpdated === false
+        && /may record a decision but not change/.test(r.data.statusReason || ''), JSON.stringify(r.data.statusReason));
+      const al = await fetch(`${B}/alerts/AL-001`).then((x) => x.json());
+      check('PUBLIC_DEMO off: the alert row is untouched by the anonymous acknowledge', al.data.status !== 'ACK', String(al.data && al.data.status));
+    } finally {
+      server.close();
+      actionlog.resetMemory();
+    }
+  }
+
+  // --- int-6: an EMPTY (not failing) ActionLog read falls through to the
+  // fixture in PUBLIC_DEMO, and says `fixture` when it does. ----------------
+  {
+    actionlog.resetMemory();
+    actionlog.resetEmptyProbe();
+    const empty = h.buildFixtureTables();
+    empty.ActionLog = [];
+    const app = h.createApp({ clientFactory: () => h.createStubClient(empty) });
+    const server = app.listen(0);
+    await new Promise((r) => server.once('listening', r));
+    const B = `http://127.0.0.1:${server.address().port}/api/v1`;
+    try {
+      const tl = await fetch(`${B}/alerts/AL-004/actions`).then((x) => x.json());
+      check('empty ActionLog in PUBLIC_DEMO falls through to the fixture', tl.data.timeline.length === 17, String(tl.data.timeline.length));
+      check('the empty-table fallback reports fixture, NEVER datastore', tl.meta.storage === 'fixture' && tl.meta.source === 'fixture'
+        && tl.data.timeline.every((x) => x.source === 'fixture'), JSON.stringify(tl.meta));
+      const oc = await fetch(`${B}/alerts/outcomes?window=all`).then((x) => x.json());
+      // p7-2: these are the three numbers the panel must put on screen.
+      check('the fallback gives the digest real decisions, not 0', oc.data.actionsInWindow === 40 && oc.data.overall.labelled === 3
+        && oc.data.overall.truePositive === 1 && oc.data.overall.precision === 0.333, JSON.stringify({ n: oc.data.actionsInWindow, l: oc.data.overall.labelled }));
+      check('precision interval on the fixture is 6-79 of every 100', Math.round(oc.data.overall.precisionInterval.lo * 100) === 6
+        && Math.round(oc.data.overall.precisionInterval.hi * 100) === 79, JSON.stringify(oc.data.overall.precisionInterval));
+      check('median time-to-acknowledge on the fixture is 4.8 h', oc.data.overall.medianTimeToAckHours === 4.8, String(oc.data.overall.medianTimeToAckHours));
+    } finally {
+      server.close();
+      actionlog.resetMemory();
+      actionlog.resetEmptyProbe();
+    }
+  }
+
+  // A NON-empty table must never trigger the fallback: a filtered read that
+  // legitimately matches nothing stays empty and stays `datastore`.
+  {
+    actionlog.resetMemory();
+    actionlog.resetEmptyProbe();
+    const app = h.createApp({ clientFactory: () => h.createStubClient(h.buildFixtureTables()) });
+    const server = app.listen(0);
+    await new Promise((r) => server.once('listening', r));
+    const B = `http://127.0.0.1:${server.address().port}/api/v1`;
+    try {
+      const none = await fetch(`${B}/alerts/AL-999/actions`).then((x) => x.json());
+      check('a filtered read that matches nothing does NOT pull in the fixture', none.data.timeline.length === 0 && none.meta.storage === 'datastore', JSON.stringify(none.meta));
+    } finally {
+      server.close();
+      actionlog.resetMemory();
+      actionlog.resetEmptyProbe();
     }
   }
 }

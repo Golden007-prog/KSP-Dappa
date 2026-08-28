@@ -48,7 +48,7 @@
       "CONNECTION_LINK_NAME": "",
       "CONNECTION_TARGET_URL": "",
       "OLAP_ENABLED": "",
-      "JOB_POOL_NAME": "dappanightly",
+      "JOB_POOL_NAME": "",
       "JOB_RETRIES": "2",
       "JOB_RETRY_INTERVAL_SEC": "900",
       "QUICKML_AUTOML_ENDPOINT_KEY": "",

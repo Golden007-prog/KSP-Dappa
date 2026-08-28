@@ -33,6 +33,15 @@ export default {
   'chart.showTableAria': '{title} ಅನ್ನು ಕೋಷ್ಟಕವಾಗಿ ತೋರಿಸಿ',
   'chart.showChartAria': '{title} ಅನ್ನು ಚಾರ್ಟ್ ಆಗಿ ತೋರಿಸಿ',
 
+  'scroll.table': 'ಅಡ್ಡಲಾಗಿ ಸರಿಸಬಹುದಾದ ಕೋಷ್ಟಕ: {name}',
+  'scroll.panel': 'ಅಡ್ಡಲಾಗಿ ಸರಿಸಬಹುದಾದ ಫಲಕ: {name}',
+  'scroll.rows': 'ಸರಿಸಬಹುದಾದ ಫಲಿತಾಂಶ ಕೋಷ್ಟಕ',
+  'scroll.chartTable': 'ಚಾರ್ಟ್ ಮೌಲ್ಯಗಳ ಸರಿಸಬಹುದಾದ ಕೋಷ್ಟಕ',
+  'scroll.digest': 'ಸರಿಸಬಹುದಾದ ಸಾರಾಂಶ ಪಠ್ಯ',
+
+  'title.case': 'ಪ್ರಕರಣ {no}',
+  'title.offender': '{name} · ಅಪರಾಧಿ 360',
+
   'live.results': '{n} ಫಲಿತಾಂಶಗಳು',
   'live.resultOne': '1 ಫಲಿತಾಂಶ',
   'live.rowsLoaded': '{n} ಸಾಲುಗಳು ಲೋಡ್ ಆಗಿವೆ',

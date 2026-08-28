@@ -16,7 +16,11 @@ export default function ProvenanceStamp({ provenance, className = '', size = 'sm
   const id = useId();
   if (!provenance) return null;
   const asOn = /^\d{4}-\d{2}-\d{2}/.test(String(provenance.asOn || '')) ? dateLabel(provenance.asOn) : (provenance.asOn || '—');
-  const btn = size === 'lg' ? 'inline-flex min-h-[44px] min-w-[44px] items-center px-2 -my-3' : '';
+  // A 44-px touch target inside an 11-px paragraph must not be pulled back out
+  // with a negative margin: on a phone the stamp wraps to two or three lines
+  // and the tall button then sits across the line above it. Keep the target
+  // size and let it own its line box.
+  const btn = size === 'lg' ? 'inline-flex min-h-[44px] min-w-[44px] items-center justify-center px-2 align-middle' : '';
   return (
     <p className={`text-[11px] leading-snug text-muted ${className}`}>
       <span className="font-semibold uppercase tracking-wide text-[10px]">{t('tier.prov.asOn', { date: asOn })}</span>

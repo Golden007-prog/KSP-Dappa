@@ -47,7 +47,7 @@ export default function RecoveryCard() {
           <Bars rows={rows.map((x) => ({ label: t(`depth.recovery.kind.${x.key}`), value: (x.recovered / x.planted) * 100, tone: statusForShare(x.recovered / x.planted) === 'stable' ? 'bg-teal/70' : statusForShare(x.recovered / x.planted) === 'watch' ? 'bg-amber/70' : 'bg-signal/70', hint: `${x.recovered}/${x.planted}` }))} min={0} max={100} unit="%" />
           <ul className="space-y-1.5">
             {rows.map((x) => (
-              <li key={x.key} className="bg-base/60 border border-grid rounded-lg px-3 py-2">
+              <li key={x.key} className="bg-canvas/60 border border-grid rounded-lg px-3 py-2">
                 <button type="button" className="w-full flex flex-wrap items-center justify-between gap-2 text-left min-h-[44px]" onClick={() => setOpen(open === x.key ? null : x.key)} aria-expanded={open === x.key}>
                   <span className="inline-flex items-center gap-2">
                     <StatusPill status={statusForShare(x.recovered / x.planted)} label={t(`depth.recovery.status.${statusForShare(x.recovered / x.planted)}`)} />

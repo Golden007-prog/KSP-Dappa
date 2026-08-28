@@ -6,9 +6,14 @@
 // locales/kn/dashboard.js exporting { title: '…' } answers t('dashboard.title').
 //
 // Lookup order: active language → English → the key itself (dev warns once).
-// Everything is eager-imported: the dictionaries are plain strings (tens of KB
-// beside a 1 MB echarts chunk) and eager bundling means a malformed locale
-// file fails the BUILD instead of white-screening a judge mid-demo.
+//
+// Dictionaries are code-split PER LANGUAGE and awaited before the first render
+// (main.jsx calls initI18n()). Eager-importing both languages put 1.2 MB of
+// string source — 444 KB en + 788 KB kn — into the entry chunk, which every
+// visitor downloaded to read one of them. Now a visitor fetches English (the
+// fallback chain needs it) plus their own language, and switching language
+// fetches the other one once. The glob is still exhaustive, so a malformed
+// locale file is still a build error, not a runtime surprise.
 //
 // Script support is font-stack-only (tailwind.config.js) — Nirmala UI on
 // Windows, Noto Sans Kannada on Android/Linux, Kannada Sangam MN on Apple.
@@ -24,25 +29,41 @@ export const LANGS = [
 export const LANG_CODES = LANGS.map((l) => l.code);
 const STORAGE_KEY = 'dappa-lang';
 
-const modules = import.meta.glob('../locales/*/*.js', { eager: true });
+const modules = import.meta.glob('../locales/*/*.js');
 
-/** { en: {'dashboard.title': '…'}, kn: {…} } */
-const DICTS = (() => {
-  const out = {};
-  for (const code of LANG_CODES) out[code] = {};
-  for (const [path, mod] of Object.entries(modules)) {
+/** { en: {'dashboard.title': '…'}, kn: {…} } — filled by loadLang(). */
+const DICTS = Object.fromEntries(LANG_CODES.map((c) => [c, {}]));
+const loaded = new Map();
+
+/** Fetch and flatten every namespace of one language. Idempotent and cached;
+ *  concurrent callers share one promise. */
+export function loadLang(lang) {
+  if (!LANG_CODES.includes(lang)) return Promise.resolve();
+  if (loaded.has(lang)) return loaded.get(lang);
+  const jobs = [];
+  for (const [path, load] of Object.entries(modules)) {
     const m = /\/locales\/([a-z]{2})\/([A-Za-z0-9_-]+)\.js$/.exec(path);
-    if (!m) continue;
-    const [, lang, ns] = m;
-    if (!out[lang]) continue;
-    const entries = (mod && (mod.default || mod)) || {};
-    for (const [k, v] of Object.entries(entries)) {
-      // `data.js` holds nested id→name maps; everything else is flat strings.
-      out[lang][`${ns}.${k}`] = v;
-    }
+    if (!m || m[1] !== lang) continue;
+    const ns = m[2];
+    jobs.push(load().then((mod) => {
+      const entries = (mod && (mod.default || mod)) || {};
+      for (const [k, v] of Object.entries(entries)) {
+        // `data.js` holds nested id→name maps; everything else is flat strings.
+        DICTS[lang][`${ns}.${k}`] = v;
+      }
+    }));
   }
-  return out;
-})();
+  const p = Promise.all(jobs).then(() => undefined);
+  loaded.set(lang, p);
+  return p;
+}
+
+/** Awaited by main.jsx before the first render: English is the fallback chain,
+ *  so it is always loaded; the visitor's language comes with it. */
+export function initI18n() {
+  const lang = readStoredLang();
+  return Promise.all([loadLang('en'), loadLang(lang)]).then(() => lang);
+}
 
 const warned = new Set();
 
@@ -84,6 +105,16 @@ const LangCtx = createContext(null);
 
 export function LanguageProvider({ children }) {
   const [lang, setLangState] = useState(readStoredLang);
+  // Bumped when a lazily fetched dictionary lands, so the tree re-renders with
+  // the new strings. Until then translate() falls back to English rather than
+  // showing a raw key.
+  const [, setDictTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    loadLang(lang).then(() => { if (alive) setDictTick((n) => n + 1); });
+    return () => { alive = false; };
+  }, [lang]);
 
   useEffect(() => {
     setFormatLocale(lang);

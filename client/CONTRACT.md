@@ -28,7 +28,7 @@ sub-components, a new subfolder `src/routes/<yourroute>/`). **Never touch**
 
 | token | class | hex |
 |---|---|---|
-| page background | `bg-base` | #0B1220 |
+| page background | `bg-canvas` | #0B1220 |
 | panel | `bg-panel` | #111A2C |
 | grid / borders | `border-grid`, `bg-grid` | #1E2A44 |
 | primary accent | `text-amber`, `bg-amber` | #F5A623 |

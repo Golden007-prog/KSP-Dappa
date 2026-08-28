@@ -33,9 +33,12 @@ export default function WhyLinkedCard({ personKey }) {
           <p className="text-[11px] text-muted">
             {t('depth.o360.whyAnchor', { name: d.canonical, age: d.canonicalMedianAge === null ? '—' : fmtInt(d.canonicalMedianAge), n: fmtInt(d.canonicalRecords) })}
           </p>
+          {d.outOfBlock > 0 && (
+            <p className="text-[11px] text-muted">{t('depth.o360.whyOutOfBlockCount', { n: fmtInt(d.outOfBlock), total: fmtInt(rows.length) })}</p>
+          )}
           <ul className="space-y-2">
             {rows.slice(0, 8).map((r) => (
-              <li key={r.alias} className="bg-base/60 border border-grid rounded-lg px-3 py-2">
+              <li key={r.alias} className="bg-canvas/60 border border-grid rounded-lg px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm text-ink font-medium">{r.alias}</span>
                   <span className="inline-flex items-center gap-2">
@@ -56,6 +59,7 @@ export default function WhyLinkedCard({ personKey }) {
                     n: fmtInt(r.records),
                   })}
                   {r.anchorPass && <span> · {t('depth.o360.whyAnchorPass')}</span>}
+                  {r.blockedBy && <span> · {t(`depth.o360.whyOutOfBlock.${r.blockedBy}`)}</span>}
                 </p>
               </li>
             ))}

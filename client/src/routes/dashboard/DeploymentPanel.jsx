@@ -103,15 +103,15 @@ export default function DeploymentPanel({ hotspots, riskRows = [], linkSearch = 
       </div>
 
       <div className="grid grid-cols-3 gap-1.5">
-        <div className="rounded-lg border border-grid/60 bg-base/30 p-2">
+        <div className="rounded-lg border border-grid/60 bg-canvas/30 p-2">
           <p className="truncate text-[10px] uppercase tracking-wide text-muted">{t('dashboard.deploy.assigned')}</p>
           <p className="num text-base font-bold leading-tight text-ink">{fmtInt(plan.usedBeats)}<span className="text-[11px] font-normal text-muted">/{fmtInt(plan.budget)}</span></p>
         </div>
-        <div className="rounded-lg border border-grid/60 bg-base/30 p-2">
+        <div className="rounded-lg border border-grid/60 bg-canvas/30 p-2">
           <p className="truncate text-[10px] uppercase tracking-wide text-muted">{t('dashboard.deploy.nightShare')}</p>
           <p className="num text-base font-bold leading-tight text-signal">{fmtNum(plan.nightSharePct, 0)}%</p>
         </div>
-        <div className="rounded-lg border border-grid/60 bg-base/30 p-2">
+        <div className="rounded-lg border border-grid/60 bg-canvas/30 p-2">
           <p className="truncate text-[10px] uppercase tracking-wide text-muted">{t('dashboard.deploy.coverage')}</p>
           <p className="num text-base font-bold leading-tight text-teal">{fmtNum(plan.coveragePct, 0)}%</p>
         </div>

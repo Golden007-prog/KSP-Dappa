@@ -164,6 +164,10 @@ async function ocrScan(body, deps) {
   const b = body || {};
   const d = deps || {};
   const language = String(b.language || 'eng');
+  // What the response REPORTS is what was actually sent: with no
+  // {language} the option is omitted and Zia auto-detects the script, so
+  // echoing 'eng' would tell an officer a Kannada header was read as English.
+  const languageReported = b.language ? language : 'auto';
   const modelType = b.modelType ? String(b.modelType) : undefined;
   const buf = decodeImage(b.imageBase64 || b.image || b.file);
   const suppliedText = String(b.text || '').trim();
@@ -198,7 +202,7 @@ async function ocrScan(body, deps) {
           ocrAvailable: true,
           text,
           confidence: resp && resp.confidence !== undefined ? Number(resp.confidence) : null,
-          language,
+          language: languageReported,
           bytes: buf.length
         }, analysis),
         source: 'zia-ocr'
@@ -219,7 +223,7 @@ async function ocrScan(body, deps) {
       ocrAvailable: false,
       text,
       confidence: null,
-      language,
+      language: languageReported,
       bytes: buf ? buf.length : 0,
       note: buf
         ? (ocrError

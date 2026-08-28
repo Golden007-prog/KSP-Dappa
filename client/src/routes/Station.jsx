@@ -21,7 +21,7 @@ import { useTierStore } from '../lib/tier.js';
 import { usePlain } from '../lib/plainlanguage.js';
 import { useI18n } from '../lib/i18n.jsx';
 import { fmtInt, fmtNum, fmtPct, dateLabel } from '../lib/format.js';
-import { Question, TierHeader, UnitPicker, PanelState, todayLabel, alertSla, ageLabel } from './tiers/bits.jsx';
+import { Question, TierHeader, UnitPicker, PanelState, todayLabel, alertSla, ageLabel, useTierRoute } from './tiers/bits.jsx';
 import DismissSheet from './tiers/DismissSheet.jsx';
 import TierPrintStyles from './tiers/tierPrint.jsx';
 import { recordDecision } from './tiers/actionLog.js';
@@ -63,6 +63,7 @@ export default function Station() {
   const { fmt } = usePlain();
   const toast = useToast();
   const tier = useTierStore((s) => s.tier);
+  useTierRoute('station'); // arriving from the sidebar must switch the app into station wording
   const [searchParams, setSearchParams] = useSearchParams();
   const unitId = searchParams.get('unitId') || '';
   const q = useStationHome(unitId ? { unitId } : {});
@@ -96,7 +97,7 @@ export default function Station() {
 
   const weekSentence = !d ? '' : d.week.total === 0
     ? t('tier.station.week.none', { usual: fmtNum(d.week.usualPerWeek, 0) })
-    : t('tier.station.week.sentence', { n: fmtInt(d.week.total), usual: fmtNum(d.week.usualPerWeek, 0), phrase: fmt('zscore', d.week.swings) });
+    : t(`tier.station.week.sentence${d.week.total === 1 ? '.one' : ''}`, { n: fmtInt(d.week.total), usual: fmtNum(d.week.usualPerWeek, 0), phrase: fmt('zscore', d.week.swings) });
 
   return (
     <div id="station-home" className="tier-home space-y-4" data-tier-home="station">
@@ -108,9 +109,10 @@ export default function Station() {
         readTarget="station-home"
         onPrint={() => window.print()}
         printLabel={t('tier.station.print')}
-      />
+      >
+        <UnitPicker value={unitId} onChange={chooseUnit} compact />
+      </TierHeader>
       <p className="tier-print-only text-[11px]">{t('tier.print.preparedFor', { role: t('tier.role.station'), unit: unitName })}</p>
-      <UnitPicker value={unitId} onChange={chooseUnit} defaulted={Boolean(d?.meta?.defaulted)} className="max-w-md" />
 
       <PanelState query={q} height={260}>
         {d && (

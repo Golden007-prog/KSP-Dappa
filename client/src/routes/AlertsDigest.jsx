@@ -95,11 +95,11 @@ export default function AlertsDigest() {
       <form onSubmit={apply} className="no-print flex flex-wrap items-end gap-2">
         <label className="min-w-[8rem]">
           <span className="mb-0.5 block text-[11px] text-muted">{t('actions.digest.days')}</span>
-          <input className="input-dark w-full !py-2 !text-xs" type="number" min="1" max="365" value={daysDraft} onChange={(e) => setDaysDraft(e.target.value)} />
+          <input className="input-dark w-full min-h-[44px] !py-2 !text-xs" type="number" min="1" max="365" value={daysDraft} onChange={(e) => setDaysDraft(e.target.value)} />
         </label>
         <label className="min-w-[10rem] flex-1">
           <span className="mb-0.5 block text-[11px] text-muted">{t('actions.digest.unit')}</span>
-          <input className="input-dark w-full !py-2 !text-xs" value={unitDraft} placeholder="0101 / 1011" onChange={(e) => setUnitDraft(e.target.value)} />
+          <input className="input-dark w-full min-h-[44px] !py-2 !text-xs" value={unitDraft} placeholder="0101 / 1011" onChange={(e) => setUnitDraft(e.target.value)} />
         </label>
         <button type="submit" className="btn-primary !text-xs min-h-[44px] sm:min-h-[36px]">{t('common.action.apply')}</button>
       </form>
@@ -164,11 +164,21 @@ export default function AlertsDigest() {
 
           <Card title={t('actions.digest.h.outcomes')}>
             <div className="space-y-2">
+              {/* lead=: the printed digest must carry the numbers themselves,
+                  not the glossary's definition of them (see OutcomePanel). */}
               {d.outcomes.labelled ? (
-                <PlainSentence term="precision" vars={{ tp: fmtInt(d.outcomes.truePositive), n: fmtInt(d.outcomes.labelled), pct: pct100(d.outcomes.precision), lo: pct100(d.outcomes.precisionInterval?.lo), hi: pct100(d.outcomes.precisionInterval?.hi) }} />
+                <PlainSentence
+                  term="precision"
+                  lead={t('actions.panel.precision.lead', { tp: fmtInt(d.outcomes.truePositive), n: fmtInt(d.outcomes.labelled), pct: pct100(d.outcomes.precision), lo: pct100(d.outcomes.precisionInterval?.lo), hi: pct100(d.outcomes.precisionInterval?.hi) })}
+                  vars={{ tp: fmtInt(d.outcomes.truePositive), n: fmtInt(d.outcomes.labelled), pct: pct100(d.outcomes.precision), lo: pct100(d.outcomes.precisionInterval?.lo), hi: pct100(d.outcomes.precisionInterval?.hi) }}
+                />
               ) : <p className="text-[13px] text-ink">{t('actions.panel.precision.none')}</p>}
               {d.outcomes.medianTimeToAckHours !== null && d.outcomes.medianTimeToAckHours !== undefined && (
-                <PlainSentence term="timeToAck" vars={{ h: fmtNum(d.outcomes.medianTimeToAckHours, 1) }} />
+                <PlainSentence
+                  term="timeToAck"
+                  lead={t('actions.panel.tta.lead', { h: fmtNum(d.outcomes.medianTimeToAckHours, 1) })}
+                  vars={{ h: fmtNum(d.outcomes.medianTimeToAckHours, 1) }}
+                />
               )}
               <p className="text-xs text-muted">
                 {t('actions.panel.labels.sentence', { n: fmtInt(d.labels.labelled || 0), min: d.labels.minimumPerClass, total: d.labels.minimumTotal })}
@@ -206,7 +216,9 @@ export default function AlertsDigest() {
           )}
 
           <Card title={t('actions.digest.h.text')} className="no-print">
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-grid bg-base/60 p-3 text-[11px] leading-relaxed text-muted">{d.text}</pre>
+            {/* The digest body is taller than its box, so the <pre> scrolls and
+                needs tabindex=0 to be scrollable from the keyboard (WCAG 2.1.1). */}
+            <pre tabIndex={0} role="region" aria-label={t('a11y.scroll.digest')} className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-grid bg-canvas/60 p-3 text-[11px] leading-relaxed text-muted">{d.text}</pre>
           </Card>
 
           <Card className="no-print">

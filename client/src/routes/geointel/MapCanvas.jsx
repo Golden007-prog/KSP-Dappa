@@ -134,7 +134,10 @@ export default function MapCanvas({
       const pane = map.createPane(name);
       pane.style.zIndex = String(z);
     }
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    // topright on a phone: the bottom-right corner is where the time-scrubber
+    // panel sits, and the zoom buttons ended up underneath it — unreachable on
+    // exactly the device that needs them most.
+    L.control.zoom({ position: window.matchMedia('(max-width: 767px)').matches ? 'topright' : 'bottomright' }).addTo(map);
     L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
     map.on('zoomend', () => setZoomedIn(map.getZoom() >= INCIDENT_MIN_ZOOM));
     // Viewport reporting for the "in view" statistics + view-scoped exports.

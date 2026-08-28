@@ -210,7 +210,7 @@ function DistrictDrill({ polygon, unitIds, title, apiParams, onStationSelect, on
                     <button
                       type="button"
                       onClick={() => onStationSelect(s)}
-                      className="w-full text-left rounded-lg border border-grid bg-base/40 hover:border-amber/50 px-2.5 py-2 transition-colors"
+                      className="w-full text-left rounded-lg border border-grid bg-canvas/40 hover:border-amber/50 px-2.5 py-2 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-ink truncate">{s.unitName}</span>
@@ -267,11 +267,11 @@ function StationDrill({ station, apiParams, onBack, onClose, pins, onTogglePin, 
       />
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-grid bg-base/40 p-2.5">
+          <div className="rounded-lg border border-grid bg-canvas/40 p-2.5">
             <p className="text-[10px] uppercase tracking-wider text-muted">{t('geointel.panel.casesInWindowLabel')}</p>
             <p className="num text-lg font-semibold text-ink">{fmtInt(station.caseCount)}</p>
           </div>
-          <div className="rounded-lg border border-grid bg-base/40 p-2.5">
+          <div className="rounded-lg border border-grid bg-canvas/40 p-2.5">
             <p className="text-[10px] uppercase tracking-wider text-muted">{t('geointel.panel.riskScore')}</p>
             <p className="num text-lg font-semibold" style={{ color: riskColor(r) }}>
               {r === null ? '—' : Math.round(r * 100)}
@@ -402,7 +402,7 @@ function CompareBlock({ pins, onTogglePin, onClear }) {
           const r = risk01(riskRow?.riskScore ?? s.riskScore);
           const name = s.unitName || t('geointel.panel.unitFallback', { id: s.unitId });
           return (
-            <div key={s.unitId} className="rounded-lg border border-grid bg-base/40 p-2 min-w-0">
+            <div key={s.unitId} className="rounded-lg border border-grid bg-canvas/40 p-2 min-w-0">
               <div className="flex items-start justify-between gap-1">
                 <p className="text-[11px] text-ink truncate font-medium">{name}</p>
                 <button

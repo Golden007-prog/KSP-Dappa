@@ -17,7 +17,7 @@ function GateCard({ gate }) {
   if (!gate) return null;
   const reasons = gate.reasons || [];
   return (
-    <div className="rounded-lg border border-grid bg-base/50 px-3 py-2 text-xs">
+    <div className="rounded-lg border border-grid bg-canvas/50 px-3 py-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-ink font-medium">{t('identify.result.gate')}</span>
         <Badge tone={gate.mode === 'zia' ? 'teal' : 'amber'}>{t(`identify.result.gateMode.${gate.mode === 'zia' ? 'zia' : 'advisory'}`)}</Badge>
@@ -33,6 +33,32 @@ function GateCard({ gate }) {
         </ul>
       )}
     </div>
+  );
+}
+
+// Where the second signal came from. The two-signal rule is only worth
+// something if the corroboration is evidence the shortlist did NOT consume, so
+// the panel names the FIR it was read from — or says plainly that the case
+// number did not resolve and nothing could be checked.
+function CaseSignalNote({ caseRec }) {
+  const t = useT();
+  if (!caseRec) return null;
+  if (!caseRec.resolved) {
+    return (
+      <p role="note" className="rounded-lg border border-amber/40 bg-amber/5 px-3 py-2 text-[11px] text-amber">
+        {t(`identify.result.caseUnresolved.${caseRec.reason || 'not-found'}`, { caseNo: caseRec.caseNo || '—', n: caseRec.matches || 0 })}
+      </p>
+    );
+  }
+  return (
+    <p className="text-[11px] text-muted">
+      <span className="num">{t('identify.result.caseResolved', {
+        crimeNo: caseRec.crimeNo || caseRec.caseNo,
+        district: caseRec.districtName || '—',
+        crimeType: caseRec.crimeType || '—',
+      })}</span>
+      {(caseRec.moTags || []).length > 0 && <span className="num"> · {t('identify.result.caseMo', { tags: caseRec.moTags.join(', ') })}</span>}
+    </p>
   );
 }
 
@@ -57,7 +83,13 @@ export default function ResultsPanel({ result, meta, loading, error, floorFallba
   const deadBand = Number(result.deadBand) || 0.1;
   const top = result.candidates && result.candidates[0];
   const topPct = top && top.confidence !== null ? Math.round(top.confidence * 100) : null;
-  const engineWord = (e) => (e === 'zia-identity-scanner' ? t('identify.result.engineZia') : t('identify.result.engineLocal'));
+  // 'mixed' means some candidates were scored by Zia and some by the local
+  // engine in the same search — the per-candidate badge says which is which.
+  const engineWord = (e) => {
+    if (e === 'zia-identity-scanner') return t('identify.result.engineZia');
+    if (e === 'mixed') return t('identify.result.engineMixed');
+    return t('identify.result.engineLocal');
+  };
   const acc = (meta && meta.accountability) || {};
 
   return (
@@ -68,7 +100,9 @@ export default function ResultsPanel({ result, meta, loading, error, floorFallba
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge tone={meta && meta.engine === 'zia-identity-scanner' ? 'teal' : 'slate'}>{t('identify.result.engine', { engine: engineWord(meta && meta.engine) })}</Badge>
           <Tooltip label={t('identify.result.floorHint', { lo: Math.round((floor - deadBand) * 100), floor: Math.round(floor * 100) })} position="bottom">
-            <button type="button" className="chip !py-0.5 text-[11px] num">{t('identify.result.floor', { floor: Math.round(floor * 100) })}</button>
+            {/* The chip stays visually small; the negative margin keeps a full
+                44 px touch target around it. */}
+            <button type="button" className="chip !py-0.5 text-[11px] num min-h-[44px] -my-3">{t('identify.result.floor', { floor: Math.round(floor * 100) })}</button>
           </Tooltip>
         </div>
       )}
@@ -107,9 +141,17 @@ export default function ResultsPanel({ result, meta, loading, error, floorFallba
 
         {result.shortlist && (
           <p className="text-[11px] text-muted">
-            <PlainTerm term="faceShortlist" vars={{ n: result.shortlist.count, cap: result.shortlist.cap }} className="mr-1" />
+            <PlainTerm term="faceShortlist" vars={{ n: result.shortlist.count, cap: result.shortlist.cap }} className="mr-1" size="lg" />
             <span className="num">{t('identify.result.shortlistLine', { n: result.shortlist.count, narrowed: result.shortlist.narrowed, cap: result.shortlist.cap })}</span>
             {result.shortlist.withoutGallery > 0 && <span> · {t('identify.result.withoutGallery', { n: result.shortlist.withoutGallery })}</span>}
+          </p>
+        )}
+
+        <CaseSignalNote caseRec={result.case} />
+
+        {result.probe && result.probe.exactParameterMatch && (
+          <p role="note" className="rounded-lg border border-signal/40 bg-signal/5 px-3 py-2 text-[11px] text-signal">
+            {t('identify.result.exactParameterMatch')}
           </p>
         )}
 

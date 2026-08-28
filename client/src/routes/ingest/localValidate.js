@@ -95,7 +95,10 @@ export function validateLocally({ table, tableDef, columns, rows, mapping, optio
   let accepted = 0;
   let warnRows = 0;
   const dates = [];
-  const geo = { withCoords: 0, inDistrict: 0, outOfDistrict: 0, outOfState: 0, invalid: 0, unknownPolygon: 0 };
+  // No district polygons ship to the browser, so every in-bbox point lands in
+  // unknownPolygon: polygonChecked says so rather than letting "0 inside their
+  // district" read as a finding (D-phase8-ingest-12).
+  const geo = { withCoords: 0, inDistrict: 0, outOfDistrict: 0, outOfState: 0, invalid: 0, unknownPolygon: 0, polygonChecked: false };
   rows.forEach((raw, i) => {
     const rowNo = i + 1;
     const rec = {};
@@ -104,7 +107,9 @@ export function validateLocally({ table, tableDef, columns, rows, mapping, optio
       const v = map[col.name] === undefined ? undefined : raw[map[col.name]];
       if (isBlank(v)) { nulls[col.name] += 1; if (col.required) issues.push({ code: 'REQUIRED_MISSING', column: col.name, severity: 'reject' }); rec[col.name] = null; continue; }
       const p = parseValue(v, col);
-      if (p.issue) issues.push({ column: col.name, ...p.issue });
+      // `detail` echoes the offending cell, so mark the ones that must never
+      // leave in the downloadable rejection report (a PII or never-used cell).
+      if (p.issue) issues.push({ column: col.name, ...p.issue, ...(col.pii || col.neverUsed ? { sensitive: true } : {}) });
       rec[col.name] = p.value === undefined ? null : p.value;
       if (col.neverUsed && options.dropSensitive !== false && rec[col.name] !== null) { rec[col.name] = null; issues.push({ code: 'NEVER_USED_DROPPED', column: col.name, severity: 'info' }); }
     }

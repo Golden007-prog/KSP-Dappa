@@ -6,7 +6,7 @@ import StatusPill from '../../components/StatusPill.jsx';
 import { useDepthReactivation } from '../../lib/depthApi.js';
 import { useT } from '../../lib/i18n.jsx';
 import { fmtInt, fmtNum, dateLabel } from '../../lib/format.js';
-import { PanelFrame, StatTile } from './DepthBits.jsx';
+import { PanelFrame, SampleLine, StatTile } from './DepthBits.jsx';
 
 export default function ReactivationPanel() {
   const t = useT();
@@ -42,6 +42,7 @@ export default function ReactivationPanel() {
             <StatTile label={t('depth.react.kpiReactivated')} value={fmtInt(s.reactivated)} tone={s.reactivated ? 'text-signal' : ''} />
           </div>
           <DataTable columns={columns} rows={d.pairs || []} rowKey={(r) => `${r.a}~${r.b}`} dense exportable exportFilename="dappa-reactivated-pairs" emptyMessage={t('depth.react.empty')} />
+          <SampleLine scan={d.scan} />
         </div>
       )}
     </PanelFrame>

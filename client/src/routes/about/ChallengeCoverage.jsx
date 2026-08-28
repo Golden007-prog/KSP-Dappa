@@ -24,7 +24,7 @@ function Capability({ item, live }) {
   const bodyId = `cap-body-${item.n}`;
 
   return (
-    <div className="rounded-lg border border-grid bg-base/40 p-3">
+    <div className="rounded-lg border border-grid bg-canvas/40 p-3">
       <div className="flex items-start gap-2.5">
         <span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full border border-amber/40 text-[11px] font-bold text-amber">
           {item.n}

@@ -62,7 +62,7 @@ export default function RiskWatchlist({ query, linkSearch = '' }) {
                   <span className="mt-0.5 flex items-center gap-1.5">
                     {district && <span className="truncate text-[10px] text-muted">{district}</span>}
                     {drivers.map((d) => (
-                      <span key={d} className="shrink-0 rounded-full border border-grid bg-base/50 px-1.5 text-[9px] text-muted">
+                      <span key={d} className="shrink-0 rounded-full border border-grid bg-canvas/50 px-1.5 text-[9px] text-muted">
                         {d}
                       </span>
                     ))}

@@ -31,9 +31,13 @@ const BRIEFS = [
 
 function buildFixtureTables() {
   const NOW_YM = ymOf();
-  // Data window ends at the current month so "this year"/"last N months" queries hit rows.
+  // Aggregate window ends at LAST month, the way pipeline/out does: the real
+  // load's AggMonthly stops at the last complete month, so anchorYm() resolves
+  // to the same month on the fixture as on the store and a batch dated in the
+  // demo CSV's month lands on the anchor month rather than the one before it.
+  const AGG_YM = ymAdd(NOW_YM, -1);
   const MONTHS = [];
-  for (let i = 35; i >= 0; i -= 1) MONTHS.push(ymAdd(NOW_YM, -i));
+  for (let i = 35; i >= 0; i -= 1) MONTHS.push(ymAdd(AGG_YM, -i));
 
   const tables = {};
 
@@ -127,22 +131,24 @@ function buildFixtureTables() {
   // sha256 only, no probe image (rule R7). Appended, never assigned, so the
   // phase-7 seeded alert actions above survive.
   tables.ActionLog = (tables.ActionLog || []).concat([
-    { ROWID: 9600001, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-14 10:12:00`, AlertKey: 'face:fs-demo01-a3f2c9d1', ActionType: 'face-search', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1011', Note: `${NOW_YM.slice(0, 4)}00017`, OutcomeLabel: 'candidates', Payload: JSON.stringify({ subjectType: 'face', probeSha256: 'a3f2c9d1e7b04c6f8a1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b', caseNo: `${NOW_YM.slice(0, 4)}00017`, legalBasis: 'investigation-fir', filters: { districtId: '0101', moTag: 'two-wheeler' }, shortlist: { count: 2, description: '2 candidates from Bengaluru City, two-wheeler cases' }, candidates: 2, topConfidence: 0.91, topPersonKey: 'P001', engine: 'local-descriptor', gate: { mode: 'advisory', passed: true, reasons: [] }, floor: 0.7 }), ClientTs: `${ymAdd(NOW_YM, -1)}-14 10:12:00` },
+    { ROWID: 9600001, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-14 10:12:00`, AlertKey: 'face:fs-demo01-a3f2c9d1', ActionType: 'face-search', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1011', Note: `${NOW_YM.slice(0, 4)}00017`, OutcomeLabel: 'candidates', Payload: JSON.stringify({ subjectType: 'face', probeSha256: 'a3f2c9d1e7b04c6f8a1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b', caseNo: `${NOW_YM.slice(0, 4)}00017`, legalBasis: 'investigation-fir', filters: { districtId: '0101', moTag: 'two-wheeler' }, shortlist: { count: 2, description: '2 candidates from Bengaluru City, two-wheeler cases' }, shortlistKeys: ['P001', 'P002'], candidates: 2, topConfidence: 0.91, topPersonKey: 'P001', engine: 'local-descriptor', gate: { mode: 'advisory', passed: true, reasons: [] }, floor: 0.7 }), ClientTs: `${ymAdd(NOW_YM, -1)}-14 10:12:00` },
     { ROWID: 9600002, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-14 10:20:00`, AlertKey: 'face:fs-demo01-a3f2c9d1', ActionType: 'face-decision', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1011', Note: 'Scar on the right cheek and the two-wheeler MO agree with the FIR narrative', OutcomeLabel: 'confirm', Payload: JSON.stringify({ subjectType: 'face', personKey: 'P001', rationale: 'Scar on the right cheek and the two-wheeler MO agree with the FIR narrative', confidence: 0.91, engine: 'local-descriptor', caseNo: `${NOW_YM.slice(0, 4)}00017`, legalBasis: 'investigation-fir' }), ClientTs: `${ymAdd(NOW_YM, -1)}-14 10:20:00` },
-    { ROWID: 9600003, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-20 16:05:00`, AlertKey: 'face:fs-demo02-77b1e0c4', ActionType: 'face-search', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1031', Note: `${NOW_YM.slice(0, 4)}00023`, OutcomeLabel: 'no-reliable-match', Payload: JSON.stringify({ subjectType: 'face', probeSha256: '77b1e0c4d9a2f5e8b3c6d1a4e7f0b2c5d8e1f4a7b0c3d6e9f2a5b8c1d4e7f0a3', caseNo: `${NOW_YM.slice(0, 4)}00023`, legalBasis: 'bnss-s84-proclaimed', filters: { districtId: '0103' }, shortlist: { count: 2, description: '2 candidates from Mysuru City' }, candidates: 2, topConfidence: 0.41, topPersonKey: 'P003', engine: 'local-descriptor', gate: { mode: 'advisory', passed: true, reasons: [] }, floor: 0.7 }), ClientTs: `${ymAdd(NOW_YM, -1)}-20 16:05:00` }
+    { ROWID: 9600003, CREATEDTIME: `${ymAdd(NOW_YM, -1)}-20 16:05:00`, AlertKey: 'face:fs-demo02-77b1e0c4', ActionType: 'face-search', Actor: 'PSI Demo Officer', ActorRole: 'station', Unit: '1031', Note: `${NOW_YM.slice(0, 4)}00023`, OutcomeLabel: 'no-reliable-match', Payload: JSON.stringify({ subjectType: 'face', probeSha256: '77b1e0c4d9a2f5e8b3c6d1a4e7f0b2c5d8e1f4a7b0c3d6e9f2a5b8c1d4e7f0a3', caseNo: `${NOW_YM.slice(0, 4)}00023`, legalBasis: 'bnss-s84-proclaimed', filters: { districtId: '0103' }, shortlist: { count: 2, description: '2 candidates from Mysuru City' }, shortlistKeys: ['P003', 'P001'], candidates: 2, topConfidence: 0.41, topPersonKey: 'P003', engine: 'local-descriptor', gate: { mode: 'advisory', passed: true, reasons: [] }, floor: 0.7 }), ClientTs: `${ymAdd(NOW_YM, -1)}-20 16:05:00` }
   ]);
 
+  // Realised months stop at AGG_YM and the horizon starts the month after, the
+  // same shape pipeline/analytics.py writes.
   tables.ForecastMonthly = [];
   for (const d of ['0101', '0103']) {
     for (let i = 11; i >= 0; i -= 1) {
-      const ym = ymAdd(NOW_YM, -i);
+      const ym = ymAdd(AGG_YM, -i);
       const actual = 40 + (hash32(`${d}|f|${ym}`) % 15);
       const row = { DistrictID: d, CrimeHeadID: 3, Ym: ym, Actual: actual, Predicted: null, Lo: null, Hi: null, Model: 'holt-winters' };
       if (i <= 5) { row.Predicted = actual + 3; row.Lo = actual - 5; row.Hi = actual + 11; } // backtest overlap
       tables.ForecastMonthly.push(row);
     }
     for (let i = 1; i <= 3; i += 1) {
-      const ym = ymAdd(NOW_YM, i);
+      const ym = ymAdd(AGG_YM, i);
       const p = 45 + (hash32(`${d}|p|${ym}`) % 10);
       tables.ForecastMonthly.push({ DistrictID: d, CrimeHeadID: 3, Ym: ym, Actual: null, Predicted: p, Lo: p - 8, Hi: p + 8, Model: 'holt-winters' });
     }
@@ -186,6 +192,71 @@ function buildFixtureTables() {
       BriefFacts: BRIEFS[i % BRIEFS.length]
     });
   }
+
+  // Officer-tier demo rows (Round 2, Phase 4). The generated block above lands
+  // only two cases in unit 1011 — the station /tiers/beat and /tiers/station
+  // default to, because StationRisk scores it highest — so the Station
+  // console's series / undetected / caseload builders had nothing to read and
+  // answered with three empty cards. These rows give 1011 an eight-week
+  // history: a three-case Chain Snatching run inside 14 days for the
+  // possible-series scan, four property cases still under investigation and
+  // older than 30 days for the CCS-17 "UN" lens, and three investigating
+  // officers to spread the caseload over.
+  //
+  // Dated backwards from the unit's own last registration (`${NOW_YM}-16`,
+  // which stays the tier "as on") so each row lands in the intended weekly
+  // bucket whatever month the fixture is built in. Week 7 (the last 7 days)
+  // holds 5 against a weeks-1-7 usual of 1.1, which is the rising week the
+  // Beat and Station cards are meant to explain.
+  const TIER_ASOF = `${NOW_YM}-16`;
+  const tierDay = (back) => {
+    const dt = new Date(`${TIER_ASOF}T00:00:00Z`);
+    dt.setUTCDate(dt.getUTCDate() - back);
+    return dt.toISOString().slice(0, 10);
+  };
+  const BLR = constants.districtById.get('0101');
+  const WHITEFIELD = { lat: 12.969, lng: 77.75 }; // inside HotspotCluster HS-02
+  // [CaseMasterID, daysBack, subHeadId, CaseStatusID, PolicePersonID, hour, nearHotspot]
+  const TIER_CASES = [
+    [101, 1, 306, 1, 9002, 3, false],
+    [102, 2, 307, 1, 9001, 22, true],
+    [103, 5, 307, 1, 9002, 23, true],
+    [104, 6, 501, 2, 9003, 14, false],
+    [105, 10, 307, 1, 9003, 21, true],
+    [106, 17, 305, 3, 9001, 11, false],
+    [107, 24, 303, 1, 9002, 2, false],
+    [108, 31, 306, 1, 9003, 20, false],
+    [109, 38, 305, 1, 9001, 15, false],
+    [110, 45, 302, 1, 9002, 19, false],
+    [111, 52, 401, 2, 9003, 12, false],
+    [112, 95, 305, 1, 9003, 16, false]
+  ];
+  TIER_CASES.forEach(([id, back, sh, status, officer, hour, near], k) => {
+    const day = tierDay(back);
+    const serial = String(id).padStart(5, '0');
+    const year = day.slice(0, 4);
+    const hh = String(hour).padStart(2, '0');
+    tables.CaseMaster.push({
+      CaseMasterID: id,
+      CrimeNo: `10101011${year}${serial}`,
+      CaseNo: `${year}${serial}`,
+      CrimeRegisteredDate: day,
+      PolicePersonID: officer,
+      PoliceStationID: '1011',
+      CaseCategoryID: 1,
+      GravityOffenceID: sh === 101 ? 1 : 2,
+      CrimeMajorHeadID: constants.subHeadById.get(sh).headId,
+      CrimeMinorHeadID: sh,
+      CaseStatusID: status,
+      CourtID: 501,
+      IncidentFromDate: `${day} ${hh}:15:00`,
+      IncidentToDate: `${day} ${hh}:55:00`,
+      InfoReceivedPSDate: `${day} ${hh}:40:00`,
+      latitude: (near ? WHITEFIELD.lat : BLR.lat) + (k % 5) * 0.0004,
+      longitude: (near ? WHITEFIELD.lng : BLR.lng) + (k % 5) * 0.0004,
+      BriefFacts: BRIEFS[k % BRIEFS.length]
+    });
+  });
 
   // Children for case 1 (schema columns exist incl. sensitive ones; the API must not return them).
   tables.ComplainantDetails = [
@@ -233,6 +304,20 @@ function buildFixtureTables() {
       accusedId += 1;
     }
   }
+  // The tier demo cases get the same treatment, from the same name pools, so
+  // they are not victim-less holes in the link graph.
+  for (const [id] of TIER_CASES) {
+    tables.Victim.push({
+      VictimMasterID: victimId, CaseMasterID: id, VictimName: VICTIM_NAMES[hash32(`vn|${id}`) % VICTIM_NAMES.length],
+      AgeYear: 21 + (hash32(`va|${id}`) % 45), GenderID: (hash32(`vg|${id}`) % 2) + 1, VictimPolice: 0
+    });
+    victimId += 1;
+    tables.Accused.push({
+      AccusedMasterID: accusedId, CaseMasterID: id, AccusedName: SUSPECT_NAMES[hash32(`an|${id}`) % SUSPECT_NAMES.length],
+      AgeYear: 22 + (hash32(`aa|${id}`) % 30), GenderID: 1, PersonID: 'A1'
+    });
+    accusedId += 1;
+  }
   tables.ActSectionAssociation = [
     { CaseMasterID: 1, ActID: 'BNS', SectionID: '304', ActOrderID: 1, SectionOrderID: 1 },
     { CaseMasterID: 1, ActID: 'BNS', SectionID: '351', ActOrderID: 1, SectionOrderID: 2 }
@@ -244,10 +329,18 @@ function buildFixtureTables() {
   tables.ArrestSurrender = [
     { ArrestSurrenderID: 41, CaseMasterID: 1, ArrestSurrenderTypeID: 1, ArrestSurrenderDate: `${ymAdd(NOW_YM, -1)}-20`, ArrestSurrenderStateId: 1, ArrestSurrenderDistrictId: '0101', PoliceStationID: '1012', IOID: 9001, CourtID: 501, AccusedMasterID: 31, IsAccused: 1 }
   ];
+  // Three investigating officers at 1011 so the Station caseload table has
+  // more than one row to rank (the tier demo cases above are spread over them).
   tables.Employee = [
-    { EmployeeID: 9001, DistrictID: '0101', UnitID: '1011', RankID: 3, DesignationID: 2, KGID: 'KG12345', FirstName: 'Manjunath Hegde' }
+    { EmployeeID: 9001, DistrictID: '0101', UnitID: '1011', RankID: 3, DesignationID: 2, KGID: 'KG12345', FirstName: 'Manjunath Hegde' },
+    { EmployeeID: 9002, DistrictID: '0101', UnitID: '1011', RankID: 4, DesignationID: 3, KGID: 'KG12346', FirstName: 'Savitha Rao' },
+    { EmployeeID: 9003, DistrictID: '0101', UnitID: '1011', RankID: 5, DesignationID: 4, KGID: 'KG12347', FirstName: 'Basavaraj Patil' }
   ];
-  tables.Rank = [{ RankID: 3, RankName: 'Inspector' }];
+  tables.Rank = [
+    { RankID: 3, RankName: 'Inspector' },
+    { RankID: 4, RankName: 'Sub-Inspector' },
+    { RankID: 5, RankName: 'Assistant Sub-Inspector' }
+  ];
   tables.Court = [{ CourtID: 501, CourtName: 'City Civil & Sessions Court, Bengaluru', DistrictID: '0101' }];
   tables.CaseAnomaly = [{ CaseMasterID: 1, AnomalyFlag: 1, AnomalyScore: 0.91 }];
 
@@ -255,7 +348,7 @@ function buildFixtureTables() {
   // writes after a real refresh).
   tables.RefreshMeta = [{
     RefreshedAt: `${NOW_YM}-01 02:00:00`,
-    DetailsJson: JSON.stringify({ mode: 'fixture', cases_read: 40, anomaly_alerts: 4, stations_scored: 15 })
+    DetailsJson: JSON.stringify({ mode: 'fixture', cases_read: tables.CaseMaster.length, anomaly_alerts: tables.AnomalyAlert.length, stations_scored: tables.StationRisk.length })
   }];
 
   // ActionLog (console-created 28 Aug 2026): one OCR attach audit row so

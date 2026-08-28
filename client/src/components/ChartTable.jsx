@@ -19,7 +19,16 @@ export default function ChartTable({ table, caption, visible = false, maxRows = 
   const rows = table.rows.slice(0, maxRows);
   const truncated = table.rows.length > rows.length;
   return (
-    <div className={`chart-table ${visible ? '' : 'hidden print:block'} ${className}`} style={style}>
+    // .chart-table scrolls sideways (index.css) and holds nothing focusable,
+    // so it takes tabindex=0 for WCAG 2.1.1 and a name for the landmark that
+    // creates. Harmless on the print-only copy, which is display:none.
+    <div
+      className={`chart-table ${visible ? '' : 'hidden print:block'} ${className}`}
+      style={style}
+      tabIndex={0}
+      role="region"
+      aria-label={t('a11y.scroll.chartTable')}
+    >
       <table className="w-full">
         <caption className="sr-only">{caption || t('a11y.chart.tableCaption')}</caption>
         <thead>

@@ -22,7 +22,7 @@ export default function ProbeUpload({ probe, onProbe, gate, disabled = false }) 
     setBusy(true);
     try {
       const p = await fileToProbe(file);
-      onProbe({ ...p, probeSeed: null });
+      onProbe({ ...p, samplePerson: null });
     } catch (e) {
       const m = String((e && e.message) || e);
       setError(m === 'still-images-only' ? t('identify.upload.errorVideo') : m === 'not-an-image' ? t('identify.upload.errorNotImage') : t('identify.upload.errorDecode'));
@@ -40,7 +40,13 @@ export default function ProbeUpload({ probe, onProbe, gate, disabled = false }) 
       if (!res.ok) throw new Error('sample');
       const svg = await res.text();
       const p = await svgToProbe(svg, 256, sampleIdx + 1);
-      onProbe({ ...p, probeSeed: `v1:2026:${key}`, samplePerson: key });
+      // Pixels only — deliberately NO probeSeed. The seed path short-circuits
+      // faces.js probeDescriptor() and compares the generator's parameters
+      // with themselves, which returns 1.0 by construction; the sample capture
+      // is genuinely re-drawn (turn, zoom, shift, re-light) so the pixel path
+      // measures it the same way it measures a real upload (D-phase6-16).
+      // samplePerson is provenance for the caption and the audit, not a key.
+      onProbe({ ...p, samplePerson: key });
       setSampleIdx((i) => i + 1);
     } catch {
       setError(t('identify.upload.errorDecode'));
@@ -58,7 +64,7 @@ export default function ProbeUpload({ probe, onProbe, gate, disabled = false }) 
 
   return (
     <div className="space-y-3">
-      <div className="relative mx-auto w-full max-w-[280px] aspect-square rounded-xl border border-grid bg-base/60 overflow-hidden">
+      <div className="relative mx-auto w-full max-w-[280px] aspect-square rounded-xl border border-grid bg-canvas/60 overflow-hidden">
         {probe ? (
           <>
             <img src={probe.dataUrl} alt={t('identify.upload.preview')} className="h-full w-full object-contain" />

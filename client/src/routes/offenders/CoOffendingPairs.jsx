@@ -70,7 +70,7 @@ function PairsBody({ rowsByKey, minWeight, onMinWeight }) {
           ['network.pairs.kpiRepeat', stats.repeat],
           ['network.pairs.kpiStrong', stats.strong],
         ].map(([key, value]) => (
-          <div key={key} className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5">
+          <div key={key} className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5">
             <p className="text-[10px] uppercase tracking-wide text-muted">{t(key)}</p>
             <p className="text-sm text-ink num">{fmtInt(value)}</p>
           </div>

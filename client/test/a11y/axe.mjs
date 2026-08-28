@@ -4,9 +4,13 @@
 // Serves the static-demo build (client/dist built with VITE_STATIC_DEMO=1, so
 // every API call is answered from the baked snapshot and no backend is
 // needed), opens every route in a headless Chromium (Playwright) in BOTH
-// themes, runs axe-core with the WCAG 2.x A/AA tags plus the 2.2 target-size
-// rule, and exits non-zero when any SERIOUS or CRITICAL violation survives
-// the allow-list below. Minor/moderate findings are printed for the record.
+// themes AND at BOTH viewports — 1280x900 desktop and 360x640 phone with
+// isMobile/hasTouch, because the phone layout is a different tree (bottom tab
+// bar, More sheet, narrower scrollers) and a desktop-only pass leaves it
+// unmeasured. Runs axe-core with the WCAG 2.x A/AA tags plus the 2.2
+// target-size rule, and exits non-zero when any SERIOUS or CRITICAL violation
+// survives the allow-list below. Minor/moderate findings are printed for the
+// record.
 //
 // A second, non-failing pass injects the WCAG 1.4.12 text-spacing overrides
 // under the Kannada UI and reports any route whose document then scrolls
@@ -14,6 +18,7 @@
 //
 //   cd client && VITE_STATIC_DEMO=1 npm run build && node test/a11y/axe.mjs
 //   options: --port 4174  --routes /,/map  --theme dark|light|both
+//            --viewport desktop|mobile|both  --dist <dir>
 //            --out <file.json>  --no-spacing  --headed
 //
 // Playwright resolves from client/node_modules (devDependency); browsers come
@@ -28,18 +33,33 @@ import AxeBuilder from '@axe-core/playwright';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(HERE, '..', '..');
-const DIST = path.join(CLIENT, 'dist');
-
 const arg = (name, def) => {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
 };
 const flag = (name) => process.argv.includes(name);
 
+// The CI job builds into client/dist; --dist lets a local run point at a
+// second build (e.g. .dist-static) without disturbing it.
+const DIST = path.resolve(CLIENT, arg('--dist', 'dist'));
+
 const PORT = Number(arg('--port', 4174));
 const OUT = arg('--out', '');
 const THEMES = arg('--theme', 'both') === 'both' ? ['dark', 'light'] : [arg('--theme', 'dark')];
 const SPACING = !flag('--no-spacing');
+
+// Both viewports are audited: the phone layout is a different tree (bottom tab
+// bar, More sheet, stacked cards, narrower scrollers), so a desktop-only pass
+// leaves the whole mobile surface unmeasured. 360x640 is the narrowest phone
+// the design targets; isMobile/hasTouch make Chromium report a coarse pointer,
+// which is what WCAG 2.5.8 target-size is written for.
+const ALL_VIEWPORTS = [
+  { key: 'desktop', width: 1280, height: 900 },
+  { key: 'mobile', width: 360, height: 640, isMobile: true, hasTouch: true },
+];
+const VP_ARG = arg('--viewport', 'both');
+const VIEWPORTS = VP_ARG === 'both' ? ALL_VIEWPORTS : ALL_VIEWPORTS.filter((v) => v.key === VP_ARG);
+if (!VIEWPORTS.length) { console.error(`unknown --viewport ${VP_ARG} (desktop|mobile|both)`); process.exit(2); }
 
 // Routes that exist in App.jsx today plus the Round-2 tier / face / ingest
 // routes; a route that 404s in this build is reported as skipped, not failed.
@@ -97,7 +117,7 @@ async function startPreview() {
     return null;
   }
   const bin = path.join(CLIENT, 'node_modules', 'vite', 'bin', 'vite.js');
-  const child = spawn(process.execPath, [bin, 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], {
+  const child = spawn(process.execPath, [bin, 'preview', '--outDir', DIST, '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], {
     cwd: CLIENT, stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.on('data', () => {});
@@ -116,9 +136,10 @@ function allowed(v, node) {
   return ALLOW.some((a) => a.id === v.id && (!a.selector || a.selector.test(String(node.target || ''))));
 }
 
-async function auditRoute(browser, route, theme, { settle = 2500 } = {}) {
+async function auditRoute(browser, route, theme, vp, { settle = 2500 } = {}) {
   const ctx = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
+    viewport: { width: vp.width, height: vp.height },
+    ...(vp.isMobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 1 } : {}),
     reducedMotion: 'reduce',
     locale: 'en-IN',
   });
@@ -136,7 +157,7 @@ async function auditRoute(browser, route, theme, { settle = 2500 } = {}) {
   await page.waitForSelector('#main-content', { timeout: 20000 });
   await page.waitForTimeout(settle);
   const notFound = await page.evaluate(() => /Route not found/.test(document.querySelector('#main-content')?.textContent || ''));
-  if (notFound) { await ctx.close(); return { route, theme, skipped: true }; }
+  if (notFound) { await ctx.close(); return { route, theme, viewport: vp.key, skipped: true }; }
   const results = await new AxeBuilder({ page })
     .withTags(TAGS)
     .options({ rules: { 'target-size': { enabled: true } } })
@@ -167,7 +188,7 @@ async function auditRoute(browser, route, theme, { settle = 2500 } = {}) {
     violations.push({ id: v.id, impact: v.impact, help: v.help, count: nodes.length, targets: nodes.slice(0, 3).map((n) => String(n.target[0]).slice(0, 120)) });
   }
   await ctx.close();
-  return { route, theme, violations, passes: results.passes.length, incomplete: results.incomplete.length };
+  return { route, theme, viewport: vp.key, violations, passes: results.passes.length, incomplete: results.incomplete.length };
 }
 
 async function spacingRoute(browser, route) {
@@ -187,12 +208,30 @@ async function spacingRoute(browser, route) {
     const vw = document.documentElement.clientWidth;
     const out = [];
     let clipped = 0;
+    // An element inside a box that scrolls on purpose (a wide table, the A4
+    // brief preview, a Leaflet pane) is not a page overflow. Matched on the
+    // COMPUTED overflow rather than on a class name: .chart-table and the
+    // tier tables get their scrolling from a component class, so a
+    // class-name test counted every one of their rows as an overflow.
+    const insideScroller = (el) => {
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        // Stop at the two roots the probe collects from — #main-content and the
+        // app topbar (a direct child of body). NOT at any <header>: the brief
+        // preview has its own document <header>, and stopping there hid the
+        // fact that the whole A4 page sits inside .brief-scroll.
+        if (p.id === 'main-content' || p.parentElement === document.body) return false;
+        if (p.classList.contains('leaflet-container')) return true;
+        const pcs = getComputedStyle(p);
+        if (/auto|scroll/.test(pcs.overflowX) || /auto|scroll/.test(pcs.overflowY)) return true;
+      }
+      return false;
+    };
     for (const el of document.querySelectorAll('#main-content *, header *')) {
       const cs = getComputedStyle(el);
       if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
-      if (r.right > vw + 2 && !el.closest('.overflow-x-auto, .leaflet-container, [data-a11y-scroll]')) {
+      if (r.right > vw + 2 && !insideScroller(el)) {
         out.push(`${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 3).join('.') : ''}`);
       }
       if (cs.whiteSpace === 'nowrap' && el.scrollWidth > el.clientWidth + 2 && cs.overflow !== 'visible' && /rounded-full|chip/.test(String(el.className))) clipped += 1;
@@ -213,37 +252,40 @@ const report = { generatedAt: new Date().toISOString(), tags: TAGS, routes: [], 
 let seriousOrCritical = 0;
 try {
   for (const route of ROUTES) {
-    for (const theme of THEMES) {
-      let r;
-      try {
-        r = await auditRoute(browser, route, theme);
-      } catch (e) {
-        r = { route, theme, error: String(e && e.message || e).slice(0, 200) };
-      }
-      // A cold lazy chunk can miss the first settle window, and a panel caught
-      // mid-skeleton can report a transient contrast pair. Any error or
-      // serious finding earns one re-audit with a longer settle; only findings
-      // present in BOTH runs count (a real defect is stable, a race is not).
-      if (r.error || (r.violations && r.violations.some((v) => IMPACT_RANK[v.impact] >= 2))) {
-        let again;
-        try { again = await auditRoute(browser, route, theme, { settle: 4000 }); } catch (e) { again = { route, theme, error: String(e && e.message || e).slice(0, 200) }; }
-        if (!again.error && !again.skipped) {
-          if (r.error) r = again;
-          else {
-            const key = (v) => `${v.id}|${v.targets.join('|')}`;
-            const keep = new Set(again.violations.map(key));
-            r = { ...again, violations: r.violations.filter((v) => keep.has(key(v))), reaudited: true };
+    for (const vp of VIEWPORTS) {
+      for (const theme of THEMES) {
+        let r;
+        try {
+          r = await auditRoute(browser, route, theme, vp);
+        } catch (e) {
+          r = { route, theme, viewport: vp.key, error: String(e && e.message || e).slice(0, 200) };
+        }
+        // A cold lazy chunk can miss the first settle window, and a panel caught
+        // mid-skeleton can report a transient contrast pair. Any error or
+        // serious finding earns one re-audit with a longer settle; only findings
+        // present in BOTH runs count (a real defect is stable, a race is not).
+        if (r.error || (r.violations && r.violations.some((v) => IMPACT_RANK[v.impact] >= 2))) {
+          let again;
+          try { again = await auditRoute(browser, route, theme, vp, { settle: 4000 }); } catch (e) { again = { route, theme, viewport: vp.key, error: String(e && e.message || e).slice(0, 200) }; }
+          if (!again.error && !again.skipped) {
+            if (r.error) r = again;
+            else {
+              const key = (v) => `${v.id}|${v.targets.join('|')}`;
+              const keep = new Set(again.violations.map(key));
+              r = { ...again, violations: r.violations.filter((v) => keep.has(key(v))), reaudited: true };
+            }
           }
         }
+        report.routes.push(r);
+        const where = `${theme.padEnd(5)} ${vp.key.padEnd(7)}`;
+        if (r.skipped) { console.log(`skip  ${route.padEnd(15)} ${where} (route not in this build)`); continue; }
+        if (r.error) { console.log(`ERR   ${route.padEnd(15)} ${where} ${r.error}`); seriousOrCritical += 1; continue; }
+        const bad = r.violations.filter((v) => IMPACT_RANK[v.impact] >= 2);
+        seriousOrCritical += bad.reduce((n, v) => n + v.count, 0);
+        const summary = r.violations.map((v) => `${v.id}(${v.impact}×${v.count})`).join(' ') || 'clean';
+        console.log(`${bad.length ? 'FAIL' : 'ok  '}  ${route.padEnd(15)} ${where} ${summary}`);
+        for (const v of bad) for (const tgt of v.targets) console.log(`        ${v.id}: ${tgt}`);
       }
-      report.routes.push(r);
-      if (r.skipped) { console.log(`skip  ${route.padEnd(15)} ${theme}  (route not in this build)`); continue; }
-      if (r.error) { console.log(`ERR   ${route.padEnd(15)} ${theme}  ${r.error}`); seriousOrCritical += 1; continue; }
-      const bad = r.violations.filter((v) => IMPACT_RANK[v.impact] >= 2);
-      seriousOrCritical += bad.reduce((n, v) => n + v.count, 0);
-      const summary = r.violations.map((v) => `${v.id}(${v.impact}×${v.count})`).join(' ') || 'clean';
-      console.log(`${bad.length ? 'FAIL' : 'ok  '}  ${route.padEnd(15)} ${theme.padEnd(5)} ${summary}`);
-      for (const v of bad) for (const tgt of v.targets) console.log(`        ${v.id}: ${tgt}`);
     }
   }
   if (SPACING) {
@@ -270,7 +312,7 @@ const totals = { minor: 0, moderate: 0, serious: 0, critical: 0 };
 for (const r of audited) for (const v of r.violations) totals[v.impact] = (totals[v.impact] || 0) + v.count;
 report.totals = totals;
 report.seriousOrCritical = seriousOrCritical;
-console.log(`\naxe: ${audited.length} route×theme audits · violations minor=${totals.minor} moderate=${totals.moderate} serious=${totals.serious} critical=${totals.critical}`);
+console.log(`\naxe: ${audited.length} route×theme×viewport audits (${VIEWPORTS.map((v) => `${v.width}×${v.height}`).join(' + ')}) · violations minor=${totals.minor} moderate=${totals.moderate} serious=${totals.serious} critical=${totals.critical}`);
 if (OUT) { fs.writeFileSync(OUT, JSON.stringify(report, null, 2)); console.log(`report → ${OUT}`); }
 if (seriousOrCritical > 0) {
   console.error(`a11y FAILED — ${seriousOrCritical} serious/critical violation node(s) (or audit errors).`);

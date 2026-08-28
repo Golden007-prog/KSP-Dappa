@@ -33,6 +33,20 @@ export default {
   'chart.showTableAria': 'Show {title} as a table',
   'chart.showChartAria': 'Show {title} as a chart',
 
+  // Labels for horizontally scrolling boxes. They carry tabindex=0 so a
+  // keyboard user can scroll them (WCAG 2.1.1), which makes them landmarks —
+  // a landmark without a name is worse than none, so every one is named.
+  'scroll.table': 'Scrollable table: {name}',
+  'scroll.panel': 'Scrollable panel: {name}',
+  'scroll.rows': 'Scrollable results table',
+  'scroll.chartTable': 'Scrollable table of the chart values',
+  'scroll.digest': 'Scrollable digest text',
+
+  // Per-route document titles the nav table cannot produce (lib/a11y.js
+  // useDocumentTitle); the " — KSP DAPPA" suffix is added by formatDocumentTitle.
+  'title.case': 'Case {no}',
+  'title.offender': '{name} · Offender 360',
+
   'live.results': '{n} results',
   'live.resultOne': '1 result',
   'live.rowsLoaded': '{n} rows loaded',

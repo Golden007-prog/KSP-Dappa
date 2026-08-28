@@ -171,4 +171,94 @@ the SDK typings), and the in-process fallbacks serve: sequential nightly steps
 via the `dappa_nightly` cron function, and the embedded logistic outcome model.
 Console-pending count on the tracked configuration: 13 → 11.
 
+**D-020 · The Round-2 decision record lives per phase; this file carries the cross-cutting ones (lead, 29 Aug 2026).**
+Seven parallel workstreams produced 99 decision entries, which is more than one
+chronological file can hold without becoming unreadable. They live beside the
+work in `docs/round2/decisions-<phase>.md` — phase3-console, phase4 (officer
+tiers), phase5 (voice + accessibility), phase6 (face identification), phase7
+(action loop), phase8-catalyst (new service surfaces), phase8-depth (analytical
+depth), phase8-ingest (CSV → ER). Each is written in this file's style and cites
+the measurement behind it. From D-021 onward this file records only what a judge
+would ask about across phases, and points at the phase file for the detail. Why:
+a decision log nobody finishes reading is a decision log that does not work.
+
+**D-021 · Development is the submitted URL; Production is finished after the datathon (lead, 29 Aug 2026).**
+The Production environment exists and answers, but Catalyst migrates code and
+metadata only — the Data Store arrives empty and function env values do not
+travel (D-013). Finishing it means re-loading ~350,000 rows with
+`scripts/prod_load.mjs`, re-entering the env under the Production switch,
+re-pointing `APP_BASE_URL` and a second *Deploy to Production*. The Development
+URL is a legitimate Catalyst deployment, carries the full dataset and every
+configured service, and is what the README publishes. Doing the migration in
+the last hours before a deadline would risk the one URL a judge opens to save
+a cosmetic ".development" in the hostname. The runbook is `CONSOLE_SETUP.md` §14.
+
+**D-022 · OpenStreetMap basemap tiles are declared, not removed (lead, 29 Aug 2026).**
+Two independent reviewers flagged the Leaflet tile layers
+(`geointel/MapCanvas.jsx`, `cases/IncidentMap.jsx`) as an external-endpoint
+violation; two independent refuters overturned both, and they were right. The
+organiser rule this project is held to is scoped to *services* —
+`docs/CONTRACTS.md` §Guardrails: "No external AI/LLM/hosting/DB/auth APIs
+anywhere in produced code. OSM tiles + open GeoJSON are fine as client data
+sources", with the same carve-out in the round-1 master prompt. A tile request
+carries a {z}/{x}/{y} coordinate and nothing of ours. The decision is therefore
+to keep the basemap and *declare* it: the README's data-ethics section names the
+two files, states it is the only outbound request the app makes, and points at
+GeoIntel's Basemap on/off control, which turns it off entirely — every analytic
+layer (choropleth, hotspots, heat, incidents, beat map) is drawn from bundled
+GeoJSON and the Catalyst API and is unchanged with tiles off. Why declare rather
+than delete: a judge who opens a network tab should find the request already
+explained, and removing the basemap would cost the geographic context under the
+choropleth for no gain against the rule as written.
+
+**D-023 · The Round-2 claims were audited adversarially before publication (lead, 29 Aug 2026).**
+Seven workstreams built in parallel and each wrote its own feature and decision
+records, which is exactly the situation where a project starts believing its own
+summaries. So before any of it reached `FEATURES.md`, nine independent reviewers
+were briefed to **refute** the claims — one per workstream, one for cross-cutting
+integration, one for the non-negotiables — working from the running code, the
+deployed API and a browser rather than from the documents. They raised 100
+findings. Each critical or major finding then went to two further reviewers whose
+only job was to knock it down: 4 were refuted and dropped, 53 were confirmed.
+Seven fix agents closed them: 79 fixed, 5 partial, 2 rejected as wrong on the
+evidence. What the audit caught is the point of recording it: a sample-capture
+path that returned a similarity of exactly 1.0 by construction; a "two
+independent signals" rule that was re-testing the filter the officer had already
+chosen; a numeric firewall that let a fabricated small integer through; a
+festival estimator that double-counted the days two festivals shared; prediction
+zones drawn around cases with no repeat history; a locale string telling officers
+the alias matcher runs at "~0.9 precision" when it measures 0.032; and five whole
+feature areas that were dead on the GitHub Pages demo because nobody had baked
+their snapshots. None of those would have been found by re-reading our own notes.
+
+**D-024 · Three of the four refuted findings were misreadings of our own vocabulary (lead, 29 Aug 2026).**
+Worth recording because it says something about the documents rather than the
+reviewers. Three findings died because "overlap" in this repository means a
+*multi-capability attribution* (one feature tagged `[C5 C2]`, published in the
+overlap matrix), not two features covering the same ground — a reviewer reading
+`CAPABILITIES.md` cold took the everyday meaning. The fourth died because the
+reviewers were briefed with a stricter rule than the project actually holds:
+"no external endpoint anywhere" rather than the organiser's "no external
+AI/LLM/hosting/DB/auth **APIs**", which explicitly permits OSM tiles (D-022).
+Both are documentation faults, not reviewer faults: a term of art that a careful
+outsider misreads is a term of art that needs a gloss, and a rule quoted from
+memory rather than from `docs/CONTRACTS.md` is how a team talks itself into a
+wrong conclusion. The overlap matrix now says what it means where it is defined.
+
+**D-025 · The recount after the build: two of six capabilities clear the bar, and C3's three-feature gap is published as too close to call (lead, 29 Aug 2026).**
+Folding the 233 Round-2 entries gives C1 152 · C2 90 · C3 97 · C4 108 · C5 57 ·
+C6 85 — up from 134 / 81 / 81 / 85 / 44 / 52, with C4 crossing the bar and C6
+gaining the most (+33, where face identification, the model card, the forecast
+audit and alert precision landed). Of the 233, 88 are capability-bearing and 145
+are infrastructure; the fix wave's own output — a colour-token rename, tooltip
+CSS, a topbar overflow menu, snapshot generation — was counted as **zero**
+features, at the fixing agents' own insistence. Two phase counts were corrected
+downward against their authors' totals before folding (phase 4 claimed 24 scored
+and audits to 22; phase 6 claimed 15 and folds at 15 with one line demoted and
+one added). C3 lands three short of the bar, which is inside the stated ±8
+hand-classification tolerance, so it is published as **too close to call** rather
+than as a pass: on a slightly more generous reading of three panels it clears,
+and on a stricter one it does not. Rounding it up is precisely the thing this
+document exists to prevent.
+
 <!-- Append new decisions here: **D-00N · Title (owner, date).** Decision + why. -->

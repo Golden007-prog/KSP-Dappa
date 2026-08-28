@@ -60,7 +60,7 @@ export default function AnalysisDock({ tabs, tab, onTab, onClose, className = ''
 /** Small labelled stat used across the workbench tabs. */
 export function StatTile({ label, value, hint, tone = 'ink' }) {
   return (
-    <div className="rounded-lg border border-grid bg-base/40 px-2 py-1.5 min-w-0">
+    <div className="rounded-lg border border-grid bg-canvas/40 px-2 py-1.5 min-w-0">
       <p className="text-[9px] uppercase tracking-wider text-muted truncate">{label}</p>
       <p className={`num text-sm font-semibold truncate ${tone === 'signal' ? 'text-signal' : tone === 'amber' ? 'text-amber' : tone === 'teal' ? 'text-teal' : 'text-ink'}`}>
         {value}

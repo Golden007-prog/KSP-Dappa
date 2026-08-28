@@ -31,7 +31,7 @@ export default function ExplainPanel({ alert: a, createdAt }) {
   const lag = detectionLagDays(createdAt, a?.periodEnd);
 
   return (
-    <div className="rounded-lg border border-grid/70 bg-base/20 p-2.5">
+    <div className="rounded-lg border border-grid/70 bg-canvas/20 p-2.5">
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
           {t('alerts.explain.title')}

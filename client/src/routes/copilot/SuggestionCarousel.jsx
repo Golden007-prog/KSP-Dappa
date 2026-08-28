@@ -46,7 +46,7 @@ export default function SuggestionCarousel({ questions = [], pinned = [], onPick
             <span
               key={q}
               className={`shrink-0 inline-flex items-center rounded-full border transition-colors ${
-                isPinned ? 'border-amber/60 bg-amber/5' : 'border-grid bg-base/60'
+                isPinned ? 'border-amber/60 bg-amber/5' : 'border-grid bg-canvas/60'
               }`}
             >
               <button

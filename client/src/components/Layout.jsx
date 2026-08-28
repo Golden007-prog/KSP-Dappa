@@ -79,6 +79,7 @@ const ICONS = {
   station: <Svg><path d="M4 21V8l8-5 8 5v13" /><path d="M9 21v-5h6v5M9 12h.01M15 12h.01" /></Svg>,
   state: <Svg><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M12 8v8M8 12h8" /></Svg>,
   glossary: <Svg><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5Z" /><path d="M4 4.5v17M8 7h8M8 11h6" /></Svg>,
+  sliders: <Svg size={16}><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2.1" /><circle cx="9" cy="17" r="2.1" /></Svg>,
 };
 
 // Route-local keyboard shortcuts surfaced in the global shortcuts sheet as an
@@ -170,6 +171,19 @@ function readSavedViews() {
 // `labelKey` / `groupKey` are i18n keys in the shared `common` namespace —
 // every render site resolves them with t(), so nav text follows the language.
 const NAV_GROUPS = [
+  // Officer tiers lead the sidebar: they are the answer to the challenge's
+  // "every level of officer" requirement and the first thing a judge should
+  // find. Fifth in the list they sat at y≈737 in a 670-px-tall nav — present,
+  // but below the fold on a 1280×800 laptop.
+  {
+    groupKey: 'tier.nav.group',
+    items: [
+      { to: '/beat', labelKey: 'tier.nav.beat', icon: 'beat' },
+      { to: '/station', labelKey: 'tier.nav.station', icon: 'station' },
+      { to: '/state', labelKey: 'tier.nav.state', icon: 'state' },
+      { to: '/glossary', labelKey: 'tier.nav.glossary', icon: 'glossary' },
+    ],
+  },
   {
     groupKey: 'common.nav.group.overview',
     items: [
@@ -204,17 +218,11 @@ const NAV_GROUPS = [
     ],
   },
   {
-    groupKey: 'tier.nav.group',
-    items: [
-      { to: '/beat', labelKey: 'tier.nav.beat', icon: 'beat' },
-      { to: '/station', labelKey: 'tier.nav.station', icon: 'station' },
-      { to: '/state', labelKey: 'tier.nav.state', icon: 'state' },
-      { to: '/glossary', labelKey: 'tier.nav.glossary', icon: 'glossary' },
-    ],
-  },
-  {
     groupKey: 'common.nav.group.system',
-    items: [{ to: '/about', labelKey: 'common.nav.about', icon: 'about' }],
+    items: [
+      { to: '/about', labelKey: 'common.nav.about', icon: 'about' },
+      { to: '/styleguide', labelKey: 'tier.nav.styleguide', icon: 'glossary' },
+    ],
   },
 ];
 
@@ -224,6 +232,14 @@ const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, sectionK
 const TAB_ROUTES = ['/', '/map', '/cases', '/predict'];
 const TABS = TAB_ROUTES.map((to) => ALL_NAV.find((n) => n.to === to));
 const MORE_ROUTES = ALL_NAV.filter((n) => !TAB_ROUTES.includes(n.to));
+// The sheet leads with the Officer-tier views — this phase's demo asset. In
+// NAV_GROUPS order they landed ~9 rows down (first link at y=636 on a 360x640
+// phone), so reaching Beat/Station/State meant scrolling a modal.
+const TIER_GROUP = 'tier.nav.group';
+const MORE_SHEET_ROUTES = [
+  ...MORE_ROUTES.filter((n) => n.sectionKey === TIER_GROUP),
+  ...MORE_ROUTES.filter((n) => n.sectionKey !== TIER_GROUP),
+];
 
 // g-then-key go-to map for the global shortcut layer
 const GO_KEYS = [
@@ -322,6 +338,13 @@ function RefreshControl() {
   const freshness = fetching > 0
     ? t('shell.refresh.busy')
     : mins < 1 ? t('common.shell.updatedJustNow') : t('shell.refresh.agoMins', { n: mins });
+  // md–lg has no room for the sentence: the age alone rides in the button and
+  // the full wording stays in the tooltip + accessible name. Every short form
+  // is a substring of its long form, so the visible label never contradicts
+  // the accessible name (WCAG 2.5.3).
+  const freshnessShort = fetching > 0
+    ? t('shell.refresh.busy')
+    : mins < 1 ? t('shell.refresh.justNowShort') : t('shell.refresh.agoMinsShort', { n: mins });
 
   return (
     <Tooltip label={t('shell.refresh.tooltip', { freshness })} position="bottom">
@@ -332,15 +355,60 @@ function RefreshControl() {
         className="flex items-center gap-2 h-11 min-w-[44px] justify-center rounded-lg px-0 md:px-2.5 text-muted hover:text-primary hover:bg-grid/30 transition-colors"
       >
         <span className={fetching > 0 ? 'animate-spin' : ''}>{ICONS.refresh}</span>
-        <span className="num hidden md:inline text-[11px]">{freshness}</span>
+        {/* whitespace-nowrap: without it this wrapped to three lines and blew
+            the 56-px topbar open to 50 px of text */}
+        <span className="num hidden md:inline 2xl:hidden text-[11px] whitespace-nowrap">{freshnessShort}</span>
+        <span className="num hidden 2xl:inline text-[11px] whitespace-nowrap">{freshness}</span>
       </button>
     </Tooltip>
   );
 }
 
+/** Low-frequency display chrome (language · density · text size) behind one
+ *  topbar button. Inline these three ran the 56-px row ~215 px past the
+ *  header edge at 1280 (worse in Kannada) and pushed the theme toggle — which
+ *  the `t` shortcut and the demo script both use — off screen entirely; the
+ *  text-size control had no desktop affordance at all (it was mounted only in
+ *  the md:hidden More sheet). */
+function DisplayMenu({ open, onOpen, onClose }) {
+  const t = useT();
+  return (
+    <>
+      <Tooltip label={t('shell.display.title')} position="bottom" className="hidden md:inline-flex">
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={t('shell.display.aria')}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-grid/30 transition-colors"
+        >
+          {ICONS.sliders}
+        </button>
+      </Tooltip>
+      <Sheet open={open} onClose={onClose} title={t('shell.display.title')}>
+        <div className="space-y-3 px-1 pb-1">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs text-muted">{t('shell.more.language')}</span>
+            <LanguageToggle size="md" />
+          </div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs text-muted">{t('shell.density.label')}</span>
+            <DensityToggle size="md" />
+          </div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs text-muted">{t('a11y.fontSize.label')}</span>
+            <FontSizeControl size="md" />
+          </div>
+        </div>
+      </Sheet>
+    </>
+  );
+}
+
 function Key({ children }) {
   return (
-    <kbd className="num inline-flex min-w-[1.6rem] items-center justify-center rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[11px] text-ink">
+    <kbd className="num inline-flex min-w-[1.6rem] items-center justify-center rounded border border-grid bg-canvas/60 px-1.5 py-0.5 text-[11px] text-ink">
       {children}
     </kbd>
   );
@@ -429,6 +497,7 @@ export default function Layout() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
 
@@ -870,7 +939,7 @@ export default function Layout() {
   }, lookups.data, { t, tName });
 
   return (
-    <div className="flex h-full min-h-screen bg-base">
+    <div className="flex h-full min-h-screen bg-canvas">
       <a
         href="#main-content"
         className="skip-link"
@@ -963,7 +1032,7 @@ export default function Layout() {
 
         <div id="main-scroll" className="flex-1 overflow-y-auto">
           {/* translucent sticky topbar */}
-          <header className="no-print sticky top-0 z-40 flex items-center gap-2 md:gap-3 h-14 px-3 md:px-5 border-b border-grid bg-base/75 backdrop-blur-md">
+          <header className="no-print sticky top-0 z-40 flex items-center gap-2 md:gap-3 h-14 px-3 md:px-5 border-b border-grid bg-canvas/75 backdrop-blur-md">
             <div className={`flex items-center gap-2 ${zen ? '' : 'md:hidden'} min-w-0`}>
               <Shield size={22} />
               <span className="text-sm font-bold tracking-[0.08em] text-ink">{t('common.app.name')}</span>
@@ -973,12 +1042,16 @@ export default function Layout() {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden sm:flex flex-1 max-w-md items-center gap-2.5 rounded-lg border border-grid bg-panel/70 px-3 py-2 min-h-[38px] text-sm text-muted hover:border-primary/50 hover:text-ink transition-colors"
+              // grow/shrink off a REAL basis, not flex-1: an item with
+              // `flex-basis: 0` has a scaled shrink factor of 0, so it never
+              // gives width back and the controls to its right (the theme
+              // toggle last of all) got pushed off the header instead.
+              className="hidden sm:flex grow shrink basis-[14rem] min-w-[7rem] max-w-md items-center gap-2.5 rounded-lg border border-grid bg-panel/70 px-3 py-2 min-h-[38px] text-sm text-muted hover:border-primary/50 hover:text-ink transition-colors"
               aria-label={t('shell.aria.openPalette')}
             >
               {ICONS.search}
               <span className="flex-1 text-left truncate">{t('common.shell.search')}</span>
-              <kbd className="rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px]">{kbdHint}</kbd>
+              <kbd className="rounded border border-grid bg-canvas/60 px-1.5 py-0.5 text-[10px]">{kbdHint}</kbd>
             </button>
             <button
               type="button"
@@ -1026,8 +1099,7 @@ export default function Layout() {
               </button>
             </Tooltip>
             <TierSwitcher className="hidden xl:inline-flex" /><PlainLanguageToggle className="hidden xl:inline-flex" />
-            <LanguageToggle className="hidden lg:inline-flex" variant="compact" />
-            <DensityToggle className="hidden md:inline-flex" />
+            <DisplayMenu open={displayOpen} onOpen={() => setDisplayOpen(true)} onClose={() => setDisplayOpen(false)} />
             {zen && (
               <Tooltip label={t('shell.zen.exit')} position="bottom">
                 <button
@@ -1063,7 +1135,7 @@ export default function Layout() {
       {/* ---- mobile bottom tab bar ---- */}
       <nav
         aria-label={t('shell.aria.primaryTabs')}
-        className="no-print md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-grid bg-base/90 backdrop-blur-md pb-safe"
+        className="no-print md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-grid bg-canvas/90 backdrop-blur-md pb-safe"
       >
         <div className="grid grid-cols-5">
           {TABS.map((item) => (
@@ -1108,8 +1180,13 @@ export default function Layout() {
 
       {/* ---- More sheet (mobile) ---- */}
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t('shell.more.title')}>
+        {/* tier switcher rides directly under the title — it is the demo
+            control, and below the nav list it sat ~9 rows off-screen */}
+        <div className="flex flex-wrap items-center gap-2 pb-3 mb-2 border-b border-grid">
+          <TierSwitcher size="md" /><PlainLanguageToggle size="md" />
+        </div>
         <nav aria-label={t('shell.more.aria')} className="space-y-0.5">
-          {MORE_ROUTES.map((item) => (
+          {MORE_SHEET_ROUTES.map((item) => (
             <NavLink
               key={item.to}
               to={{ pathname: item.to, search }}
@@ -1132,7 +1209,6 @@ export default function Layout() {
         <div className="mt-3 border-t border-grid pt-3 space-y-3 px-1">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-xs text-muted">{t('shell.more.language')}</span>
-            <span className="basis-full flex flex-wrap items-center gap-2 order-first pb-1"><TierSwitcher size="md" /><PlainLanguageToggle size="md" /></span>
             <LanguageToggle size="md" />
           </div>
           <div className="flex items-center justify-between gap-3 flex-wrap">

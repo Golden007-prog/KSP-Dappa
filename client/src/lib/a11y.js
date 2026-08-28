@@ -17,18 +17,23 @@ const ASSERTIVE_ID = 'dappa-live-region-assertive';
 
 export const LIVE_REGION_IDS = { polite: REGION_ID, assertive: ASSERTIVE_ID };
 
-let pending = null;
+// One pending frame PER region: a polite message and an assertive one can be
+// raised in the same frame (a filter change plus an error), and a single shared
+// handle would cancel the first write after its region had already been
+// cleared — the message would be lost, not just superseded.
+const pending = { [REGION_ID]: 0, [ASSERTIVE_ID]: 0 };
 
 export function announce(text, { assertive = false } = {}) {
   if (typeof document === 'undefined') return;
   const msg = String(text || '').trim();
   if (!msg) return;
-  const el = document.getElementById(assertive ? ASSERTIVE_ID : REGION_ID);
+  const id = assertive ? ASSERTIVE_ID : REGION_ID;
+  const el = document.getElementById(id);
   if (!el) return;
   el.textContent = '';
-  if (pending) cancelAnimationFrame(pending);
-  pending = requestAnimationFrame(() => {
-    pending = null;
+  if (pending[id]) cancelAnimationFrame(pending[id]);
+  pending[id] = requestAnimationFrame(() => {
+    pending[id] = 0;
     el.textContent = msg;
   });
 }
@@ -77,12 +82,15 @@ export function focusMainHeading({ maxFrames = 90 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Document titles. Layout derives a title from its nav table; a route that is
-// not in that table (the tier homes, /identify, /ingest, …) or that knows a
-// better name (an FIR number, an offender) registers its own with
-// useDocumentTitle('…'). ShellA11y reads getRouteTitle(pathname) first and
-// only then falls back to the nav-derived name, and the pending alert count
-// is prefixed in one place either way.
+// Document titles. Layout derives a title from its nav table, which covers
+// every route that has a nav entry — the tier homes, /identify and /ingest
+// included. The two detail routes are what it cannot name: /cases/:id is only
+// ever "FIR detail" and /offenders/:key only ever "Offender 360". Those two
+// register the real thing (the FIR number, the person) with useDocumentTitle,
+// and ShellA11y reads getRouteTitle(pathname) first, falling back to the
+// nav-derived name; the pending alert count is prefixed in one place either
+// way. Registering beats setting document.title from the route: ShellA11y's
+// own effect runs on every render and would overwrite a direct assignment.
 // ---------------------------------------------------------------------------
 
 const routeTitles = new Map();
@@ -118,8 +126,11 @@ function currentPathname() {
 
 /**
  * Register a per-route document title while the component is mounted:
- *   useDocumentTitle(t('tier.beat.title'))
- * ShellA11y applies it (with the alert-count prefix) and clears it on unmount.
+ *   useDocumentTitle(t('a11y.title.case', { no: d.crimeNo || id }))   // CaseDetail
+ *   useDocumentTitle(t('a11y.title.offender', { name }))              // Offender360
+ * ShellA11y applies it (with the alert-count prefix and the app suffix) and
+ * clears it on unmount. Pass the view NAME only — formatDocumentTitle adds
+ * " — KSP DAPPA".
  */
 export function useDocumentTitle(title) {
   useEffect(() => {

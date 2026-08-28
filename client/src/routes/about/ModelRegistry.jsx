@@ -42,7 +42,7 @@ function ModelRow({ model, open, onToggle }) {
   const serving = model.status === 'serving';
   const bodyId = `model-body-${model.key}`;
   return (
-    <div className={`rounded-lg border bg-base/40 ${serving ? 'border-teal/30' : 'border-grid'}`}>
+    <div className={`rounded-lg border bg-canvas/40 ${serving ? 'border-teal/30' : 'border-grid'}`}>
       <button
         type="button"
         onClick={onToggle}
@@ -123,7 +123,7 @@ function chainNote(chain, t) {
 function Chain({ chain }) {
   const t = useT();
   return (
-    <li className="rounded-lg border border-grid bg-base/40 p-3">
+    <li className="rounded-lg border border-grid bg-canvas/40 p-3">
       <div className="flex flex-wrap items-center gap-1.5">
         <CodeChip tone="teal">{chain.endpoint}</CodeChip>
         <span className="text-[10px] uppercase tracking-wider text-muted">{t(taskLabelKey(chain.task))}</span>

@@ -405,7 +405,7 @@ export default {
   'confidence.med': 'med',
   'confidence.low': 'low',
   'o360.identityResolution': 'identity-resolution',
-  'o360.identityNote': 'Aliases linked by fuzzy name + shared phone/address signals (~0.9 precision on the synthetic ground truth). Percentages are heuristic name-similarity to the canonical spelling.',
+  'o360.identityNote': 'Aliases are linked by fuzzy name (0.6 × token-sort ratio) + age closeness (0.2) + district overlap (0.2) at a 0.92 threshold — no phone or address signal exists in the data. Measured against the planted ground truth that scorer runs at 3.2 % precision and 57.1 % recall: it over-links badly, so treat every alias as a lead to check, not a fact. Full figures: Offenders → Behavioural depth → identity audit. Percentages below are name-similarity to the canonical spelling.',
 
   'o360.operatingArea': 'Operating area',
   'o360.operatingAreaSub': 'Cases per district, decoded from CrimeNo',

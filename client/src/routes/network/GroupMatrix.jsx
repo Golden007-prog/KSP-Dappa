@@ -63,7 +63,7 @@ export default function GroupMatrix({ nodes = [], edges = [], activePair = null,
       {!open ? null : grid.totalCross === 0 && grid.ids.length < 2 ? (
         <EmptyState compact title={t('network.matrix.emptyTitle')} message={t('network.matrix.emptyMsg')} />
       ) : (
-        <div className="overflow-x-auto -mx-1 px-1">
+        <div className="overflow-x-auto -mx-1 px-1" tabIndex={0} role="region" aria-label={t('network.matrix.caption')}>
           <table className="border-separate border-spacing-0.5 text-[10px]">
             <caption className="sr-only">{t('network.matrix.caption')}</caption>
             <thead>

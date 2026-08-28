@@ -82,15 +82,15 @@ export default function EvidenceLoader({
 
         {enabled && !isFetching && loaded > 0 && (
           <dl className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-lg border border-grid/60 bg-base/40 py-2">
+            <div className="rounded-lg border border-grid/60 bg-canvas/40 py-2">
               <dt className="text-[10px] uppercase tracking-wide text-muted">{t('network.sample.firs')}</dt>
               <dd className="num text-sm text-ink">{fmtInt(loaded)}</dd>
             </div>
-            <div className="rounded-lg border border-grid/60 bg-base/40 py-2">
+            <div className="rounded-lg border border-grid/60 bg-canvas/40 py-2">
               <dt className="text-[10px] uppercase tracking-wide text-muted">{t('network.sample.victims')}</dt>
               <dd className="num text-sm text-teal">{fmtInt(victimCount)}</dd>
             </div>
-            <div className="rounded-lg border border-grid/60 bg-base/40 py-2">
+            <div className="rounded-lg border border-grid/60 bg-canvas/40 py-2">
               <dt className="text-[10px] uppercase tracking-wide text-muted">{t('network.sample.locations')}</dt>
               <dd className="num text-sm text-amber">{fmtInt(locationCount)}</dd>
             </div>

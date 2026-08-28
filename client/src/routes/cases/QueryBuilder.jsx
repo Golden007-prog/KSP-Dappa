@@ -129,7 +129,7 @@ export default function QueryBuilder({ open, onClose, query, onApply }) {
           {t('cases.builder.addClause')}
         </button>
 
-        <div className="rounded-lg border border-grid/70 bg-base/40 px-2.5 py-2">
+        <div className="rounded-lg border border-grid/70 bg-canvas/40 px-2.5 py-2">
           <p className="eyebrow mb-1">{t('cases.builder.preview')}</p>
           <p className="num text-xs text-ink break-all min-h-[1rem]">{preview || t('cases.builder.previewEmpty')}</p>
         </div>

@@ -51,7 +51,7 @@ export default function CommunitySummary({
   }, [nodes, brokers]);
 
   const cell = (label, value) => (
-    <div className="bg-base/60 border border-grid rounded-lg px-2.5 py-1.5">
+    <div className="bg-canvas/60 border border-grid rounded-lg px-2.5 py-1.5">
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="text-sm text-ink num">{value}</p>
     </div>

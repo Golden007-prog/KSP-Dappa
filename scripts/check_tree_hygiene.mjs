@@ -31,7 +31,8 @@ const ALLOW = {
   ],
   client: [
     '.gitignore', '.vite', 'CONTRACT.md', 'dist', 'index.html', 'node_modules', 'package-lock.json', 'package.json',
-    'postcss.config.js', 'public', 'src', 'tailwind.config.js', 'vite.config.js',, '.dist-demo-aside',
+    'postcss.config.js', 'public', 'src', 'tailwind.config.js', 'vite.config.js', '.dist-demo-aside',
+    '.dist-static', // transient static-demo build used by local verification runs (gitignored)
     'test', // client/test/a11y — axe-core + Playwright accessibility gate (Phase 5)
   ],
   'functions/dappa_api': [

@@ -20,7 +20,10 @@ export default function SegmentedControl({
   };
 
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className={`inline-flex items-center rounded-lg border border-grid bg-base/50 p-0.5 ${className}`}>
+    // max-w-full + flex-wrap: a group wider than its container (four Kannada
+    // labels in a card header) used to push the page sideways; it now folds
+    // onto a second row instead.
+    <div role="radiogroup" aria-label={ariaLabel} className={`inline-flex max-w-full flex-wrap items-center rounded-lg border border-grid bg-canvas/50 p-0.5 ${className}`}>
       {options.map((o, i) => {
         const on = o.value === value;
         return (
@@ -32,7 +35,7 @@ export default function SegmentedControl({
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`inline-flex items-center gap-1.5 rounded-md font-medium transition-colors ${pad} ${
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors ${pad} ${
               on ? 'bg-panel text-ink shadow-card border border-grid' : 'text-muted hover:text-ink border border-transparent'
             }`}
           >

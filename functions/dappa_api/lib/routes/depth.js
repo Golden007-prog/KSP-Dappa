@@ -215,7 +215,7 @@ function register(router) {
         classification: cls,
         knox: kx,
         zones,
-        method: 'Every pair of cases within distM metres is a candidate; a pair also within `days` is a near-repeat pair. A case with an earlier partner in both bands is a near-repeat (a repeat when the partner sits within sameM metres); a case with only later partners is an originator; the rest are isolated. Chains are the connected components of near-repeat pairs. Knox: observed space-and-time-close pairs against Ns·Nt/N; the p-value permutes the dates over the fixed locations. Prediction zones: a circle of distM around each originator whose `days` window is still open at the scope end.'
+        method: 'Every pair of cases within distM metres is a candidate; a pair also within `days` is a near-repeat pair. A case with an earlier partner in both bands is a near-repeat (a repeat when the partner sits within sameM metres); a case with only later partners is an originator; the rest are isolated. Chains are the connected components of near-repeat pairs. Knox: observed space-and-time-close pairs against Ns·Nt/N; the p-value permutes the dates over the fixed locations (199 shuffles, so the smallest p it can report is 1/200 = 0.005), and both are computed on the scoped sample this answer walked — when `scan.truncated` is set the per-month budget capped it, so read the p-value as evidence about that sample, not the whole store. Prediction zones: a circle of distM around each originator whose `days` window is still open at the scope end. Isolated cases cast no zone — they have no partner in either band.'
       }, scopeMeta(filters, scope, page, rows));
     });
     return ok(res, value, Object.assign({ cached, ttlSec: ttl, cases: value.classification.cases.length, chains: value.classification.chainCount }, META));
@@ -316,8 +316,11 @@ function register(router) {
       const anchor = await anchorYm(ctx.ds, null);
       const fests = festival.FESTIVALS.filter((f) => f.date.slice(0, 7) <= anchor);
       let mode = 'grouped';
-      const daily = [];
       const scans = [];
+      // Each festival is fetched over its own ±31 days; neighbouring festivals
+      // (Dasara / Deepavali are 18–20 days apart) share days, so every fetch is
+      // folded to one row per (date, head) and the fetches are then merged by
+      // max — never concatenated, which would count the overlap twice.
       const fetchOne = async (f) => {
         const w = festival.windowsFor(f.date);
         const where = [{ col: 'CrimeRegisteredDate', op: '>=', val: w.from }, { col: 'CrimeRegisteredDate', op: '<=', val: w.to }];
@@ -328,7 +331,7 @@ function register(router) {
             where, groupBy: ['CrimeRegisteredDate', 'CrimeMajorHeadID'], orderBy: { col: 'CrimeRegisteredDate' }
           }, { maxRows: 1200 });
           scans.push(rows.length);
-          return rows.map((r) => ({ date: String(r.CrimeRegisteredDate).slice(0, 10), headId: toNum(r.CrimeMajorHeadID), count: toNum(r['COUNT(CaseMasterID)']) }));
+          return festival.foldDaily(rows.map((r) => ({ date: String(r.CrimeRegisteredDate).slice(0, 10), headId: toNum(r.CrimeMajorHeadID), count: toNum(r['COUNT(CaseMasterID)']) })));
         } catch (e) {
           mode = 'scan';
           const page = await ctx.ds.queryPaged({
@@ -336,17 +339,18 @@ function register(router) {
             orderBy: { col: 'CrimeRegisteredDate', tieBreak: 'CaseMasterID' }
           }, { maxRows: 3000 }).catch(() => ({ rows: [], pages: 0, truncated: false }));
           scans.push(page.rows.length);
-          return page.rows.map((r) => ({ date: String(r.CrimeRegisteredDate).slice(0, 10), headId: toNum(r.CrimeMajorHeadID), count: 1 }));
+          return festival.foldDaily(page.rows.map((r) => ({ date: String(r.CrimeRegisteredDate).slice(0, 10), headId: toNum(r.CrimeMajorHeadID), count: 1 })));
         }
       };
       const results = await Promise.all(fests.map(fetchOne));
-      for (const rows of results) daily.push(...rows);
+      const fetchedRows = results.reduce((s, rows) => s + rows.length, 0);
+      const daily = festival.mergeDaily(results);
       const headIds = lk.heads.map((h) => h.id);
       const out = festival.estimate(daily, fests, headIds);
       for (const h of out.heads) h.headName = lk.headName(h.headId);
       out.anchorYm = anchor;
       out.scope = { districtId: filters.districtId || null, units: units ? units.length : null };
-      out.scan = { mode, festivals: fests.length, dailyRows: daily.length, perFestival: scans };
+      out.scan = { mode, festivals: fests.length, fetchedRows, dailyRows: daily.length, overlapRows: fetchedRows - daily.length, perFestival: scans };
       return out;
     });
     return ok(res, value, Object.assign({ cached, ttlSec: ttl, heads: value.heads.length }, META));

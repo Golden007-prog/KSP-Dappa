@@ -15,6 +15,10 @@ export const ACTION_STATUS = {
   outcome: 'stable',
 };
 
+/** Per-row engine word. Anything the server does not name is 'this session' —
+ * a row with no known engine is never presented as the Data Store's. */
+export const ROW_SOURCE = { datastore: 'datastore', fixture: 'fixture', memory: 'memory' };
+
 /** ms epoch / ISO → '24 Jul, 14:05' in the active locale, never a raw number. */
 export function stamp(ts, lang) {
   const d = new Date(typeof ts === 'number' ? ts : Date.parse(String(ts || '')));
@@ -49,7 +53,7 @@ export default function ActionTimeline({ query, lang = 'en', compact = false }) 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('actions.timeline.title')}</span>
         <span className="num text-[11px] text-muted">{t('actions.timeline.count', { n: rows.length })}</span>
-        <span className="text-[10px] text-muted/80">· {t(`actions.timeline.source.${source}`)}</span>
+        <span className="text-[10px] text-muted/80">· {t('actions.timeline.readFrom', { engine: t(`actions.timeline.source.${source}`) })}</span>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-muted">{t('actions.timeline.empty')}</p>
@@ -66,6 +70,16 @@ export default function ActionTimeline({ query, lang = 'en', compact = false }) 
                 {stamp(x.ts ?? x.clientTs, lang)} · {t('actions.timeline.by', { who: x.actor || '—' })}
                 {x.actorRole ? ` (${x.actorRole})` : ''}
                 {x.seeded && <span className="ml-1 rounded bg-grid/40 px-1 text-[10px] uppercase tracking-wide">{t('actions.timeline.seeded')}</span>}
+                {/* Each row names the engine that holds IT. The header label is
+                    the list's read source; a memory-only row under a Data Store
+                    header used to read as if the Data Store held it. */}
+                <span
+                  className="ml-1 rounded bg-grid/30 px-1 text-[10px] tracking-wide"
+                  data-row-source={ROW_SOURCE[x.source] || 'memory'}
+                  title={t('actions.timeline.heldBy', { engine: t(`actions.timeline.source.${ROW_SOURCE[x.source] || 'memory'}`) })}
+                >
+                  {t(`actions.timeline.source.${ROW_SOURCE[x.source] || 'memory'}`)}
+                </span>
               </span>
             </li>
           ))}

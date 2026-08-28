@@ -180,7 +180,7 @@ export default function StationExplorer({
                       onClick={() => { setDrillId(String(id)); setStationId(null); setQ(''); }}
                       title={t('dashboard.station.drillTitle', { name: districtName(id) })}
                       className={`flex min-h-[44px] w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors hover:border-amber/50 ${
-                        String(activeDistrictId) === String(id) ? 'border-amber/60 bg-amber/5' : 'border-grid/60 bg-base/30'
+                        String(activeDistrictId) === String(id) ? 'border-amber/60 bg-amber/5' : 'border-grid/60 bg-canvas/30'
                       }`}
                     >
                       <span className="min-w-0 flex-1 truncate text-xs text-ink">{districtName(id)}</span>
@@ -276,7 +276,7 @@ export default function StationExplorer({
               </ol>
 
               {selected && (
-                <div className="rounded-lg border border-grid/70 bg-base/30 p-2.5">
+                <div className="rounded-lg border border-grid/70 bg-canvas/30 p-2.5">
                   <p className="truncate text-xs font-semibold text-ink">{selected.unitName || selected.unitId}</p>
                   <p className="num mt-0.5 text-[10px] text-muted">
                     {t('dashboard.station.detail', {

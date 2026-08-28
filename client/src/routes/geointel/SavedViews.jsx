@@ -96,7 +96,7 @@ export default function SavedViews({ getCurrent, onApply }) {
                 <li key={v.id} className="flex items-center gap-1">
                   <button
                     type="button"
-                    className="flex-1 min-w-0 text-left rounded-lg border border-grid bg-base/40 hover:border-primary/50 px-2 py-1.5 transition-colors gi-tap"
+                    className="flex-1 min-w-0 text-left rounded-lg border border-grid bg-canvas/40 hover:border-primary/50 px-2 py-1.5 transition-colors gi-tap"
                     onClick={() => { onApply(v); setOpen(false); toast.info(t('geointel.views.applied', { name: v.name })); }}
                     title={t('geointel.views.apply')}
                   >

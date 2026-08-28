@@ -661,7 +661,15 @@ export default function Reports() {
 
       <ScheduleCard onTest={() => digest.mutate()} testing={digest.isPending} />
 
-      <div className="brief-scroll rounded-xl border border-grid shadow-2xl bg-white">
+      {/* The preview is a fixed 210 mm A4 document, so on a phone the box
+          scrolls sideways — tabindex=0 makes that reachable by keyboard
+          (WCAG 2.1.1) and the label names the landmark it becomes. */}
+      <div
+        className="brief-scroll rounded-xl border border-grid shadow-2xl bg-white"
+        tabIndex={0}
+        role="region"
+        aria-label={t('a11y.scroll.panel', { name: t('alerts.brief.title') })}
+      >
         <div className="brief-a4">
           <BriefContent
             data={brief}

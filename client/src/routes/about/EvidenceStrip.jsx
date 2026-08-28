@@ -13,7 +13,7 @@ function Tile({ value, sub, label, tone, onJump, jumpLabel, loading }) {
       type="button"
       onClick={onJump}
       aria-label={jumpLabel}
-      className="flex min-h-[64px] flex-col justify-center rounded-lg border border-grid bg-base/40 px-3 py-2 text-left transition-colors hover:border-primary/60"
+      className="flex min-h-[64px] flex-col justify-center rounded-lg border border-grid bg-canvas/40 px-3 py-2 text-left transition-colors hover:border-primary/60"
     >
       <span className="flex items-baseline gap-1">
         <span className={`num text-lg font-semibold ${loading ? 'text-muted' : color}`}>{loading ? '—' : value}</span>

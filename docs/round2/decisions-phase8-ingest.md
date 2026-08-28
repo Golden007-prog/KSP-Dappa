@@ -79,8 +79,25 @@ insert Signal already upserts AggMonthly per row and the nightly job
 recomputes it exactly, and a memory load has nothing to upsert; a second
 read-modify-write path would race the event function. Row 228 is therefore
 partial and says so in the feature list. Live check 28 Aug: `/summary/kpis`
-`asOfYm:"2026-07"`, `totalFirs:1151` — the demo's 183 clean rows are dated
-July 2026, so a live load projects 1,151 → 1,334.
+`asOfYm:"2026-07"`, `totalFirs:1151` — the demo's 188 accepted rows (183 clean plus
+5 accepted with a note) are dated July 2026, so a live load projects
+1,151 → 1,339, heinous 143 → 171 and month on month −11.3 % → +3.2 %
+(measured through the client against the pipeline dataset, 29 Aug).
+
+Two things made that projection read as nothing on the fallback dataset, and
+both are fixed. `lib/fixture.js` built AggMonthly for the 36 months ending at
+the *current* month while pipeline/out ends at the last complete one, so the
+fixture anchored at 2026-08 while the bundled demo CSV is dated 2026-07: the
+tiles read "485 → 485, delta 0" while month-on-month moved −7.4 → −31.9,
+because the batch inflated the previous month only. The fixture's aggregate
+and forecast windows now end at the last complete month like the real load, so
+the fixture anchors at 2026-07 and validating the demo file reads 524 → 712
+(+188), heinous 85 → 113, month-on-month −4.9 % → +29.2 %. Belt and braces:
+`whatChanged` now also returns `kpis.batchMonth` — the same before/after for
+the month the batch actually lands in — whenever that is not the anchor month,
+and `WhatChangedCard` drives its count tiles off it, so a back-dated extract
+can never show a still tile beside a moved percentage. Both are pinned in the
+contract suite.
 
 **D-phase8-ingest-8 · The privacy guard blanks caste / religion by default and the rejection report never carries a PII or narrative column (phase 8 ingest, 28 Aug 2026).**
 `CasteMaster`, `ReligionMaster`, `ComplainantDetails.CasteID/ReligionID` are
@@ -89,7 +106,14 @@ accepted for schema fidelity (the ER is law), blanked before load unless
 columns are `pii` (loaded, never exported); extra headers matching caste /
 religion / jati / dharma or phone / mobile / aadhaar / email / address /
 passport / PAN / voter / DOB are dropped and reported per row. The CSV report
-is row number + key columns + verdict + codes + details only.
+is row number + key columns + verdict + codes + details only — and the detail
+is where the claim nearly failed: a type or date issue echoes the offending
+cell, which is what makes the row fixable, so a dd-mm-yyyy `EmployeeDOB` on a
+row rejected for an unrelated reason would have carried
+`DATE_NORMALISED: 12-03-1965 → 1965-03-12` out with the file. A detail whose
+column is `pii` or `never-used` now reads `redacted` while the code and the
+column name stay, on the server report and on the browser-built one; the suite
+checks the date of birth does not appear in the CSV.
 
 **D-phase8-ingest-9 · The CCTNS IIF-1 preset ships flagged `verified:false` (phase 8 ingest, 28 Aug 2026).**
 `docs/DOMAIN_RESEARCH.md` §2.1 verifies the seven Integrated Investigation
@@ -107,7 +131,10 @@ names which path answered. In the harness (no SDK) `recordAction` stores in
 memory and reports `actionlog`.
 
 **D-phase8-ingest-11 · Rollback deletes only what this container can identify (phase 8 ingest, 28 Aug 2026).**
-Memory batches roll back by dropping the batch's inserted rows. Data Store
+Memory batches never wrote a row anywhere: without the admin token `load`
+walks the accepted rows, counts them and returns, so "rollback" marks the
+batch rolled back and its rows stop counting as loaded. The response says so
+rather than reporting `removed: n` as if n rows had been deleted from a table. Data Store
 batches roll back only with the admin token and only by the ROWIDs
 `insertRows` returned to this container, in `deleteRows` chunks of 200; if the
 ROWIDs are gone (restart, other container) the call is a `409
@@ -120,7 +147,14 @@ the nightly job reconciles. Delete requests are 1,000 / month on the free tier
 `localValidate.js` runs the subset that needs no store (required, types,
 limits, dd-mm-yyyy, digit grouping, CrimeNo structure, in-batch duplicates,
 coordinate range, the guard) with `meta.source:'browser'` and a banner naming
-what it skipped; `GET /ingest/tables` comes from the snapshot
+every check it skipped — foreign keys, store duplicates, district polygons,
+the CrimeNo district-vs-station cross-check, sub-head-belongs-to-head, the
+load-order prerequisites and the before/after KPIs (the first version named
+four of the seven). The browser has no district polygons at all, so every
+in-Karnataka point lands in `unknownPolygon`; the profile now carries
+`polygonChecked:false` and prints "n inside Karnataka but not checked against
+a district polygon" instead of "0 inside their district", which read as a
+finding rather than as a check that never ran; `GET /ingest/tables` comes from the snapshot
 (`scripts/demo_snapshot.mjs`); loads throw `DEMO_STATIC`.
 
 **D-phase8-ingest-13 · CrimeNo's category digit is compared with the row's CaseCategoryID, not with a fixed set (phase 8 ingest, 28 Aug 2026).**

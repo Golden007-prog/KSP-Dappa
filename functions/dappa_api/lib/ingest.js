@@ -488,7 +488,9 @@ async function validateBatch(ctx, input) {
   let kannadaCells = 0;
   let dates = [];
   const units = new Map();
-  const geo = { withCoords: 0, inDistrict: 0, outOfDistrict: 0, outOfState: 0, invalid: 0, unknownPolygon: 0 };
+  // polygonChecked distinguishes "0 inside their district" (a real finding) from
+  // "the polygon test never ran" (the browser path has no polygons at all).
+  const geo = { withCoords: 0, inDistrict: 0, outOfDistrict: 0, outOfState: 0, invalid: 0, unknownPolygon: 0, polygonChecked: true };
 
   const note = (issue) => {
     const k = `${issue.code}|${issue.severity}`;
@@ -750,17 +752,6 @@ async function whatChanged(ctx, t, acceptedRows) {
   const lk = await getLookups(ctx);
   const curYm = await anchorYm(ctx.ds, null);
   const prevYm = ymAdd(curYm, -1);
-  const [monthRows, alertRows] = await Promise.all([
-    ctx.ds.query({
-      table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)', 'SUM(HeinousCount)'],
-      where: [{ col: 'Ym', op: '>=', val: prevYm }, { col: 'Ym', op: '<=', val: curYm }], groupBy: ['Ym']
-    }).catch(() => []),
-    ctx.ds.query({ table: 'AnomalyAlert', columns: ['COUNT(AlertID)'], where: [{ col: 'Status', op: '=', val: 'OPEN' }] }).catch(() => [])
-  ]);
-  const byYm = {};
-  for (const r of monthRows) byYm[r.Ym] = { cases: toNum(r['SUM(CaseCount)']), heinous: toNum(r['SUM(HeinousCount)']) };
-  const cur = byYm[curYm] || { cases: 0, heinous: 0 };
-  const prev = byYm[prevYm] || { cases: 0, heinous: 0 };
 
   const byMonth = new Map();
   const pairs = new Map(); // `${d}|${h}|${ym}` → {cases, heinous}
@@ -777,11 +768,44 @@ async function whatChanged(ctx, t, acceptedRows) {
     const p = pairs.get(k) || { districtId: d, crimeHeadId: h, ym, cases: 0, heinous: 0 };
     p.cases += 1; p.heinous += heinous; pairs.set(k, p);
   }
+  // The batch's own month is not necessarily the anchor month (a judge may load
+  // a back-dated extract), so the aggregate read spans both — otherwise the
+  // tiles would read "N → N, delta 0" beside a month-on-month figure that moved.
+  const batchMonthsSorted = [...byMonth.values()].sort((a, b) => b.cases - a.cases || a.ym.localeCompare(b.ym));
+  const batchYm = batchMonthsSorted.length ? batchMonthsSorted[0].ym : null;
+  const spanYms = [prevYm, curYm].concat([...byMonth.keys()].filter((y) => /^\d{4}-\d{2}$/.test(y)).flatMap((y) => [ymAdd(y, -1), y])).sort();
+  const [monthRows, alertRows] = await Promise.all([
+    ctx.ds.query({
+      table: 'AggMonthly', columns: ['Ym', 'SUM(CaseCount)', 'SUM(HeinousCount)'],
+      where: [{ col: 'Ym', op: '>=', val: spanYms[0] }, { col: 'Ym', op: '<=', val: spanYms[spanYms.length - 1] }], groupBy: ['Ym']
+    }).catch(() => []),
+    ctx.ds.query({ table: 'AnomalyAlert', columns: ['COUNT(AlertID)'], where: [{ col: 'Status', op: '=', val: 'OPEN' }] }).catch(() => [])
+  ]);
+  const byYm = {};
+  for (const r of monthRows) byYm[r.Ym] = { cases: toNum(r['SUM(CaseCount)']), heinous: toNum(r['SUM(HeinousCount)']) };
+  const cur = byYm[curYm] || { cases: 0, heinous: 0 };
+  const prev = byYm[prevYm] || { cases: 0, heinous: 0 };
+
   const addCur = byMonth.get(curYm) || { cases: 0, heinous: 0 };
   const addPrev = byMonth.get(prevYm) || { cases: 0, heinous: 0 };
   const before = { totalFirs: cur.cases, heinousCount: cur.heinous, momPct: pctDelta(cur.cases, prev.cases), activeAlerts: toNum(alertRows.length ? alertRows[0]['COUNT(AlertID)'] : 0), asOfYm: curYm };
   const afterCases = cur.cases + addCur.cases;
   const after = { totalFirs: afterCases, heinousCount: cur.heinous + addCur.heinous, momPct: pctDelta(afterCases, prev.cases + addPrev.cases), activeAlerts: before.activeAlerts, asOfYm: curYm };
+  // Same before/after for the month the batch actually lands in, so the card
+  // can show a moving tile when that month is not the anchor month.
+  let batchMonthKpis = null;
+  if (batchYm && batchYm !== curYm) {
+    const bCur = byYm[batchYm] || { cases: 0, heinous: 0 };
+    const bPrev = byYm[ymAdd(batchYm, -1)] || { cases: 0, heinous: 0 };
+    const bAdd = byMonth.get(batchYm) || { cases: 0, heinous: 0 };
+    const bAddPrev = byMonth.get(ymAdd(batchYm, -1)) || { cases: 0, heinous: 0 };
+    batchMonthKpis = {
+      ym: batchYm,
+      before: { totalFirs: bCur.cases, heinousCount: bCur.heinous, momPct: pctDelta(bCur.cases, bPrev.cases) },
+      after: { totalFirs: bCur.cases + bAdd.cases, heinousCount: bCur.heinous + bAdd.heinous, momPct: pctDelta(bCur.cases + bAdd.cases, bPrev.cases + bAddPrev.cases) },
+      delta: { totalFirs: bAdd.cases, heinousCount: bAdd.heinous }
+    };
+  }
 
   // z-check per touched district × head month (top 12 by batch count)
   const top = [...pairs.values()].sort((a, b) => b.cases - a.cases).slice(0, 12);
@@ -813,16 +837,15 @@ async function whatChanged(ctx, t, acceptedRows) {
     });
   }
   alerts.sort((a, b) => (b.zAfter || 0) - (a.zAfter || 0));
-  const monthsSorted = [...byMonth.values()].sort((a, b) => b.cases - a.cases);
   return {
     applicable: true,
     asOfYm: curYm,
-    batch: { rows: acceptedRows.length, month: monthsSorted.length ? monthsSorted[0].ym : null, months: byMonth.size },
-    kpis: { before, after, delta: { totalFirs: after.totalFirs - before.totalFirs, heinousCount: after.heinousCount - before.heinousCount } },
+    batch: { rows: acceptedRows.length, month: batchYm, months: byMonth.size },
+    kpis: { before, after, delta: { totalFirs: after.totalFirs - before.totalFirs, heinousCount: after.heinousCount - before.heinousCount }, batchMonth: batchMonthKpis },
     byMonth: [...byMonth.values()].sort((a, b) => a.ym.localeCompare(b.ym)),
     alerts,
     wouldRaise: alerts.filter((a) => a.wouldRaise).length,
-    method: 'before = AggMonthly SUM(CaseCount)/SUM(HeinousCount) for the anchor month (the /summary/kpis aggregates); after = before + accepted rows in that month; z = MAD robust z of the month total against the trailing 11 months (lib/circuits.js robustZ), the same statistic the nightly job uses; alert line z ≥ 2 (docs/UX_RESEARCH.md §11 rule 3).'
+    method: 'before = AggMonthly SUM(CaseCount)/SUM(HeinousCount) for the anchor month (the /summary/kpis aggregates); after = before + accepted rows in that month; z = MAD robust z of the month total against the trailing 11 months (lib/circuits.js robustZ), the same statistic the nightly job uses; alert line z ≥ 2 (docs/UX_RESEARCH.md §11 rule 3). When the batch\'s own month is not the anchor month, kpis.batchMonth repeats the before/after for the month the rows actually land in — the anchor tiles would otherwise read "N → N".'
   };
 }
 
@@ -1053,7 +1076,12 @@ async function rollback(ctx, req, batchId) {
   let removed = 0;
   let note = null;
   if (b.storage === 'memory') {
+    // Nothing to delete: without the admin token the "load" never touched a
+    // table — it only walked the accepted rows and counted them, so rolling
+    // back means the batch stops counting as loaded. Say so rather than let
+    // "removed: N" read as N rows deleted from a store.
     removed = b.inserted.length;
+    note = `No store was written: without the admin token this batch stayed in the container, so rolling back drops the ${removed} accepted row(s) from the batch's loaded count and nothing is deleted from a table.`;
   } else {
     if (authz.actorRole !== 'admin') throw httpError(403, 'AUTH_REQUIRED', 'Data Store rollback needs the admin token.');
     if (!b.rowIds.length) throw httpError(409, 'ROLLBACK_UNAVAILABLE', 'The Data Store did not return ROWIDs for this batch, so its rows cannot be identified for deletion. Delete by CrimeNo/CaseMasterID from the console instead.');
@@ -1073,37 +1101,71 @@ async function rollback(ctx, req, batchId) {
   return { batchId: b.batchId, storage: b.storage, removed, note, audit: b.audit };
 }
 
-/** Row-level rejection report — keys + reasons only, never a PII column. */
+/** Row-level rejection report — keys + reasons only, never a PII column.
+ * The `detail` of a type/date issue echoes the offending cell (that is what
+ * makes it fixable), so a detail belonging to a PII or never-used column is
+ * replaced with the code's own name here: this file leaves the building, and
+ * "DATE_NORMALISED: 12/03/1965 → 1965-03-12" on an Employee DOB would carry a
+ * date of birth out with it. */
 function rejectionCsv(b) {
   const t = tableDef(b.table);
-  const keys = keyColumns(t).filter((k) => !(t.columns.find((c) => c.name === k) || {}).pii);
+  const sensitive = new Set(t.columns.filter((c) => c.pii || c.neverUsed).map((c) => c.name));
+  const keys = keyColumns(t).filter((k) => !sensitive.has(k));
   const columns = ['rowNo', ...keys, 'verdict', 'codes', 'columns', 'details'];
+  const detailOf = (is) => (sensitive.has(is.column) ? (is.detail ? 'redacted' : '') : (is.detail || ''));
   const rows = b.rows.filter((r) => r.verdict === 'reject' || r.issues.some((is) => is.severity === 'warn')).map((r) => Object.assign(
     { rowNo: r.rowNo, verdict: r.verdict },
     Object.fromEntries(keys.map((k) => [k, r.keys[k]])),
     {
       codes: r.issues.map((is) => `${is.code}${is.severity === 'reject' ? '' : `(${is.severity})`}`).join('|'),
       columns: r.issues.map((is) => is.column || '').join('|'),
-      details: r.issues.map((is) => is.detail || '').join('|')
+      details: r.issues.map(detailOf).join('|')
     }
   ));
   return toCsv(rows, columns);
 }
 
+// A sample row a judge downloads and re-uploads must survive the checker's
+// row-local rules, or the tool rejects its own template. EXAMPLE_ROW pins the
+// values that have to agree with each other (the 18-digit CrimeNo's category /
+// station / year against their own columns, CaseNo against year+serial); the
+// generic fallback below covers the rest and never overflows a column's max.
+// Foreign keys are NOT pinned: a real id has to come from the loaded reference
+// tables, so an FK_MISSING on this row is the checker working, not a defect.
+const EXAMPLE_ROW = {
+  CaseMaster: {
+    CaseMasterID: '900001', CrimeNo: '101013009202690001', CaseNo: '202690001',
+    CrimeRegisteredDate: '2026-07-15', CaseCategoryID: '1', PoliceStationID: '3009',
+    CrimeMajorHeadID: '3', CrimeMinorHeadID: '305', GravityOffenceID: '2', CaseStatusID: '1',
+    IncidentFromDate: '2026-07-15 21:40:00', IncidentToDate: '2026-07-15 22:10:00',
+    InfoReceivedPSDate: '2026-07-15 22:30:00', latitude: '12.9716', longitude: '77.5946',
+    BriefFacts: 'One line of the FIR narrative goes here.'
+  }
+};
+
 function templateCsv(t, withExample) {
   const columns = t.columns.map((c) => c.name);
-  const example = withExample ? [Object.fromEntries(t.columns.map((c) => [c.name, exampleValue(c)]))] : [];
+  const pinned = EXAMPLE_ROW[t.name] || {};
+  const example = withExample
+    ? [Object.fromEntries(t.columns.map((c) => [c.name, pinned[c.name] !== undefined ? pinned[c.name] : exampleValue(c, t)]))]
+    : [];
   return toCsv(example, columns);
 }
 
-function exampleValue(c) {
+function exampleValue(c, t) {
+  const max = c.max || (c.type === 'Varchar' ? VARCHAR_MAX : c.type === 'Text' ? TEXT_MAX : null);
   switch (c.type) {
     case 'Int': return c.crimeNo ? '' : '1';
-    case 'Double': return '12.9716';
+    // Latitude and longitude share the Double type but not the value: 12.9716
+    // in both puts the point in the Arabian Sea, outside the Karnataka box.
+    case 'Double': return t && t.geo && c.name === t.geo.lng ? '77.5946' : '12.9716';
     case 'Boolean': return 'true';
     case 'Date': return '2026-07-15';
     case 'DateTime': return '2026-07-15 10:30:00';
-    default: return c.crimeNo ? '101013125202690001' : c.name;
+    default: {
+      const v = c.crimeNo ? '101013125202690001' : c.name;
+      return max && v.length > max ? v.slice(0, max) : v;
+    }
   }
 }
 

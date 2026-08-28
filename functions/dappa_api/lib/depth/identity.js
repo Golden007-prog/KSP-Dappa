@@ -11,6 +11,16 @@ const { tokenSortRatio, median } = require('./common');
 const WEIGHTS = { tokenSort: 0.6, age: 0.2, district: 0.2 };
 const ANCHOR_TS = 0.95;
 const ANCHOR_AGE = 2;
+// The pipeline scores a pair only inside its blocking window, and those gates
+// decide as much as the weights do (analytics.py resolve_identities):
+//   token_sort_ratio(score_cutoff=60) — below 0.60 the ratio comes back 0 and
+//   the pair is dropped outright; and the block is walked in age order with a
+//   `break` once the gap exceeds 2 years, so a pair more than 2 years apart —
+//   or with an age missing on either side — is never scored at all.
+// Scoring an alias without those gates would show a link the pipeline could not
+// have made, so they are applied here and reported per row.
+const TS_CUTOFF = 0.6;
+const BLOCK_AGE = 2;
 
 /**
  * accused = [{ name, age, districtId, caseId }] for the profile's cases.
@@ -36,7 +46,8 @@ function whyLinked(canonical, aliases, accused, threshold) {
   const rows = [];
   for (const k of names) {
     const e = byName.get(k) || { name: aliases.find((a) => an.nameKey(a) === k) || k, ages: [], districts: new Set(), cases: new Set() };
-    const ts = tokenSortRatio(e.name, canonical);
+    const rawTs = tokenSortRatio(e.name, canonical);
+    const ts = rawTs < TS_CUTOFF ? 0 : rawTs;
     const age = median(e.ages);
     const dAge = refAge === null || age === null ? null : Math.abs(age - refAge);
     const ageScore = dAge === null ? 0 : Math.max(0, 1 - dAge / 5);
@@ -44,12 +55,16 @@ function whyLinked(canonical, aliases, accused, threshold) {
     const distScore = shared.length ? 1 : 0;
     const score = round(WEIGHTS.tokenSort * ts + WEIGHTS.age * ageScore + WEIGHTS.district * distScore, 4);
     const anchor = ts >= ANCHOR_TS && dAge !== null && dAge <= ANCHOR_AGE;
+    // Could the pipeline's blocked pass have scored this pair at all?
+    const blocked = ts === 0 ? 'name-below-cutoff' : dAge === null ? 'age-missing' : dAge > BLOCK_AGE ? 'age-gap' : null;
     rows.push({
       alias: e.name,
       inProfile: aliases.some((a) => an.nameKey(a) === k),
       records: e.cases.size,
+      blockedBy: blocked,
       components: {
         tokenSortRatio: ts,
+        tokenSortRaw: rawTs,
         ageCloseness: round(ageScore, 3),
         districtOverlap: distScore,
         ageDelta: dAge === null ? null : round(dAge, 1),
@@ -64,11 +79,13 @@ function whyLinked(canonical, aliases, accused, threshold) {
       },
       score,
       anchorPass: anchor,
-      aboveThreshold: score >= th || anchor,
-      verdict: anchor ? 'exact-anchor' : score >= th ? 'linked' : score >= 0.7 ? 'candidate' : 'weak'
+      aboveThreshold: !blocked && (score >= th || anchor),
+      verdict: blocked ? 'out-of-block' : anchor ? 'exact-anchor' : score >= th ? 'linked' : score >= 0.7 ? 'candidate' : 'weak'
     });
   }
-  rows.sort((a, b) => b.score - a.score || a.alias.localeCompare(b.alias));
+  // Names the pipeline could actually have compared come first — a high score
+  // on a row it never blocked is not evidence of anything.
+  rows.sort((a, b) => (a.blockedBy ? 1 : 0) - (b.blockedBy ? 1 : 0) || b.score - a.score || a.alias.localeCompare(b.alias));
   return {
     canonical,
     canonicalRecords: ref.cases.size,
@@ -78,7 +95,9 @@ function whyLinked(canonical, aliases, accused, threshold) {
     threshold: th,
     weights: WEIGHTS,
     anchor: { tokenSortRatio: ANCHOR_TS, ageDelta: ANCHOR_AGE },
-    formula: `score = ${WEIGHTS.tokenSort}·token_sort_ratio + ${WEIGHTS.age}·max(0, 1 − |Δage|/5) + ${WEIGHTS.district}·[same district]; linked when score ≥ ${th}, or when token_sort_ratio ≥ ${ANCHOR_TS} and |Δage| ≤ ${ANCHOR_AGE} (exact-name anchor, any district).`
+    gates: { tokenSortCutoff: TS_CUTOFF, blockAgeYears: BLOCK_AGE },
+    outOfBlock: rows.filter((r) => r.blockedBy).length,
+    formula: `score = ${WEIGHTS.tokenSort}·token_sort_ratio + ${WEIGHTS.age}·max(0, 1 − |Δage|/5) + ${WEIGHTS.district}·[same district]; linked when score ≥ ${th}, or when token_sort_ratio ≥ ${ANCHOR_TS} and |Δage| ≤ ${ANCHOR_AGE} (exact-name anchor, any district). The pipeline's own gates apply first: a token-sort ratio under ${TS_CUTOFF} scores 0, and a pair is only scored when both ages are known and within ${BLOCK_AGE} years — rows failing either are marked out of block, because the pipeline could not have linked them. Its phonetic-token × gender blocking is not replayed here (gender is not read on this route), so a row inside the block may still not have been compared by the pipeline.`
   };
 }
 

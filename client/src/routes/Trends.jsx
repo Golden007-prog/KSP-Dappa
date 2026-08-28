@@ -814,15 +814,15 @@ export default function Trends() {
             />
             {quickStats && !seasonality.isLoading && (
               <div className="flex flex-wrap items-center gap-1.5 mt-2.5" aria-label={t('trends.seasonality.quickAria')}>
-                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted">
                   {t('trends.seasonality.busiestDay')} <span className="font-semibold text-ink">{dayLabel(quickStats.busiestDay, quickStats.busiestDayIndex)}</span>
                   <span className="num">({fmtNum(quickStats.busiestDayPct, 0)}%)</span>
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted">
                   {t('trends.seasonality.peakWindow')} <span className="font-semibold text-ink num">{String(quickStats.bandStart).padStart(2, '0')}:00–{String(quickStats.bandEnd).padStart(2, '0')}:00</span>
                   <span className="num">({fmtNum(quickStats.bandPct, 0)}%)</span>
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+                <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted">
                   {t('trends.seasonality.weekendShare')} <span className="font-semibold text-ink num">{fmtNum(quickStats.weekendPct, 0)}%</span>
                 </span>
               </div>

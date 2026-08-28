@@ -80,9 +80,9 @@ export const GLOSSARY = {
     kn: { label: 'ಅಸಾಮಾನ್ಯ ಏರಿಕೆ', sentence: 'ಈ ಠಾಣೆಯ ಸಾಮಾನ್ಯ ವ್ಯಾಪ್ತಿಯಿಂದ ಬಹಳ ಹೊರಗೆ. ಎಲ್ಲಿ ನೋಡಬೇಕು ಎಂದು ಹೇಳುತ್ತದೆ, ಏಕೆ ಎಂದಲ್ಲ.', example: 'ಈ ವಾರ ಯಶವಂತಪುರದಲ್ಲಿ ಸರ ಕಳ್ಳತನದ ಅಸಾಮಾನ್ಯ ಏರಿಕೆ.', status: 'unv' },
   },
   baseline: {
-    technical: 'seasonal baseline (8-week / same-week-prior-years average)',
-    en: { label: 'Usual level', sentence: 'The average of the same weeks in earlier years, adjusted for season.', example: 'Usual level 18/week · this week 41.' },
-    kn: { label: 'ಸಾಮಾನ್ಯ ಮಟ್ಟ', sentence: 'ಹಿಂದಿನ ವರ್ಷಗಳ ಅದೇ ವಾರಗಳ ಸರಾಸರಿ, ಋತುವಿಗೆ ಹೊಂದಿಸಿ.', example: 'ಸಾಮಾನ್ಯ ಮಟ್ಟ ವಾರಕ್ಕೆ 18 · ಈ ವಾರ 41.', status: 'unv' },
+    technical: 'weekly baseline — mean of the trailing seven weeks, Poisson-floored spread',
+    en: { label: 'Usual level', sentence: 'What a normal week looks like here: the average of this station\'s last seven weeks.', example: 'Usual level 18/week · this week 41.' },
+    kn: { label: 'ಸಾಮಾನ್ಯ ಮಟ್ಟ', sentence: 'ಇಲ್ಲಿ ಸಾಮಾನ್ಯ ವಾರ ಹೇಗಿರುತ್ತದೆ: ಈ ಠಾಣೆಯ ಕಳೆದ ಏಳು ವಾರಗಳ ಸರಾಸರಿ.', example: 'ಸಾಮಾನ್ಯ ಮಟ್ಟ ವಾರಕ್ಕೆ 18 · ಈ ವಾರ 41.', status: 'unv' },
   },
   seasonality: {
     technical: 'seasonality (hour × weekday, festival windows)',

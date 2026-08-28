@@ -30,7 +30,7 @@ export default function ShortcutsOverlay({ onClose }) {
   useEffect(() => { closeRef.current?.focus(); }, []);
   return (
     <div
-      className="absolute inset-0 z-40 flex items-center justify-center bg-base/60 backdrop-blur-[2px] p-4"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-canvas/60 backdrop-blur-[2px] p-4"
       onClick={onClose}
       role="presentation"
     >
@@ -57,7 +57,7 @@ export default function ShortcutsOverlay({ onClose }) {
           {SHORTCUTS.map(([key, desc]) => (
             <div key={key} className="flex items-start gap-3">
               <dt className="shrink-0 w-16">
-                <kbd className="inline-block rounded-md border border-grid bg-base/60 px-1.5 py-0.5 text-[11px] num text-ink">
+                <kbd className="inline-block rounded-md border border-grid bg-canvas/60 px-1.5 py-0.5 text-[11px] num text-ink">
                   {key}
                 </kbd>
               </dt>

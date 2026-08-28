@@ -18,7 +18,7 @@ function Column({ row, max, stateTotal }) {
   const pop = unitPopulation(row);
   const share = stateTotal > 0 ? ((Number(row.caseCount) || 0) / stateTotal) * 100 : null;
   return (
-    <div className="min-w-0 flex-1 space-y-2 rounded-lg border border-grid bg-base/40 p-3">
+    <div className="min-w-0 flex-1 space-y-2 rounded-lg border border-grid bg-canvas/40 p-3">
       <div className="flex items-center gap-2">
         <p className="min-w-0 flex-1 truncate text-xs font-medium text-ink">
           {tName('districts', row.districtId, row.districtName || row.districtId) || row.districtId}

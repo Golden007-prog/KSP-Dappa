@@ -87,7 +87,7 @@ export default function AuditTable({ personKey }) {
         <Card title={t('identify.audit.floorBoard.title')} subtitle={t('identify.audit.floorBoard.subtitle', { floor: Math.round(floor * 100) })}>
           <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {stats.board.map((b) => (
-              <li key={b.floor} className="rounded-lg border border-grid bg-base/60 px-3 py-2">
+              <li key={b.floor} className="rounded-lg border border-grid bg-canvas/60 px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wide text-muted num">{t('identify.audit.floorBoard.at', { floor: Math.round(b.floor * 100) })}</p>
                 <p className="text-sm text-ink num">{t('identify.audit.floorBoard.flip', { n: fmtInt(b.flips), total: fmtInt(b.total) })}</p>
               </li>
@@ -121,11 +121,14 @@ export default function AuditTable({ personKey }) {
                     <td className="py-2 pr-2">
                       <span className="num text-ink">{it.caseNo || '—'}</span>
                       <span className="block text-[10px] text-muted">{it.legalBasis ? t(`identify.basis.${it.legalBasis}`) : '—'}</span>
+                      {it.probeSource === 'sample-capture' && (
+                        <span className="block text-[10px] text-amber">{t('identify.audit.sampleProbe', { key: it.samplePerson || '—' })}</span>
+                      )}
                     </td>
                     <td className="py-2 pr-2 text-ink">{(it.officer && it.officer.actor) || '—'}<span className="block text-[10px] text-muted">{(it.officer && it.officer.role) || ''}</span></td>
                     <td className="py-2 pr-2 text-muted">{filtersLine(it.filters, t)}<span className="block text-[10px]">{it.shortlist && it.shortlist.description}</span></td>
                     <td className="py-2 pr-2 num text-ink">{fmtInt(it.candidates || 0)}</td>
-                    <td className="py-2 pr-2 num text-ink">{typeof it.topConfidence === 'number' ? `${Math.round(it.topConfidence * 100)}` : '—'}{it.topPersonKey && <Link to={`/offenders/${encodeURIComponent(it.topPersonKey)}`} className="block text-[10px] text-muted hover:text-amber">{it.topPersonKey}</Link>}</td>
+                    <td className="py-2 pr-2 num text-ink">{typeof it.topConfidence === 'number' ? `${Math.round(it.topConfidence * 100)}` : '—'}{it.topPersonKey && <Link to={`/offenders/${encodeURIComponent(it.topPersonKey)}`} className="inline-flex min-h-[24px] min-w-[24px] items-center text-[10px] text-muted hover:text-amber">{it.topPersonKey}</Link>}</td>
                     <td className="py-2 pr-2"><StatusPill status={DECISION_STATUS[it.decision] || 'nodata'} label={t(`identify.audit.decision.${DECISION_KEY[it.decision] || 'noReliable'}`)} /></td>
                     <td className="py-2">
                       {(it.decisions || []).length === 0 ? <span className="text-muted">—</span> : (it.decisions || []).map((d, i) => (

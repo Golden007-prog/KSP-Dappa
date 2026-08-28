@@ -204,7 +204,7 @@ export default function AccuracyBoard({ districtId }) {
               {scored.map((r, i) => {
                 const tier = tierOf(r.best.mape);
                 return (
-                  <li key={r.id} className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+                  <li key={r.id} className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="num text-[11px] text-muted w-4 shrink-0">{i + 1}</span>

@@ -44,7 +44,10 @@ export default function TimeScrubber({
   const showHisto = !compact && Array.isArray(totals) && totals.length === months.length && months.length > 0;
   const maxTotal = showHisto ? Math.max(1, ...totals) : 1;
   return (
-    <div className={`flex items-center gap-2.5 ${compact
+    // wraps on a 360-px phone: the play/speed buttons, the slider and the
+    // read-out cannot all fit on one line, and unwrapped they ran into each
+    // other ("Sep 25 – Aug 26" over "All months").
+    <div className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 ${compact
       ? ''
       : 'bg-panel/95 border border-grid rounded-xl px-3 py-2 shadow-lg'}`}
     >
@@ -83,7 +86,7 @@ export default function TimeScrubber({
           {LoopIcon}
         </button>
       )}
-      <div className="flex-1 min-w-[7rem]">
+      <div className="flex-1 basis-[9rem] min-w-[7rem]">
         {showHisto && (
           <div className="flex items-end gap-px h-3.5 mb-0.5" role="group" aria-label={t('geointel.scrub.histAria')}>
             {months.map((m, i) => (
@@ -116,14 +119,17 @@ export default function TimeScrubber({
           aria-label={t('geointel.scrub.monthAria')}
           aria-valuetext={label}
         />
-        <div className="flex justify-between text-[9px] text-muted leading-none">
-          <span>{t('geointel.scrub.all')}</span>
+        {/* min-w-0 + truncate: at 360 px the date range grew past this column
+            and ran under the read-out to its right ("Sep 25 – Aug 26" over
+            "All months"). It now clips inside its own track instead. */}
+        <div className="flex min-w-0 justify-between gap-1 text-[9px] text-muted leading-none">
+          <span className="shrink-0">{t('geointel.scrub.all')}</span>
           {months.length > 0 && (
-            <span className="num">{monthLabel(months[0])} – {monthLabel(months[months.length - 1])}</span>
+            <span className="num min-w-0 truncate">{monthLabel(months[0])} – {monthLabel(months[months.length - 1])}</span>
           )}
         </div>
       </div>
-      <div className="w-20 text-right shrink-0">
+      <div className="w-20 shrink-0 text-right">
         <p className="num text-xs font-semibold text-ink leading-tight">{label}</p>
         <p className="text-[9px] text-muted leading-tight num">
           {disabled ? t('geointel.scrub.noData')

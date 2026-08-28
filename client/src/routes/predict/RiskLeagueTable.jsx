@@ -86,7 +86,7 @@ function DriverChip({ label, count, active, onClick }) {
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 min-h-[40px] text-[11px] transition-colors ${
         active
           ? 'border-amber/60 bg-amber/10 text-amber'
-          : 'border-grid bg-base/60 text-muted hover:border-amber/40 hover:text-ink'
+          : 'border-grid bg-canvas/60 text-muted hover:border-amber/40 hover:text-ink'
       }`}
       aria-pressed={active}
       title={active ? t('trends.predict.driver.clear') : t('trends.predict.driver.show', { label })}
@@ -241,7 +241,7 @@ export default function RiskLeagueTable({ rows, loading, error, onRetry, onRowCl
             {drivers.slice(0, 3).map((d) => (
               <span
                 key={d}
-                className="inline-flex items-center rounded-full border border-grid bg-base/60 px-2 py-0.5 text-[10px] text-muted whitespace-nowrap"
+                className="inline-flex items-center rounded-full border border-grid bg-canvas/60 px-2 py-0.5 text-[10px] text-muted whitespace-nowrap"
               >
                 {d}
               </span>

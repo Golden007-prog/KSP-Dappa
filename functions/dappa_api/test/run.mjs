@@ -299,7 +299,7 @@ const GET_CASES = [
   ['/offenders/P001', (d) => hasKeys(d, ['personKey', 'canonicalName', 'aliases', 'caseCount', 'districts', 'firstSeen', 'lastSeen', 'moTags', 'communityId', 'degree', 'riskScore', 'associates', 'timeline']) && d.timeline.length > 0 && d.associates.length === 2],
   ['/forecast?districtId=0101&crimeHeadId=3', (d) => hasKeys(d, ['history', 'forecast', 'model', 'mape']) && d.history.length === 12 && d.forecast.length === 3 && typeof d.mape === 'number' && hasKeys(d.forecast[0], ['ym', 'predicted', 'lo', 'hi'])],
   ['/risk/stations?horizon=30', (d) => Array.isArray(d) && d.length === 15 && hasKeys(d[0], ['unitId', 'unitName', 'districtId', 'riskScore', 'drivers', 'spark']) && d[0].riskScore >= d[1].riskScore && d.every((r) => Array.isArray(r.spark) && r.spark.length === 6) && d.some((r) => r.spark.some((v) => v > 0))],
-  ['/cases?page=1&perPage=10', (d, meta) => Array.isArray(d) && d.length === 10 && hasKeys(d[0], ['caseMasterId', 'crimeNo', 'caseNo', 'registeredDate', 'districtName', 'unitName', 'headName', 'subHeadName', 'statusName', 'gravityName', 'anomalyFlag']) && meta.total === 40 && meta.page === 1 && meta.perPage === 10],
+  ['/cases?page=1&perPage=10', (d, meta) => Array.isArray(d) && d.length === 10 && hasKeys(d[0], ['caseMasterId', 'crimeNo', 'caseNo', 'registeredDate', 'districtName', 'unitName', 'headName', 'subHeadName', 'statusName', 'gravityName', 'anomalyFlag']) && meta.total === 52 && meta.page === 1 && meta.perPage === 10],
   ['/cases?districtId=0103&perPage=200', (d) => d.length === 8],
   ['/cases?perPage=500', (d, meta) => meta.perPage === 200],
   // --- second-pass endpoints -------------------------------------------------
@@ -328,8 +328,8 @@ const GET_CASES = [
     && (() => { const v = d.find((t) => t.tag === 'vehicle-theft'); return v && v.offenders === 2 && v.totalCases === 8 && v.crossJurisdiction === true; })()],
   // --- link-analysis endpoints (C2) -----------------------------------------
   ['/network/victim-links?perPage=5', (d, meta) => hasKeys(d, ['scope', 'summary', 'nodes', 'links', 'topSuspects', 'topVictims', 'bridgeCases', 'scan'])
-    && d.summary.cases === 40 && d.summary.victims === 6 && d.summary.suspects === 6
-    && d.summary.components === 1 && d.summary.largestComponent === 52
+    && d.summary.cases === 52 && d.summary.victims === 6 && d.summary.suspects === 6
+    && d.summary.components === 1 && d.summary.largestComponent === 64
     && d.summary.avgVictimsPerCase > 1 && d.summary.repeatSuspects === 6
     && d.nodes.filter((n) => n.type === 'case').length === 5
     && d.nodes.every((n) => ['case', 'victim', 'suspect'].includes(n.type))
@@ -337,8 +337,8 @@ const GET_CASES = [
     && d.topSuspects.length > 0
     && hasKeys(d.topSuspects[0], ['suspectKey', 'name', 'caseCount', 'victimCount', 'districtCount', 'districtNames', 'personKey', 'riskScore'])
     && d.bridgeCases.length > 0 && hasKeys(d.bridgeCases[0], ['caseMasterId', 'victims', 'suspects', 'degree'])
-    && d.scan.casesScanned === 40 && d.scan.casesTruncated === false && d.scan.childTruncated === false
-    && meta.total === 40 && meta.perPage === 5],
+    && d.scan.casesScanned === 52 && d.scan.casesTruncated === false && d.scan.childTruncated === false
+    && meta.total === 52 && meta.perPage === 5],
   ['/network/victim-links?districtId=0103', (d) => d.scope.districtId === '0103' && d.summary.cases === 8
     && d.summary.victims > 0 && d.summary.suspects > 0],
   // An unknown district must answer "nothing", never silently drop the filter
@@ -441,11 +441,11 @@ const GET_CASES = [
   // Completeness reads the RAW datastore (ctx.dsRaw) — with the stub it sees
   // the canned counts; in fixture-fallback mode (real store down) the honest
   // answer is actual=null/pct=null, never fixture rows masquerading as real.
-  ['/healthz', (d) => d.status === 'ok' && d.datastore.ok === true && d.cache.ok === true && d.datastore.rowCounts.CaseMaster === 40
+  ['/healthz', (d) => d.status === 'ok' && d.datastore.ok === true && d.cache.ok === true && d.datastore.rowCounts.CaseMaster === 52
     && d.datastore.completeness && d.datastore.completeness.tables.CaseMaster.expected === 45000
     && (d.datastore.completeness.tables.CaseMaster.actual === null
       ? (d.datastore.completeness.tables.CaseMaster.pct === null && d.datastore.completeness.overallPct === null)
-      : (d.datastore.completeness.tables.CaseMaster.actual === 40
+      : (d.datastore.completeness.tables.CaseMaster.actual === 52
         && d.datastore.completeness.tables.CaseMaster.pct === 0.1
         && d.datastore.completeness.tables.District.pct === 100
         && typeof d.datastore.completeness.overallPct === 'number'
@@ -765,12 +765,12 @@ for (const utterance of CANNED_UTTERANCES) {
   const padded = await get('/cases?districtId=0101&perPage=50', L);
   const unpadded = await get('/cases?districtId=101&perPage=50', L);
   check('the padded district form actually filters cases now',
-    padded.json.meta.total === 8 && padded.json.data.every((r) => r.districtName === 'Bengaluru City'),
+    padded.json.meta.total === 20 && padded.json.data.every((r) => r.districtName === 'Bengaluru City'),
     `${padded.json.meta.total} cases`);
   check('both district dialects give the same answer', unpadded.json.meta.total === padded.json.meta.total);
   const vl = await get('/network/victim-links?districtId=0101', L);
   check('victim-links scopes to the district in the live dialect',
-    vl.json.data.summary.cases === 8 && vl.json.data.summary.victims > 0,
+    vl.json.data.summary.cases === 20 && vl.json.data.summary.victims > 0,
     JSON.stringify(vl.json.data.summary));
   const loc = await get('/network/locations?districtId=0101', L);
   check('locations scopes to the district in the live dialect',
@@ -1618,7 +1618,7 @@ server.close();
   check('FIXTURE healthz -> 200 ok envelope', hz.status === 200 && hz.json.ok === true && hasKeys(hz.json, ['ok', 'data', 'meta']));
   check('FIXTURE healthz status ok', h.status === 'ok', JSON.stringify(h).slice(0, 300));
   check('FIXTURE healthz datastore fixture-demo', h.datastore && h.datastore.ok === true && h.datastore.mode === 'fixture-demo');
-  check('FIXTURE healthz rowCounts from fixture', h.datastore && h.datastore.rowCounts.CaseMaster === 40 && h.datastore.rowCounts.AnomalyAlert === 4 && h.datastore.rowCounts.OffenderProfile === 6);
+  check('FIXTURE healthz rowCounts from fixture', h.datastore && h.datastore.rowCounts.CaseMaster === 52 && h.datastore.rowCounts.AnomalyAlert === 4 && h.datastore.rowCounts.OffenderProfile === 6);
   check('FIXTURE healthz nosql fixture-demo', h.nosql && h.nosql.ok === true && h.nosql.mode === 'fixture-demo');
   check('FIXTURE healthz cache ok', h.cache && h.cache.ok === true);
 

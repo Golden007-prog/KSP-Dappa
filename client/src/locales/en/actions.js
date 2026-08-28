@@ -61,7 +61,7 @@ export default {
   'toast.savedMemory': 'Recorded for this session only — the ActionLog table is not reachable from here.',
   'toast.duplicate': 'This decision was already on the record.',
   'toast.failed': 'Could not record: {msg}',
-  'toast.statusDemo': 'Recorded. The alert status itself stays as-is in the public demo.',
+  'toast.statusDemo': 'Recorded. Changing the alert status itself needs a signed-in officer or the demo admin token.',
   'toast.pushed': 'Push sent to {n} device(s).',
 
   // ── timeline ───────────────────────────────────────────────────────────
@@ -72,6 +72,8 @@ export default {
   'timeline.by': 'by {who}',
   'timeline.loading': 'Loading the record…',
   'timeline.error': 'Could not load the record.',
+  'timeline.readFrom': 'read from {engine}',
+  'timeline.heldBy': 'held by {engine}',
   'timeline.source.datastore': 'Data Store',
   'timeline.source.fixture': 'demo fixture',
   'timeline.source.memory': 'this session',
@@ -89,6 +91,8 @@ export default {
   'panel.window.last30': 'Last 30 days',
   'panel.window.last90': 'Last 90 days',
   'panel.window.last365': 'Last year',
+  'panel.precision.lead': 'Alerts that turned out real: {tp} of the {n} an officer labelled — about {pct} of every 100 (with so few labels it could be {lo} to {hi} of every 100).',
+  'panel.tta.lead': 'Time until someone looked: half of the acknowledged alerts were seen within {h} hours of being raised.',
   'panel.precision.none': 'No outcome recorded yet — record what happened on an alert and this number appears.',
   'panel.stat.alerts': 'Alerts in window',
   'panel.stat.acknowledged': 'Acknowledged',
@@ -187,7 +191,7 @@ export default {
   'digest.noOpen': 'No open alerts in scope.',
   'digest.loading': 'Composing the digest…',
   'digest.error': 'Could not compose the digest.',
-  'digest.decisionsLine': '{decisions} decisions in {days} days — acknowledged {ack}, assigned {assign}, escalated {esc}, dismissed {dis}, outcomes {out}, notes {note}',
+  'digest.decisionsLine': 'Decisions in {days} days: {decisions} — acknowledged {ack}, assigned {assign}, escalated {esc}, dismissed {dis}, outcomes {out}. Notes {note} are on the record but are not counted as decisions.',
   'digest.mailNote': 'Catalyst Mail needs a sender verified in the console (a Gmail address cannot be verified) — MAIL_FROM and DIGEST_TO are empty on this deployment, so the digest is served here and as JSON.',
   'digest.risk': 'risk {n}',
 };

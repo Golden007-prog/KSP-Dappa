@@ -303,15 +303,15 @@ export default function ABCompare({ window: win, defaultDistrictIds = [], colors
 
         {model && !compare.isLoading && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-            <div className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+            <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
               <p className="text-[10px] text-muted truncate" title={labelA}>{t('trends.ab.totalA')}</p>
               <p className="num text-base font-semibold text-ink">{fmtInt(model.totalA)}</p>
             </div>
-            <div className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+            <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
               <p className="text-[10px] text-muted truncate" title={labelB}>{t('trends.ab.totalB')}</p>
               <p className="num text-base font-semibold text-ink">{fmtInt(model.totalB)}</p>
             </div>
-            <div className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+            <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
               <p className="text-[10px] text-muted">{t('trends.ab.gap')}</p>
               <p className="num text-base font-semibold text-ink">
                 {model.gap >= 0 ? '+' : '−'}{fmtInt(Math.abs(model.gap))}
@@ -320,7 +320,7 @@ export default function ABCompare({ window: win, defaultDistrictIds = [], colors
                 )}
               </p>
             </div>
-            <div className="rounded-lg border border-grid bg-base/40 px-3 py-2">
+            <div className="rounded-lg border border-grid bg-canvas/40 px-3 py-2">
               <Tooltip label={t('trends.ab.coTip')}>
                 <p className="text-[10px] text-muted cursor-help">{t('trends.ab.comove')}</p>
               </Tooltip>

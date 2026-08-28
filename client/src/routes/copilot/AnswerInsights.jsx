@@ -46,7 +46,7 @@ export default function AnswerInsights({ message }) {
         )}
         {intentText && (
           <Tooltip label={t('copilot.insights.intentTip')}>
-            <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2 py-0.5 text-[10px] text-muted whitespace-nowrap">
+            <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2 py-0.5 text-[10px] text-muted whitespace-nowrap">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
               </svg>

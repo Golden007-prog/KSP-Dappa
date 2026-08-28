@@ -52,7 +52,7 @@ export function NearRepeatPanel({ apiParams }) {
                 <StatTile key={k} label={t(`depth.nr.cls.${k}`)} value={fmtInt(cls.tally[k])} hint={fmtPct((cls.shares[k] || 0) * 100, { digits: 0 })} tone={k === 'nearRepeat' || k === 'repeat' ? 'text-signal' : ''} />
               ))}
             </div>
-            <div className="bg-base/60 border border-grid rounded-lg px-3 py-2 space-y-1">
+            <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusPill status={knoxStatus} label={t(`depth.nr.knoxStatus.${knoxStatus}`)} />
                 <span className="text-[12px] text-ink">{kx.ratio === null ? t('depth.nr.knoxNone') : t('depth.nr.knoxLine', { ratio: fmtNum(kx.ratio, 2), p: kx.pValue === null ? '—' : fmtNum(kx.pValue, 3) })}</span>

@@ -35,7 +35,7 @@ export default function FacePanel({ personKey }) {
             alt={t('identify.cand.thumbAlt', { name: row.name || row.personKey })}
             width="96"
             height="96"
-            className={`h-24 w-24 shrink-0 rounded-lg border border-grid bg-base object-cover ${row.active ? '' : 'opacity-50 grayscale'}`}
+            className={`h-24 w-24 shrink-0 rounded-lg border border-grid bg-canvas object-cover ${row.active ? '' : 'opacity-50 grayscale'}`}
           />
           <div className="min-w-0 flex-1 space-y-1.5 text-xs">
             <div className="flex flex-wrap items-center gap-1.5">

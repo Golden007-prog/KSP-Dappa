@@ -90,7 +90,7 @@ export default function SeverityMatrix({ alerts, activeDistrictId, activeSev, on
         ))}
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={t('a11y.scroll.table', { name: t('alerts.intel.matrixAria') })}>
         <table className="w-full min-w-[30rem] border-collapse text-xs">
           <caption className="sr-only">{t('alerts.intel.matrixAria')}</caption>
           <thead>

@@ -87,7 +87,15 @@ export default function SeasonalityPanel({ query }) {
           )}
         </div>
       )}
-      <div className="overflow-x-auto no-scrollbar -mx-1 px-1">
+      {/* 24 hour columns never fit a phone; the box scrolls sideways, so it
+          takes tabindex=0 (WCAG 2.1.1 — nothing inside is focusable) and a
+          name for the landmark that creates. */}
+      <div
+        className="overflow-x-auto no-scrollbar -mx-1 px-1"
+        tabIndex={0}
+        role="region"
+        aria-label={t('a11y.scroll.panel', { name: t('dashboard.panel.seasonality.title') })}
+      >
         <div
           className="grid min-w-[430px] gap-[3px]"
           style={{ gridTemplateColumns: '2.4rem repeat(24, minmax(0.7rem, 1fr))' }}

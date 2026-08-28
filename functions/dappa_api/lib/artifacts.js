@@ -158,7 +158,8 @@ function resetArtifacts() {
 //               smartbrowz().takeScreenshot(url, { page_options:{viewport},
 //               screenshot_options:{type:'png'}, navigation_options:{wait_until} })
 //               (3.4.0 utils/pojo/smartbrowz.d.ts ICatalystSmartbrowzScrShot),
-//               stored in Stratus under briefs/map-<district>-<ts>.png.
+//               stored in Stratus under briefs/map-<district>-<yyyymmddhh>.png
+//               (hour bucket, so a repeat overwrites rather than accumulates).
 //   Fallback  : the static map the client already ships
 //               (client/public/media/command-dashboard.jpg), labelled as such.
 // Options are top-level request-body keys, so ONLY documented ones are sent;
@@ -168,6 +169,15 @@ function resetArtifacts() {
 
 const STATIC_MAP = 'media/command-dashboard.jpg';
 const SNAPSHOT_VIEWPORT = { width: 1280, height: 800 };
+const IST_OFFSET_MIN = 330;
+
+/** 'YYYYMMDDHH' in IST wall-clock — the Stratus object key's time bucket. */
+function istHourStamp(date) {
+  const d = date || new Date();
+  const ist = new Date(d.getTime() + (IST_OFFSET_MIN + d.getTimezoneOffset()) * 60000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${ist.getFullYear()}${p(ist.getMonth() + 1)}${p(ist.getDate())}${p(ist.getHours())}`;
+}
 
 async function readAll(stream) {
   if (Buffer.isBuffer(stream)) return stream;
@@ -197,7 +207,10 @@ async function captureMapSnapshot(ctx, opts) {
     };
     const png = await readAll(await ctx.services.smartbrowz.screenshot(target, options));
     if (!png || !png.length) throw new Error('empty screenshot');
-    const key = `briefs/map-${districtId || 'state'}-${Date.now()}.png`;
+    // Hour-granular IST key, not Date.now(): a per-millisecond key minted a new
+    // Stratus object on every call, so a loop over the endpoint accumulated
+    // objects that nothing ever read. Repeats inside the hour overwrite one.
+    const key = `briefs/map-${districtId || 'state'}-${istHourStamp()}.png`;
     let stored = false;
     let url = null;
     if (ctx.services.artifactBucket && ctx.services.artifactBucket.putBinary) {
@@ -220,4 +233,4 @@ async function captureMapSnapshot(ctx, opts) {
   }
 }
 
-module.exports = { putArtifact, listArtifacts, getArtifact, resetArtifacts, captureMapSnapshot, INDEX_KEY, MAX_BYTES, STATIC_MAP };
+module.exports = { putArtifact, listArtifacts, getArtifact, resetArtifacts, captureMapSnapshot, istHourStamp, INDEX_KEY, MAX_BYTES, STATIC_MAP };

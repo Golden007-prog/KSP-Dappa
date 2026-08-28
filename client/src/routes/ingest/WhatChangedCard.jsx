@@ -25,6 +25,15 @@ export default function WhatChangedCard({ changed, projected = false, className 
   const months = (changed.byMonth || []).map((m) => `${monthLabel(m.ym)} +${fmtInt(m.cases)}`).join(' · ');
   const batch = changed.batch || { rows: delta.totalFirs, month: changed.asOfYm, months: 1 };
   const otherMonth = batch.month && batch.month !== changed.asOfYm;
+  // A back-dated batch moves its own month, not the anchor month: read the
+  // count tiles off that month so they can never say "485 → 485" beside a
+  // month-on-month figure that visibly moved.
+  const bm = otherMonth ? changed.kpis.batchMonth : null;
+  const tileYm = bm ? bm.ym : changed.asOfYm;
+  const tBefore = bm ? bm.before : before;
+  const tAfter = bm ? bm.after : after;
+  const tDelta = bm ? bm.delta : delta;
+  const firsLabel = bm ? t('ingest.changed.firsIn', { month: monthLabel(tileYm) }) : t('ingest.changed.firs');
   const rows = (changed.alerts || []).map((a) => ({
     where: `${tName('district', a.districtId, a.districtName)} · ${tName('crimeHead', a.crimeHeadId, a.headName)}`,
     month: monthLabel(a.ym),
@@ -43,11 +52,11 @@ export default function WhatChangedCard({ changed, projected = false, className 
       className={className}
     >
       <PlainSentence term="ingestDelta" vars={{ n: fmtInt(batch.rows), month: monthLabel(batch.month || changed.asOfYm), k: fmtInt(changed.wouldRaise) }} className="mb-3" />
-      {otherMonth && <p className="mb-3 text-xs text-amber">{t('ingest.changed.otherMonth', { month: monthLabel(batch.month), asOf: monthLabel(changed.asOfYm) })}</p>}
+      {otherMonth && <p className="mb-3 text-xs text-amber">{t(bm ? 'ingest.changed.otherMonthShown' : 'ingest.changed.otherMonth', { month: monthLabel(batch.month), asOf: monthLabel(changed.asOfYm) })}</p>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <KpiTile label={t('ingest.changed.firs')} value={`${fmtInt(before.totalFirs)} → ${fmtInt(after.totalFirs)}`} hint={`${t('ingest.changed.delta')} ${delta.totalFirs >= 0 ? '+' : ''}${fmtInt(delta.totalFirs)}`} accent="amber" />
-        <KpiTile label={t('ingest.changed.heinous')} value={`${fmtInt(before.heinousCount)} → ${fmtInt(after.heinousCount)}`} hint={`${t('ingest.changed.delta')} ${delta.heinousCount >= 0 ? '+' : ''}${fmtInt(delta.heinousCount)}`} accent="red" />
-        <KpiTile label={t('ingest.changed.mom')} value={`${fmtPct(before.momPct, { sign: true })} → ${fmtPct(after.momPct, { sign: true })}`} hint={t('ingest.changed.momHint', { month: monthLabel(changed.asOfYm) })} accent="teal" />
+        <KpiTile label={firsLabel} value={`${fmtInt(tBefore.totalFirs)} → ${fmtInt(tAfter.totalFirs)}`} hint={`${t('ingest.changed.delta')} ${tDelta.totalFirs >= 0 ? '+' : ''}${fmtInt(tDelta.totalFirs)}`} accent="amber" />
+        <KpiTile label={t('ingest.changed.heinous')} value={`${fmtInt(tBefore.heinousCount)} → ${fmtInt(tAfter.heinousCount)}`} hint={`${t('ingest.changed.delta')} ${tDelta.heinousCount >= 0 ? '+' : ''}${fmtInt(tDelta.heinousCount)}`} accent="red" />
+        <KpiTile label={t('ingest.changed.mom')} value={`${fmtPct(tBefore.momPct, { sign: true })} → ${fmtPct(tAfter.momPct, { sign: true })}`} hint={t('ingest.changed.momHint', { month: monthLabel(tileYm) })} accent="teal" />
         <KpiTile label={t('ingest.changed.alerts')} value={`${fmtInt(before.activeAlerts)} → ${fmtInt(before.activeAlerts + changed.wouldRaise)}`} hint={t('ingest.changed.alertsHint', { k: changed.wouldRaise })} accent={changed.wouldRaise ? 'red' : 'teal'} pulse={changed.wouldRaise > 0} />
       </div>
       {months && <p className="mt-2 text-xs text-muted">{t('ingest.changed.byMonth')}: <span className="num">{months}</span></p>}

@@ -68,7 +68,7 @@ export default function EmbeddedSignIn({ className = '' }) {
   }, [enabled, hosted]);
 
   return (
-    <section className={`rounded-xl border border-grid bg-base/40 p-3 ${className}`} aria-labelledby="dappa-signin-title">
+    <section className={`rounded-xl border border-grid bg-canvas/40 p-3 ${className}`} aria-labelledby="dappa-signin-title">
       <h3 id="dappa-signin-title" className="text-sm font-semibold text-ink">{t('surfaces.signin.title')}</h3>
       <p className="text-[11px] text-muted mt-0.5 leading-relaxed">{t('surfaces.signin.sub')}</p>
       {!enabled && <p className="mt-2 text-xs text-muted">{t('surfaces.signin.disabled')}</p>}

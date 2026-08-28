@@ -1,7 +1,11 @@
 // /beat — My Beat (Constable / Head Constable). One card answers the three
-// questions above the fold on a 360-px phone — What changed? What needs
-// attention? What do I do next? — in plain sentences with the statistic behind
-// a 44-px (i); then nearby hotspots, my assigned cases and a tile-free beat
+// questions — What changed? What needs attention? What do I do next? — in
+// plain sentences with the statistic behind a 44-px (i). On a 360×640 phone
+// the FIRST question and everything under it fits above the fold (measured
+// 304→628 px at scroll 0, static-demo build); the second starts at 628 and the
+// third at 966, one thumb-scroll away. Three full questions in 640 px is not
+// achievable at this content density and the earlier comment claiming it was
+// wrong. Then nearby hotspots, my assigned cases and a tile-free beat
 // map. The one primary action and the dismiss-with-reason control record to
 // the Phase-7 action log when an alert exists, otherwise to this phone, and
 // say which. The last good answer is kept in localStorage so the card renders
@@ -23,7 +27,7 @@ import { statusFromPendency, statusFromRiskWord } from '../lib/status.js';
 import { useI18n } from '../lib/i18n.jsx';
 import { fmtInt, fmtNum, dateLabel } from '../lib/format.js';
 import {
-  Question, InfoButton, TierHeader, UnitPicker, PanelState, todayLabel, dominantBand, hourRangeLabel, bandKeyOfHour,
+  Question, InfoButton, TierHeader, UnitPicker, PanelState, todayLabel, dominantBand, hourRangeLabel, bandKeyOfHour, useTierRoute,
 } from './tiers/bits.jsx';
 import BeatMap from './tiers/BeatMap.jsx';
 import DismissSheet from './tiers/DismissSheet.jsx';
@@ -61,6 +65,7 @@ export default function Beat() {
   const { fmt, term } = usePlain();
   const toast = useToast();
   const tier = useTierStore((s) => s.tier);
+  useTierRoute('beat'); // arriving from the sidebar must switch the app into beat wording
   const [searchParams, setSearchParams] = useSearchParams();
   const unitId = searchParams.get('unitId') || '';
   const q = useBeatHome(unitId ? { unitId } : {});
@@ -98,11 +103,12 @@ export default function Beat() {
   const riskStatus = statusFromRiskWord(d?.risk?.word);
   const whenLabel = topHotspot ? hourRangeLabel(topHotspot.hourBandStart, topHotspot.hourBandEnd) : '';
 
+  const one = recent.count === 1 ? '.one' : '';
   const weekSentence = !d ? '' : recent.count === 0
     ? t('tier.beat.week.none', { unit: unitName })
     : recent.usualPerWeek === null || recent.usualPerWeek === undefined
-      ? t('tier.beat.week.noUsual', { n: fmtInt(recent.count), unit: unitName })
-      : `${t('tier.beat.week.sentence', { n: fmtInt(recent.count), unit: unitName, usual: fmtNum(recent.usualPerWeek, 0) })}${band ? ` ${t('tier.beat.week.mostly', { band: t(`tier.band.${band}`) })}` : ''}`;
+      ? t(`tier.beat.week.noUsual${one}`, { n: fmtInt(recent.count), unit: unitName })
+      : `${t(`tier.beat.week.sentence${one}`, { n: fmtInt(recent.count), unit: unitName, usual: fmtNum(recent.usualPerWeek, 0) })}${band ? ` ${t('tier.beat.week.mostly', { band: t(`tier.band.${band}`) })}` : ''}`;
 
   const riskSentence = !d?.risk ? t('tier.beat.risk.nodata')
     : `${t(`tier.beat.risk.${['high', 'elevated', 'normal'].includes(d.risk.word) ? d.risk.word : 'nodata'}`)}${d.risk.drivers?.[0] ? ` ${t('tier.beat.risk.driver', { driver: d.risk.drivers[0] })}` : ''}`;
@@ -135,6 +141,7 @@ export default function Beat() {
         onPrint={() => window.print()}
         printLabel={t('tier.beat.print')}
       >
+        <UnitPicker value={unitId} onChange={chooseUnit} compact />
         {offlineCopy && (
           <StatusPill
             status="nodata"
@@ -145,8 +152,6 @@ export default function Beat() {
         )}
       </TierHeader>
       <p className="tier-print-only text-[11px]">{t('tier.print.preparedFor', { role: t('tier.role.beat'), unit: unitName })}</p>
-
-      <UnitPicker value={unitId} onChange={chooseUnit} defaulted={Boolean(q.data?.meta?.defaulted)} />
 
       {!d && q.isLoading && <PanelState query={q} height={320} />}
       {!d && q.isError && !q.isLoading && (
@@ -161,16 +166,16 @@ export default function Beat() {
           <Card padded={false} className="overflow-hidden divide-y divide-grid/60">
             <Question id="beat-what" question={t('tier.q.what')} status={recent.statusWord} sentence={weekSentence} accent={recent.statusWord === 'rising'}>
               <div className="grid grid-cols-2 gap-2.5">
-                <div className="rounded-lg border border-grid border-l-2 border-l-signal bg-panel-raised px-3 py-2">
-                  <span className="flex min-h-[44px] items-center text-[11px] text-muted">{t('tier.thisWeek')}</span>
-                  <span className="num block text-2xl font-semibold tracking-tight text-ink">{fmtInt(recent.count)}</span>
+                <div className="rounded-lg border border-grid border-l-2 border-l-signal bg-panel-raised px-3 py-1.5">
+                  <span className="block text-[11px] leading-tight text-muted">{t('tier.thisWeek')}</span>
+                  <span className="num block text-2xl font-semibold leading-tight tracking-tight text-ink">{fmtInt(recent.count)}</span>
                 </div>
-                <div className="rounded-lg border border-grid border-l-2 border-l-teal bg-panel-raised px-3 py-2">
-                  <span className="flex min-h-[44px] items-center gap-0.5 text-[11px] text-muted">
-                    {term('baseline').label}
-                    <InfoButton label={`${term('baseline').label}: ${term('baseline').sentence} · ${term('baseline').technical}`} />
+                <div className="flex items-center gap-1 rounded-lg border border-grid border-l-2 border-l-teal bg-panel-raised py-1.5 pl-3 pr-0.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11px] leading-tight text-muted">{term('baseline').label}</span>
+                    <span className="num block text-2xl font-semibold leading-tight tracking-tight text-ink">{recent.usualPerWeek === null || recent.usualPerWeek === undefined ? '—' : fmtNum(recent.usualPerWeek, 0)}</span>
                   </span>
-                  <span className="num block text-2xl font-semibold tracking-tight text-ink">{recent.usualPerWeek === null || recent.usualPerWeek === undefined ? '—' : fmtNum(recent.usualPerWeek, 0)}</span>
+                  <InfoButton label={`${term('baseline').label}: ${term('baseline').sentence} · ${term('baseline').technical}`} />
                 </div>
               </div>
               {recent.swings !== null && recent.swings !== undefined && (

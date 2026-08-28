@@ -37,11 +37,16 @@ async function resolveIdentity(ctx, req, body) {
     return { actor: String(b.actor || 'demo-admin').trim() || 'demo-admin', actorRole: String(b.actorRole || 'admin'), actorSource: 'admin-token', canMutateStatus: true };
   }
   const role = String(b.actorRole || 'viewer').toLowerCase().trim();
+  // Anonymous NEVER flips AnomalyAlert.Status — not only in PUBLIC_DEMO. The
+  // record is the audit trail and anyone may add to it (D-phase7-2), but the
+  // alert's own state is a write that has to be attributable, and keying that
+  // off the demo flag meant a real deployment with PUBLIC_DEMO off accepted an
+  // unauthenticated status change.
   return {
     actor: String(b.actor || '').trim() || 'anonymous',
     actorRole: actionlog.ROLE_VALUES.includes(role) ? role : 'viewer',
     actorSource: 'client',
-    canMutateStatus: !ctx.flags.publicDemo
+    canMutateStatus: false
   };
 }
 
@@ -173,7 +178,9 @@ function register(router) {
           statusReason = `status write failed: ${String((e && e.message) || e).slice(0, 120)}`;
         }
       } else {
-        statusReason = 'public demo is read-only for AnomalyAlert.Status; the decision is recorded in the action log';
+        statusReason = ctx.flags.publicDemo
+          ? 'public demo is read-only for AnomalyAlert.Status; the decision is recorded in the action log'
+          : "an unauthenticated caller may record a decision but not change the alert's own status; the decision is recorded in the action log";
       }
     }
     let pushed = null;

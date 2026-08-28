@@ -123,7 +123,7 @@ export default function Ocr() {
                       aria-pressed={picked && picked.sampleId === s.sampleId}
                       className={`w-full min-h-[44px] rounded-lg border p-1.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber ${picked && picked.sampleId === s.sampleId ? 'border-amber/70 bg-amber/10' : 'border-grid hover:border-primary/60'}`}
                     >
-                      <img src={`${base}${s.file}`} alt={s.title} loading="lazy" className="w-full aspect-[3/4] object-cover rounded bg-base" />
+                      <img src={`${base}${s.file}`} alt={s.title} loading="lazy" className="w-full aspect-[3/4] object-cover rounded bg-canvas" />
                       <span className="mt-1 block text-[11px] leading-tight text-ink">{s.title}</span>
                     </button>
                   </li>
@@ -164,7 +164,7 @@ export default function Ocr() {
         <div className="xl:col-span-2 space-y-4">
           {picked && (
             <Card title={t('surfaces.ocr.preview')} subtitle={picked.name} actions={stageLabel ? <Badge tone="amber" pulse>{stageLabel}</Badge> : null}>
-              <img src={picked.url} alt={picked.name} className="max-h-80 w-auto max-w-full rounded border border-grid bg-base mx-auto" />
+              <img src={picked.url} alt={picked.name} className="max-h-80 w-auto max-w-full rounded border border-grid bg-canvas mx-auto" />
             </Card>
           )}
           {blocked ? (

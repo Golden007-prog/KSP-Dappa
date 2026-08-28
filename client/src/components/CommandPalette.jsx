@@ -233,7 +233,7 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
             aria-activedescendant={results[active] ? `cmdk-${results[active].id}` : undefined}
             className="w-full bg-transparent py-3.5 text-sm text-ink placeholder:text-muted focus:outline-none"
           />
-          <kbd className="hidden sm:block shrink-0 rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-muted">esc</kbd>
+          <kbd className="hidden sm:block shrink-0 rounded border border-grid bg-canvas/60 px-1.5 py-0.5 text-[10px] text-muted">esc</kbd>
         </div>
         <ul id="cmdk-list" role="listbox" ref={listRef} aria-label={t('shell.palette.resultsAria')} className="max-h-[46vh] overflow-y-auto p-1.5">
           {results.length === 0 && !remoteBusy && (
@@ -261,7 +261,7 @@ export default function CommandPalette({ open, onClose, actions = [], remoteSear
                 <HighlightedLabel query={query} text={a.label} />
               </span>
               {a.section && <span className="eyebrow shrink-0">{a.section}</span>}
-              {a.hint && <kbd className="shrink-0 rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[10px] text-muted">{a.hint}</kbd>}
+              {a.hint && <kbd className="shrink-0 rounded border border-grid bg-canvas/60 px-1.5 py-0.5 text-[10px] text-muted">{a.hint}</kbd>}
             </li>
           ))}
           {remoteBusy && (

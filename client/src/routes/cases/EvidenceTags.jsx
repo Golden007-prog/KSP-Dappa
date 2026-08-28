@@ -90,7 +90,7 @@ export default function EvidenceTags({ caseId }) {
       {scene && ev.data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <figure className="min-w-0">
-            <div className="relative w-full overflow-hidden rounded-lg border border-grid bg-base" style={{ aspectRatio: `${scene.width} / ${scene.height}` }}>
+            <div className="relative w-full overflow-hidden rounded-lg border border-grid bg-canvas" style={{ aspectRatio: `${scene.width} / ${scene.height}` }}>
               <img src={`${base}${scene.file}`} alt={scene.title} className="absolute inset-0 h-full w-full object-contain" />
               <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${scene.width} ${scene.height}`} aria-label={t('surfaces.evidence.boxes')} role="img">
                 {objects.filter((o) => Array.isArray(o.box) && o.box.length === 4).map((o, i) => (

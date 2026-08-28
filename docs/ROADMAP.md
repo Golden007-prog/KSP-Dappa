@@ -4,35 +4,85 @@ Anything not in the Definition of Done lands here instead of gold-plating the
 prototype. Ordered roughly by value-for-effort. Items marked *(deck slide 14)*
 feed the "Future development" slide.
 
-1. **Circuits orchestration** *(deck slide 14)* — replace the single
-   `dappa_nightly` cron with a Catalyst Circuits workflow: generate → aggregate
-   → hotspots → forecasts → anomalies → network as discrete, retryable steps
-   with per-step observability and partial re-runs.
+*Revised 29 August 2026, after the Round-2 build.* Four of the original seven
+items shipped and have been struck from the list with a note saying where they
+landed; the rest are re-scoped against what Round 2 learned about the platform.
 
-2. **ConvoKraft alternate copilot** — a ConvoKraft NLU bot (JS SDK embed)
-   invoking the same Catalyst Functions as Ask-DAPPA, as a flag-switchable
-   alternative when QuickML LLM Serving is unavailable on an org; also gives
-   guided-conversation flows (slot-filling for district/date-range).
+## Shipped in Round 2 — kept here only to say where they went
 
-3. **Slate Git auto-deploy** — connect the GitHub repo to Slate for per-push
-   preview URLs of `client/`, keeping Web Client Hosting as the stable
-   submission URL; promotes review-app workflow for the UI.
+- ~~**Circuits orchestration**~~ — **not possible on this deployment.** Catalyst
+  documents Circuits as unavailable to IN-data-centre users (three Circuits
+  pages carry the exclusion; `docs/CATALYST_SERVICE_RESEARCH.md` §3), and this
+  project runs on `.catalystserverless.in`. The identical steps run sequentially
+  in `lib/circuits.js` and the nightly refresh is the `dappa_nightly` cron
+  function; **Job Scheduling** (pool `dappanightly`) is the Catalyst-native
+  replacement and is wired in `lib/jobs.js`. See D-019 and D-P3-3.
+- ~~**Kannada UI**~~ — shipped. 19 namespaces, English ↔ Kannada parity gated by
+  `scripts/check_i18n.mjs` in CI. The **Zia speech** half is not shippable:
+  no speech or translation method exists in the Zia docs index or in
+  `zcatalyst-sdk-node@3.4.0`, so read-aloud and voice input use the browser's
+  own Web Speech API (D-014) and the pinned glossary serves `/zia/translate`.
+- ~~**Beat-officer PWA + Push Notifications**~~ — shipped. `/beat` and
+  `/station` with a hand-written service worker (offline last-fetched beat
+  card), maskable icons and manifest shortcuts; push registration is wired
+  behind `FEATURE_PUSH` with the in-app notification centre serving anonymous
+  visitors, because Catalyst push is addressed by signed-in user email.
+- ~~**CCTNS adapters**~~ — the ingest half shipped as `/ingest`: a CSV in the
+  official ER column format is validated (30 reason codes), mapped, previewed,
+  loaded in ≤200-row chunks with a resume token, audited into `ActionLog` and
+  reported on with a rejection CSV and a "what changed" card. What remains is
+  below as item 4.
 
-4. **Kannada UI + Zia speech** *(deck slide 14)* — i18n layer with a full
-   Kannada translation (ಕನ್ನಡ) of the command-center UI, plus Zia speech
-   services for voice-driven copilot queries in Kannada and English.
+## Still ahead
 
-5. **Beat-officer PWA + Push Notifications** *(deck slide 14)* — a mobile-first
-   installable PWA for beat officers: my-beat risk card, nearby hotspots,
-   assigned-case list; Catalyst Push Notifications deliver anomaly alerts for
-   the officer's jurisdiction.
+1. **Finish the Production environment.** The environment exists and answers at
+   `project-rainfall-60079891305.catalystserverless.in`, but Catalyst migrates
+   code and metadata only — the Data Store arrives empty and env values do not
+   travel. Completing it means `node scripts/prod_load.mjs` (~350,000 rows,
+   resumable, answers the CLI's Stratus-bucket prompt), re-entering the function
+   env under the Production switch, re-pointing `APP_BASE_URL`, and a second
+   *Deploy to Production*. Development is the submitted URL until then, and the
+   README says so rather than implying otherwise.
 
-6. **CCTNS adapters** *(deck slide 14)* — replace the synthetic generator with
-   ingest adapters for real CCTNS/KSP exports (same official ER schema, so the
-   mapping is column-for-column), with PII handling, access control, and audit
-   logging appropriate for production police data.
+2. **A real identity-resolution scorer.** The current one measures precision
+   0.032 / recall 0.571 at threshold 0.92 on the planted ground truth, and the
+   Round-2 audit found why: the exact-name anchor pass merges everyone who
+   shares a common Kannada name. Dropping that pass lifts best F1 from 0.074 to
+   0.354 in the offline sweep (`docs/benchmarks/identity_sweep.json`). Changing
+   it means regenerating and re-importing the derived tables, which is a data
+   migration rather than a code edit — hence post-datathon. The finding is
+   published on `/offenders` rather than hidden.
 
-7. **Inter-state data exchange** *(deck slide 14)* — federate identity
+3. **Face identification on photographs.** Zia's Identity Scanner genuinely
+   compares faces (measured: 0.841 for the same generated person, 0.617 for two
+   different ones — `docs/benchmarks/face_zia_probe.json`), but Zia Face
+   Analytics cannot see a procedurally drawn face at all, so the quality gate is
+   advisory on our synthetic gallery. On real casework photographs the gate
+   becomes real, the local descriptor engine retires, and the model card needs
+   re-measuring on that population — including the demographic breakdown the
+   card currently can only cite from NIST rather than measure.
+
+4. **CCTNS / ICJS ingest adapters** *(deck slide 14)* — `/ingest` takes the
+   official ER column format today; a real deployment needs the actual Police-IT
+   export column names (the IIF form list is verified, the export columns are
+   not), incremental sync rather than batch upload, and the PII handling,
+   access control and retention rules that real police data requires.
+
+5. **Inter-state data exchange** *(deck slide 14)* — federate identity
    resolution and network analysis across state boundaries (the `State` /
    `NationalityID` dimensions already exist in the ER), enabling cross-border
-   offender tracking with data-sharing agreements.
+   offender tracking under data-sharing agreements.
+
+6. **ConvoKraft alternate copilot** — a ConvoKraft NLU bot invoking the same
+   Catalyst Functions as Ask-DAPPA, as a flag-switchable alternative and for
+   guided slot-filling flows. It stays a roadmap item honestly: ConvoKraft is
+   English-only and its actions need Integration Functions or Deluge, neither of
+   which is available to us in the IN data centre.
+
+7. **Outcome-trained models.** The action loop now records what an officer
+   decided and what happened, and `/alerts/outcomes` reports how many labels
+   exist against the minimum a retrain would need. When the labels are there,
+   the alert scorer can be trained on them instead of on planted anomalies —
+   the point at which DAPPA stops being a demonstration and starts learning from
+   the force that uses it. Nothing today claims online learning; the payload
+   carries `onlineLearning: false`.

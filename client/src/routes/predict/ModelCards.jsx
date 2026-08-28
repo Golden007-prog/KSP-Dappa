@@ -34,7 +34,7 @@ export default function ModelCards() {
             {t('trends.predict.mc.intro')}
           </p>
           {CARDS.map((c) => (
-            <section key={c.key} className="rounded-lg border border-grid bg-base/40 p-3">
+            <section key={c.key} className="rounded-lg border border-grid bg-canvas/40 p-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-ink">{t(`trends.predict.mc.${c.key}.name`)}</h3>
                 <Badge tone={c.tone}>{t('trends.predict.mc.documented')}</Badge>

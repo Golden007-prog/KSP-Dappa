@@ -6,7 +6,7 @@ import { GO_ROUTES } from './useDashShortcuts.js';
 
 function Key({ children }) {
   return (
-    <kbd className="num inline-flex min-w-[1.6rem] items-center justify-center rounded border border-grid bg-base/60 px-1.5 py-0.5 text-[11px] text-ink">
+    <kbd className="num inline-flex min-w-[1.6rem] items-center justify-center rounded border border-grid bg-canvas/60 px-1.5 py-0.5 text-[11px] text-ink">
       {children}
     </kbd>
   );

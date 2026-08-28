@@ -234,7 +234,7 @@ export default function CompareGrid({ window: win, norm, pops, colors, anomalyCo
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {view.rows.map((r) => (
-              <div key={r.key} className="rounded-lg border border-grid bg-base/40 px-3 pt-2.5 pb-2">
+              <div key={r.key} className="rounded-lg border border-grid bg-canvas/40 px-3 pt-2.5 pb-2">
                 {r.error ? (
                   <p className="text-xs text-muted py-4">{r.label}: {r.error.message}</p>
                 ) : (

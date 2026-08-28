@@ -240,20 +240,20 @@ export default function SeverityMix({ apiParams, districtId, colors, anomalyColo
         />
         {model && !monthly.isLoading && (
           <div className="flex flex-wrap items-center gap-1.5 mt-2.5" aria-label={t('trends.sev.statsAria')}>
-            <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+            <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted">
               {t('trends.sev.windowShare')} <span className="num font-semibold text-ink">{fmtNum(model.windowShare, 1)}%</span>
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+            <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted">
               {t('trends.sev.heinousTotal')} <span className="num font-semibold text-ink">{fmtInt(model.heinousTotal)}</span>
             </span>
             {model.yoy !== null && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+              <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted">
                 {t('trends.sev.yoy')}
                 <StatDelta value={model.yoy} positiveIsGood={false} label={t('trends.sev.yoyLabel')} />
               </span>
             )}
             {model.outliers.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-base/60 px-2.5 py-1 text-[11px] text-muted">
+              <span className="inline-flex items-center gap-1 rounded-full border border-grid bg-canvas/60 px-2.5 py-1 text-[11px] text-muted">
                 {t('trends.sev.outliers')} <span className="num font-semibold text-ink">{fmtInt(model.outliers.length)}</span>
               </span>
             )}

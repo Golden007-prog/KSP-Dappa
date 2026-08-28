@@ -5,6 +5,7 @@
 // server's checks, labelled as such) and loads are refused with a note.
 import { useQuery } from '@tanstack/react-query';
 import { API_BASE, ApiError } from '../../lib/api.js';
+import { demoKey } from '../../lib/demoKey.js';
 import { validateLocally } from './localValidate.js';
 
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === '1';
@@ -19,10 +20,18 @@ export function saveAdminToken(v) {
   try { if (v) sessionStorage.setItem(TOKEN_KEY, v); else sessionStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
 }
 
+/**
+ * Read one static-demo snapshot. A missing key does NOT 404 on GitHub Pages —
+ * the SPA fallback answers with index.html at status 200 — so the content type
+ * is checked before parsing. Without that check a drifted key looks like an
+ * empty answer instead of a failure, and the table picker silently empties.
+ */
 async function snapshot(key) {
   try {
     const res = await fetch(`${DEMO_BASE}${key}.json`);
     if (!res.ok) return null;
+    const type = res.headers.get('content-type') || '';
+    if (!/\bjson\b/i.test(type)) return null;
     return await res.json();
   } catch { return null; }
 }
@@ -59,7 +68,7 @@ export function writeHeaders(tier, adminToken, actor) {
 
 export async function fetchTables() {
   if (STATIC_DEMO) {
-    const json = await snapshot('GET_ingest_tables');
+    const json = await snapshot(demoKey('GET', '/ingest/tables'));
     if (json && json.ok) return { data: json.data, meta: { ...(json.meta || {}), demoStatic: true } };
     throw new ApiError('DEMO_MISS', 'The static demo snapshot has no ER table registry — use the live Catalyst deployment.', 404);
   }

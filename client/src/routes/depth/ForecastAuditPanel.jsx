@@ -47,7 +47,7 @@ export default function ForecastAuditPanel() {
             </div>
           )}
           {cov ? (
-            <div className="bg-base/60 border border-grid rounded-lg px-3 py-2 space-y-1">
+            <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusPill status={covStatus} label={t(`depth.fa.covStatus.${covStatus}`)} />
                 <span className="text-[12px] text-ink">{t('depth.fa.covLine', { pct: fmtPct(cov.coverage80 * 100, { digits: 1 }), gap: fmtPct(cov.coverageGap * 100, { digits: 1, sign: true }), n: fmtInt(cov.holdoutPoints) })}</span>
@@ -79,6 +79,9 @@ export default function ForecastAuditPanel() {
                   ))}
                 </tbody>
               </table>
+              {/* One holdout from one origin: h = 1..6 and the calendar months
+                  are the same six points, so the table relabels the bars. */}
+              <p className="text-[11px] text-muted mt-1">{t('depth.fa.monthSameAxis', { first: monthLabel(byMonth[0].ym) })}</p>
             </div>
           )}
           {live && (

@@ -29,7 +29,7 @@ export default function RulesList() {
       >
         <ol className="space-y-3">
           {d.rules.map((r) => (
-            <li key={r.id} className="rounded-lg border border-grid bg-base/50 px-3 py-2.5">
+            <li key={r.id} className="rounded-lg border border-grid bg-canvas/50 px-3 py-2.5">
               <p className="text-sm font-semibold text-ink"><span className="num text-muted mr-2">{r.id}</span>{t(`identify.rules.${r.id}.title`)}</p>
               <p className="text-xs text-ink mt-1 leading-snug">{t(`identify.rules.${r.id}.statement`)}</p>
               <p className="text-[11px] text-muted mt-1"><span className="uppercase tracking-wide text-[10px]">{t('identify.rules.enforced')}:</span> {r.enforcedBy}</p>

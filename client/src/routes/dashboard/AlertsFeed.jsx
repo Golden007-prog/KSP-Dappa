@@ -124,7 +124,7 @@ export default function AlertsFeed({ query, linkSearch = '' }) {
               <li
                 key={a.alertId || i}
                 className={`group flex items-stretch rounded-lg border border-grid border-l-2 ${SEV_BORDER[sev] || SEV_BORDER.low}
-                  bg-base/40 transition-colors hover:border-amber/40`}
+                  bg-canvas/40 transition-colors hover:border-amber/40`}
               >
                 <Link to={`/alerts${linkSearch}`} className="block min-w-0 flex-1 px-3 py-2">
                   <div className="flex items-center gap-2">

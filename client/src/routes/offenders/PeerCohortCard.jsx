@@ -103,7 +103,7 @@ export default function PeerCohortCard({ subject, analysis }) {
       </div>
 
       {cohort.standouts.length > 0 && (
-        <div className="mt-3 bg-base/60 border border-grid border-l-2 border-l-signal rounded-lg px-3 py-2">
+        <div className="mt-3 bg-canvas/60 border border-grid border-l-2 border-l-signal rounded-lg px-3 py-2">
           <p className="text-xs font-medium text-ink">{t('offenders.peer.standoutTitle')}</p>
           <p className="text-[11px] text-muted mt-0.5 leading-4">
             {cohort.standouts.slice(0, 3).map((m) => t('offenders.peer.standoutItem', {

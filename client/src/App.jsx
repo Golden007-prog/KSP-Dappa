@@ -34,6 +34,7 @@ const Beat = lazy(() => import('./routes/Beat.jsx'));
 const Station = lazy(() => import('./routes/Station.jsx'));
 const StateHome = lazy(() => import('./routes/StateHome.jsx'));
 const Glossary = lazy(() => import('./routes/Glossary.jsx'));
+const Styleguide = lazy(() => import('./routes/Styleguide.jsx'));
 const Ocr = lazy(() => import('./routes/Ocr.jsx'));
 const AlertsDigest = lazy(() => import('./routes/AlertsDigest.jsx'));
 
@@ -178,6 +179,7 @@ export default function App() {
             <Route path="/station" element={<Boundary label="the Station console"><Station /></Boundary>} />
             <Route path="/state" element={<Boundary label="the State rollup"><StateHome /></Boundary>} />
             <Route path="/glossary" element={<Boundary label="the Glossary"><Glossary /></Boundary>} />
+            <Route path="/styleguide" element={<Boundary label="the style guide"><Styleguide /></Boundary>} />
             <Route path="/ocr" element={<Boundary label="the FIR scanner"><Ocr /></Boundary>} />
             <Route path="*" element={<NotFound />} />
           </Route>

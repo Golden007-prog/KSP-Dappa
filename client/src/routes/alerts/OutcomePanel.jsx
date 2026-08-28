@@ -23,6 +23,7 @@ import StatusPill from '../../components/StatusPill.jsx';
 import { fmtInt, fmtNum } from '../../lib/format.js';
 import { useT, useNames } from '../../lib/i18n.jsx';
 import { statusFromZ } from '../../lib/status.js';
+import { useTier } from '../../lib/tier.js';
 import { useOutcomes, OUTCOME_LABELS, DISMISS_REASONS } from './actionsApi.js';
 
 const WINDOWS = ['all', 'last30', 'last90', 'last365'];
@@ -60,7 +61,7 @@ function Bars({ items, total, labelOf }) {
 function GroupTable({ title, rows, t }) {
   if (!rows.length) return null;
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={t('a11y.scroll.table', { name: title })}>
       <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</p>
       <table className="w-full min-w-[34rem] border-collapse text-xs">
         <thead>
@@ -99,6 +100,9 @@ function GroupTable({ title, rows, t }) {
 export default function OutcomePanel({ unit, compact = false, className = '' }) {
   const t = useT();
   const tName = useNames();
+  // Beat / Station get the 44-px (i) target, the same rank test the
+  // action buttons use (ActionControls.jsx).
+  const officerTier = useTier().rank <= 1;
   const [window, setWindow] = useState('all');
   const q = useOutcomes({ window, unit: unit || undefined });
   const d = q.data;
@@ -130,16 +134,27 @@ export default function OutcomePanel({ unit, compact = false, className = '' }) 
         <div className="space-y-4" data-readable="true">
           <p className="text-[11px] italic leading-snug text-muted">{t('actions.framing')}</p>
 
+          {/* lead= puts the panel's OWN numbers on screen in both plain modes
+              and both languages; without it the district tier (plain off)
+              rendered the glossary's technical definition and no number at
+              all. The definition and the plain sentence stay behind the (i). */}
           {o.labelled ? (
             <PlainSentence
               term="precision"
+              size={officerTier ? 'lg' : 'sm'}
+              lead={t('actions.panel.precision.lead', { tp: fmtInt(o.truePositive), n: fmtInt(o.labelled), pct: pct100(o.precision), lo: pct100(o.precisionInterval?.lo), hi: pct100(o.precisionInterval?.hi) })}
               vars={{ tp: fmtInt(o.truePositive), n: fmtInt(o.labelled), pct: pct100(o.precision), lo: pct100(o.precisionInterval?.lo), hi: pct100(o.precisionInterval?.hi) }}
             />
           ) : (
             <p className="text-[13px] leading-snug text-ink">{t('actions.panel.precision.none')}</p>
           )}
           {o.medianTimeToAckHours !== null && o.medianTimeToAckHours !== undefined && (
-            <PlainSentence term="timeToAck" vars={{ h: fmtNum(o.medianTimeToAckHours, 1) }} />
+            <PlainSentence
+              term="timeToAck"
+              size={officerTier ? 'lg' : 'sm'}
+              lead={t('actions.panel.tta.lead', { h: fmtNum(o.medianTimeToAckHours, 1) })}
+              vars={{ h: fmtNum(o.medianTimeToAckHours, 1) }}
+            />
           )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -219,7 +234,7 @@ export default function OutcomePanel({ unit, compact = false, className = '' }) 
             )}
           </div>
 
-          <div className="rounded-lg border border-grid/60 bg-base/40 p-2.5">
+          <div className="rounded-lg border border-grid/60 bg-canvas/40 p-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('actions.panel.labels.title')}</p>
             <p className="mt-1 text-xs leading-relaxed text-ink">
               {t('actions.panel.labels.sentence', { n: fmtInt(d.labels.labelled), min: d.labels.minimumPerClass, total: d.labels.minimumTotal })}

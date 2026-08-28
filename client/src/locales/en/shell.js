@@ -33,6 +33,10 @@ export default {
   'refresh.aria': 'Refresh all data — {freshness}',
   'refresh.busy': 'refreshing…',
   'refresh.agoMins': 'updated {n}m ago',
+  // md–lg short forms — each is a substring of its long form above so the
+  // visible label never contradicts the accessible name (WCAG 2.5.3)
+  'refresh.agoMinsShort': '{n}m ago',
+  'refresh.justNowShort': 'just now',
   'refresh.done': 'Data refreshed.',
   'refresh.failed': 'Refresh failed — check the API connection.',
 
@@ -60,6 +64,10 @@ export default {
   'more.title': 'More views',
   'more.aria': 'More views',
   'more.language': 'Language · ಭಾಷೆ',
+
+  // ---- topbar display menu (language · density · text size) ----
+  'display.title': 'Display settings',
+  'display.aria': 'Display settings — language, table density, text size',
 
   'install.done': 'DAPPA installed — launch it from your apps like any native tool.',
 

@@ -4,14 +4,14 @@
   "summary": {
     "total": 35,
     "reachableFromCode": 30,
-    "liveNow": 20,
+    "liveNow": 19,
     "flagGated": 0,
-    "consolePending": 13,
+    "consolePending": 14,
     "withFallback": 33,
     "byStatus": {
       "live": 10,
-      "console-pending": 13,
-      "active": 8,
+      "console-pending": 14,
+      "active": 7,
       "unavailable": 2,
       "platform": 2
     }
@@ -256,8 +256,8 @@
       "key": "job-scheduling",
       "name": "Job Scheduling (job pool + retries)",
       "category": "orchestration",
-      "status": "active",
-      "statusReason": "flag on and configured",
+      "status": "console-pending",
+      "statusReason": "flag on but JOB_POOL_NAME not set",
       "invocation": "lib/jobs.js — jobScheduling().job().submitJob({target_type:'Function', target_name:'dappa_nightly', jobpool_name, job_config:{number_of_retries, retry_interval}}) / getJob(id)",
       "flag": "FEATURE_JOBS",
       "requires": [
@@ -396,7 +396,7 @@
       "name": "SmartBrowz (PDF / screenshots)",
       "category": "ai",
       "status": "active",
-      "statusReason": "flag on and configured",
+      "statusReason": "flag on and configured; both call sites need a user context this runtime lacks — convertToPdf and takeScreenshot each fail with \"No such User with the given id exists\" (D-phase8-8), so the print-CSS route and the static map are what a judge sees",
       "invocation": "index.js smartbrowz.renderBrief — smartbrowz().convertToPdf(printUrl) then Stratus put + pre-signed URL; lib/artifacts.js captureMapSnapshot — smartbrowz().takeScreenshot(mapUrl, {page_options, screenshot_options})",
       "flag": "FEATURE_SMARTBROWZ",
       "requires": [
@@ -412,7 +412,7 @@
       "name": "Zia Services (object recognition / image moderation)",
       "category": "ai",
       "status": "active",
-      "statusReason": "flag on and configured",
+      "statusReason": "flag on and configured; the live probe found Zia does not recognise the procedural drawings (nothing on scene_03, the wrong class on scene_02 — D-phase8-4), so the panels serve manifest tags labelled source:fixture; moderation itself answered correctly",
       "invocation": "lib/objects.js — zia().detectObject(readStream); lib/moderation.js — zia().moderateImage(readStream, {mode})",
       "flag": "FEATURE_ZIA_OBJECTS",
       "requires": [],

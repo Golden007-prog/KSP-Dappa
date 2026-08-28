@@ -15,13 +15,14 @@ import PlainSentence from '../components/PlainSentence.jsx';
 import { useStateHome } from '../lib/tierApi.js';
 import { useI18n } from '../lib/i18n.jsx';
 import { fmtInt, fmtNum, fmtPct, dateLabel, monthLabel } from '../lib/format.js';
-import { Question, TierHeader, PanelState } from './tiers/bits.jsx';
+import { Question, TierHeader, PanelState, useTierRoute } from './tiers/bits.jsx';
 import TierPrintStyles from './tiers/tierPrint.jsx';
 
 const dirKey = (v) => (v === 'up' ? 'increase' : v === 'down' ? 'decrease' : 'same');
 
 export default function StateHome() {
   const { t, tName } = useI18n();
+  useTierRoute('state'); // arriving from the sidebar must switch the app into state wording
   const q = useStateHome();
   const d = q.data || null;
 
@@ -88,7 +89,7 @@ export default function StateHome() {
                     <Link to="/alerts" className="btn-primary min-h-[44px] flex-1 justify-center">{t('tier.station.next.open')}</Link>
                     <button type="button" onClick={() => document.getElementById('state-matrix')?.scrollIntoView({ block: 'start' })} className="btn min-h-[44px] flex-1 justify-center">{t('tier.state.matrix.col.unit')} × {t('tier.station.col.head')}</button>
                   </div>
-                  <ProvenanceStamp provenance={d.provenance} />
+                  <ProvenanceStamp provenance={d.provenance} size="lg" />
                 </Question>
               </Card>
             </div>
@@ -129,12 +130,21 @@ export default function StateHome() {
                     ))}
                   </ul>
                 )}
-                <PlainSentence term="rate" className="mt-3 text-muted" />
+                <PlainSentence term="rate" size="lg" className="mt-3 text-muted" />
               </Card>
             </div>
 
             <Card title={t('tier.state.matrix.title')} subtitle={`${t('tier.state.matrix.sub', { n: fmtInt(d.units.length), month: monthLabel(d.anchorYm) })} · ${t('tier.state.asOn', { date: dateLabel(d.asOn) })}`} padded={false}>
-              <div className="overflow-x-auto">
+              {/* 38 units × every crime head never fits a laptop, let alone a
+                  phone: the box scrolls sideways, so it needs tabindex=0 to be
+                  reachable by keyboard (WCAG 2.1.1) and a name for the landmark
+                  that tabindex creates. */}
+              <div
+                className="overflow-x-auto"
+                tabIndex={0}
+                role="region"
+                aria-label={t('a11y.scroll.table', { name: t('tier.state.matrix.title') })}
+              >
                 <table className="w-full text-xs" id="state-matrix">
                   <caption className="sr-only">{t('tier.state.matrix.title')} — {t('tier.state.asOn', { date: dateLabel(d.asOn) })}</caption>
                   <thead>

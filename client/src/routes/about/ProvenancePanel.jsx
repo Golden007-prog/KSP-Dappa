@@ -25,7 +25,7 @@ function Subsystem({ label, ok, detail, warn }) {
   const t = useT();
   const tone = !ok ? 'red' : warn ? 'amber' : 'teal';
   return (
-    <div className={`rounded-lg border bg-base/40 p-2.5 ${!ok ? 'border-signal/40' : warn ? 'border-amber/40' : 'border-grid'}`}>
+    <div className={`rounded-lg border bg-canvas/40 p-2.5 ${!ok ? 'border-signal/40' : warn ? 'border-amber/40' : 'border-grid'}`}>
       <div className="flex items-center gap-1.5">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${!ok ? 'bg-signal' : warn ? 'bg-amber' : 'bg-teal'}`} aria-hidden="true" />
         <span className="text-[11px] font-semibold text-ink truncate">{label}</span>
@@ -57,7 +57,7 @@ export default function ProvenancePanel({ query }) {
         {d && (
           <div className="space-y-3">
             {d.unknown.length > 0 && (
-              <div className="rounded-lg border border-grid bg-base/40 p-3">
+              <div className="rounded-lg border border-grid bg-canvas/40 p-3">
                 <p className="text-xs font-semibold text-ink">
                   {t('about.prov.unknownTitle', { n: d.unknown.length })}
                 </p>
@@ -131,7 +131,7 @@ export default function ProvenancePanel({ query }) {
                   const reported = tb.actual !== null && tb.pct !== null;
                   const complete = reported && tb.pct >= 99.95;
                   return (
-                    <li key={tb.name} className={`rounded-lg border bg-base/40 p-2.5 ${!reported ? 'border-grid border-dashed' : complete ? 'border-grid' : 'border-amber/40'}`}>
+                    <li key={tb.name} className={`rounded-lg border bg-canvas/40 p-2.5 ${!reported ? 'border-grid border-dashed' : complete ? 'border-grid' : 'border-amber/40'}`}>
                       <div className="flex items-baseline gap-2">
                         <span className="font-mono text-[11px] text-ink truncate">{tb.name}</span>
                         <span className={`num ml-auto shrink-0 text-[11px] ${!reported ? 'text-muted' : complete ? 'text-teal' : 'text-amber'}`}>
@@ -151,7 +151,7 @@ export default function ProvenancePanel({ query }) {
             </div>
 
             {Object.keys(d.rowCounts).length > 0 && (
-              <div className="rounded-lg border border-grid bg-base/40 p-3">
+              <div className="rounded-lg border border-grid bg-canvas/40 p-3">
                 <p className="eyebrow mb-1.5">{t('about.prov.probeTitle')}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(d.rowCounts).map(([k, v]) => (

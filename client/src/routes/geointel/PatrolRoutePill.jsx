@@ -24,7 +24,7 @@ export default function PatrolRoutePill({
             value={stopCount}
             onChange={(e) => onStopCount(Number(e.target.value))}
             aria-label={t('geointel.patrol.stopsAria')}
-            className="gi-tap bg-base border border-grid rounded-md px-1 py-0.5 num text-[11px] text-ink cursor-pointer"
+            className="gi-tap bg-canvas border border-grid rounded-md px-1 py-0.5 num text-[11px] text-ink cursor-pointer"
           >
             {PATROL_STOP_COUNTS.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>

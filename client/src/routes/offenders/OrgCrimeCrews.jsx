@@ -228,7 +228,7 @@ export default function OrgCrimeCrews({ analysis }) {
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-2.5">
           {CREW_DRIVERS.map((d) => (
-            <div key={d.id} className="bg-base/60 border border-grid rounded-lg px-3 py-2">
+            <div key={d.id} className="bg-canvas/60 border border-grid rounded-lg px-3 py-2">
               <div className="flex items-baseline justify-between gap-2">
                 <p className="text-xs font-medium text-ink truncate">{t(`offenders.driver.${d.id}`)}</p>
                 <span className="num text-[10px] text-muted shrink-0">{fmtPct(d.weight * 100, { digits: 0 })}</span>

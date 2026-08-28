@@ -55,7 +55,10 @@ export default function Identify() {
     if (filters.yearTo) f.yearTo = Number(filters.yearTo);
     return {
       image: probe.dataUrl,
-      probeSeed: probe.probeSeed || undefined,
+      // Provenance, not a shortcut: the sample capture is scored from its
+      // pixels like any upload (no probeSeed — D-phase6-16). The key names the
+      // built-in stand-in in the audit and keys the static-demo snapshot.
+      samplePerson: probe.samplePerson || undefined,
       filters: f,
       limit: Math.max(1, Math.min(25, Number(filters.limit) || 25)),
       caseNo: purpose.caseNo.trim(),
@@ -121,7 +124,10 @@ export default function Identify() {
         <span>{t('identify.banner.synthetic')}</span>
       </div>
 
-      <Tabs tabs={tabs} value={tab} onChange={setTab} ariaLabel={t('identify.tabs.aria')} />
+      {/* Five tabs overflow a 360 px tablist at the default padding and
+          `no-scrollbar` hides the only clue, so the Rules tab was unreachable
+          without a swipe. Tighter padding below `sm` fits all five. */}
+      <Tabs tabs={tabs} value={tab} onChange={setTab} ariaLabel={t('identify.tabs.aria')} className="[&>button]:px-2 sm:[&>button]:px-3.5" />
 
       {tab === 'search' && (
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-4 items-start">

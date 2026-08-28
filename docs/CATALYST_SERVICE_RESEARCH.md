@@ -87,6 +87,8 @@ Every restriction below is a verbatim "not available to Catalyst users accessing
 | Face Analytics, OCR, Object Recognition, Barcode, Image Moderation, Text Analytics | No DC restriction sentence found on the intro, key-concepts or SDK pages (checked: [face](https://docs.catalyst.zoho.com/en/zia-services/help/face-analytics/key-concepts/), [OCR](https://docs.catalyst.zoho.com/en/zia-services/help/optical-character-recognition/key-concepts/), [object](https://docs.catalyst.zoho.com/en/zia-services/help/object-recognition/key-concepts/), [barcode](https://docs.catalyst.zoho.com/en/zia-services/help/barcode-scanner/key-concepts/), [text](https://docs.catalyst.zoho.com/en/zia-services/help/text-analytics/key-concepts/)) | Yes (INFERRED from absence) |
 | Data Store, NoSQL, Stratus, Cache, Search, Mail, Push, Auth, Cron, Job Scheduling, Signals, SmartBrowz PDF, Slate, Pipelines, ConvoKraft | No DC sentence found on the pages read | Yes (INFERRED from absence) |
 
+**Job Scheduling reconciliation (29 Aug 2026):** the Circuits row above quotes the jobs intro repeating "EU, AU, IN, or CA", while the last row lists Job Scheduling as available-by-absence. The live call settles it: `getAllJobpool()` from this IN project returned the console pool `dappanightly` (id 50643000000453771, type Function, memory 512 — D-phase8-7), so Job Scheduling IS usable from IN and the quoted sentence applies to the Circuit target only, which is what remains unavailable.
+
 **Consequence for `servicemap.js`:** the rows `circuits` and `zia-automl` are marked `console-pending`
 ("flag on but CIRCUIT_ID / ZIA_AUTOML_MODEL_ID not set"). In the IN DC no console step can ever set them:
 the circuit editor and the AutoML model trainer are not offered. Those two rows should be reclassified

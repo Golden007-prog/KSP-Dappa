@@ -178,14 +178,18 @@ function predictionZones(rows, opts) {
       chainSize: ch.size
     });
   }
-  // Recent originators without a chain yet still cast a zone: the band is
-  // open until `days` elapse.
+  // A chain can hold more than one originator (a case whose only close-in-band
+  // partners are later, reached through a different member), and only the
+  // earliest member is the chain's own originatorId — so the remaining
+  // originators still cast a zone. Isolated cases never do: they have no repeat
+  // history in either band, and a circle around one would be the opposite of a
+  // near-repeat prediction.
   for (const c of cls.cases) {
-    if (c.cls !== 'originator' && c.cls !== 'isolated') continue;
+    if (c.cls !== 'originator') continue;
     const d = Math.round(new Date(c.date).getTime() / 86400000);
     if (endDay - d > days) continue;
     if (zones.some((z) => z.caseId === c.id)) continue;
-    zones.push({ caseId: c.id, lat: c.lat, lng: c.lng, radiusM: distM, from: c.date, until: dayToIso(d + days), daysLeft: d + days - endDay, chainSize: c.cls === 'originator' ? 2 : 1 });
+    zones.push({ caseId: c.id, lat: c.lat, lng: c.lng, radiusM: distM, from: c.date, until: dayToIso(d + days), daysLeft: d + days - endDay, chainSize: 2 });
   }
   zones.sort((a, b) => b.chainSize - a.chainSize || b.daysLeft - a.daysLeft || String(a.caseId).localeCompare(String(b.caseId)));
   return { zones: zones.slice(0, 80), asOf: dayToIso(endDay), params: { distM, days } };

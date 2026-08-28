@@ -67,7 +67,7 @@ function ResultRow({ hit, term }) {
     <li>
       <Link
         to={to}
-        className="block rounded-lg border border-grid bg-base/40 p-3 transition-colors hover:border-primary/60"
+        className="block rounded-lg border border-grid bg-canvas/40 p-3 transition-colors hover:border-primary/60"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge tone={hit.type === 'offender' ? 'amber' : 'neutral'}>
@@ -128,7 +128,7 @@ export default function CaseSearchDemo({ term, scope, limit, onSearch, query }) 
               onChange={(e) => setDraft(e.target.value)}
               placeholder={t('about.search.placeholder')}
               maxLength={200}
-              className="w-full min-h-[44px] rounded-lg border border-grid bg-base/50 px-3 text-sm text-ink placeholder:text-muted focus:border-primary/60 focus:outline-none"
+              className="w-full min-h-[44px] rounded-lg border border-grid bg-canvas/50 px-3 text-sm text-ink placeholder:text-muted focus:border-primary/60 focus:outline-none"
             />
           </label>
           <button
@@ -183,7 +183,7 @@ export default function CaseSearchDemo({ term, scope, limit, onSearch, query }) 
 
         {!query.isFetching && !query.error && d && (
           <div className="space-y-2.5">
-            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-grid bg-base/40 p-2.5">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-grid bg-canvas/40 p-2.5">
               <Tooltip label={t('about.search.srcTip')}>
                 <Badge tone={sourceTone}>{t(sourceLabelKey)}</Badge>
               </Tooltip>

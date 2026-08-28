@@ -118,7 +118,7 @@ export default function MoEvolutionCard({ timeline = [] }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-        <div className="bg-base/60 border border-grid rounded-lg px-3 py-2">
+        <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1">
             {t('offenders.evo.entering', { n: fmtInt(evolution.entering.length) })}
           </p>
@@ -132,7 +132,7 @@ export default function MoEvolutionCard({ timeline = [] }) {
             <p className="text-[11px] text-muted">{t('offenders.evo.none')}</p>
           )}
         </div>
-        <div className="bg-base/60 border border-grid rounded-lg px-3 py-2">
+        <div className="bg-canvas/60 border border-grid rounded-lg px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1">
             {t('offenders.evo.leaving', { n: fmtInt(evolution.leaving.length) })}
           </p>

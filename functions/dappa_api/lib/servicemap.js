@@ -39,6 +39,12 @@ function gated(on, requires) {
   return { status: 'active', statusReason: 'flag on and configured' };
 }
 
+/** Keep gated()'s status but say what a live probe of the service found — a
+ * row is wired and configured and can still not work as this app uses it. */
+function probed(g, note) {
+  return g.status === 'active' ? Object.assign({}, g, { statusReason: `${g.statusReason}; ${note}` }) : g;
+}
+
 /**
  * @param {object} ctx request context (flags + resolved service handles)
  * @returns {Array<object>} one row per sanctioned Catalyst service
@@ -324,7 +330,7 @@ function buildServiceMap(ctx) {
     flag: 'FEATURE_SMARTBROWZ',
     requires: ['APP_BASE_URL'],
     endpoints: ['/reports/weekly-brief', '/reports/map-snapshot']
-  }, gated(f.smartbrowz, ['APP_BASE_URL'])));
+  }, probed(gated(f.smartbrowz, ['APP_BASE_URL']), 'both call sites need a user context this runtime lacks — convertToPdf and takeScreenshot each fail with "No such User with the given id exists" (D-phase8-8), so the print-CSS route and the static map are what a judge sees')));
 
   add(Object.assign({
     key: 'zia-vision',
@@ -334,7 +340,7 @@ function buildServiceMap(ctx) {
     fallback: 'the scene generator\'s own manifest tags (source:fixture) and a format/size check with verdict:unscreened',
     flag: 'FEATURE_ZIA_OBJECTS',
     endpoints: ['/zia/objects', '/zia/objects/samples', '/zia/moderate']
-  }, gated(Boolean(f.ziaObjects || f.ziaModeration), [])));
+  }, probed(gated(Boolean(f.ziaObjects || f.ziaModeration), []), 'the live probe found Zia does not recognise the procedural drawings (nothing on scene_03, the wrong class on scene_02 — D-phase8-4), so the panels serve manifest tags labelled source:fixture; moderation itself answered correctly')));
 
   add(Object.assign({
     key: 'quickml-automl',

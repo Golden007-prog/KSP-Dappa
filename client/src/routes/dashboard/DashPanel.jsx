@@ -137,7 +137,7 @@ export default function DashPanel({
 
   return (
     <>
-      <div className="flex min-h-[88px] h-full items-center justify-center rounded-xl border border-dashed border-grid/80 bg-base/30 p-3 text-center text-xs text-muted">
+      <div className="flex min-h-[88px] h-full items-center justify-center rounded-xl border border-dashed border-grid/80 bg-canvas/30 p-3 text-center text-xs text-muted">
         {t('dashboard.panel.maximizedPlaceholder', { title })}
       </div>
       {createPortal(

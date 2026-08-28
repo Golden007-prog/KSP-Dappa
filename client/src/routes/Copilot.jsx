@@ -87,7 +87,7 @@ const PRINT_CSS = `
   .copilot-shell { height: auto !important; min-height: 0 !important; border: none !important; }
   .copilot-scrollwrap, .copilot-scroll { height: auto !important; }
   .copilot-scroll { overflow: visible !important; }
-  .copilot-shell .bg-panel, .copilot-shell .bg-amber\\/10, .copilot-shell .bg-base\\/60 {
+  .copilot-shell .bg-panel, .copilot-shell .bg-amber\\/10, .copilot-shell .bg-canvas\\/60 {
     background: #ffffff !important; box-shadow: none !important;
   }
   .copilot-shell .text-ink { color: #111827 !important; }
@@ -481,7 +481,7 @@ export default function Copilot() {
                     className={`text-left text-xs rounded-lg px-3 py-2.5 min-h-[44px] border transition-colors ${
                       pinned.includes(q)
                         ? 'border-amber/50 bg-amber/5 text-amber hover:border-amber'
-                        : 'border-grid bg-base/60 text-muted hover:border-amber/50 hover:text-ink'
+                        : 'border-grid bg-canvas/60 text-muted hover:border-amber/50 hover:text-ink'
                     }`}
                     onClick={() => send(q)}
                   >
@@ -506,7 +506,7 @@ export default function Copilot() {
                       <button
                         key={q}
                         type="button"
-                        className="text-left text-[11px] text-muted border border-grid bg-base/60 rounded-full px-3 min-h-[40px] hover:border-primary/50 hover:text-ink transition-colors"
+                        className="text-left text-[11px] text-muted border border-grid bg-canvas/60 rounded-full px-3 min-h-[40px] hover:border-primary/50 hover:text-ink transition-colors"
                         onClick={() => send(q)}
                       >
                         {q}
@@ -628,9 +628,9 @@ export default function Copilot() {
             </button>
           </form>
           <p className="hidden sm:block text-[10px] text-muted/80 px-0.5">
-            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">/</kbd> {t('copilot.keys.focus')} ·{' '}
-            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">↑↓</kbd> {t('copilot.keys.history')} ·{' '}
-            <kbd className="rounded border border-grid bg-base/60 px-1 py-0.5">Esc</kbd> {t('copilot.keys.stopVoice')}
+            <kbd className="rounded border border-grid bg-canvas/60 px-1 py-0.5">/</kbd> {t('copilot.keys.focus')} ·{' '}
+            <kbd className="rounded border border-grid bg-canvas/60 px-1 py-0.5">↑↓</kbd> {t('copilot.keys.history')} ·{' '}
+            <kbd className="rounded border border-grid bg-canvas/60 px-1 py-0.5">Esc</kbd> {t('copilot.keys.stopVoice')}
           </p>
         </div>
       </section>

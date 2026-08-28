@@ -33,11 +33,17 @@ export function ConfidenceBar({ confidence, floor, deadBand = 0.1, label }) {
   );
 }
 
-function Signal({ on, label }) {
+// Three states, never two: ✓ corroborated, ✕ not corroborated, — not checked
+// (the case number did not resolve to one FIR, so there is nothing to test
+// against and a ✕ would claim knowledge the system does not have).
+function Signal({ on, label, note, unknownLabel }) {
+  const glyph = on === true ? '✓' : on === false ? '✕' : '—';
+  const tone = on === true ? '!border-teal/60 text-teal' : 'text-muted';
   return (
-    <span className={`chip !py-0.5 text-[11px] ${on ? '!border-teal/60 text-teal' : 'text-muted'}`} aria-label={`${label}: ${on ? '✓' : '✕'}`}>
-      <span aria-hidden="true">{on ? '✓' : '✕'}</span>
+    <span className={`chip !py-0.5 text-[11px] ${tone}`} aria-label={`${label}: ${on === null || on === undefined ? unknownLabel : glyph}${note ? ` (${note})` : ''}`}>
+      <span aria-hidden="true">{glyph}</span>
       {label}
+      {note && <span className="opacity-70">&nbsp;({note})</span>}
     </span>
   );
 }
@@ -49,7 +55,21 @@ export default function CandidateCard({ cand, floor, deadBand, searchId, decisio
   const pct = cand.confidence === null || cand.confidence === undefined ? null : Math.round(Number(cand.confidence) * 100);
   const band = cand.band || 'unscored';
   const status = BAND_STATUS[band] || 'nodata';
-  const signals = (band === 'lead' ? 1 : 0) + (cand.corroboration.districtHit ? 1 : 0) + (cand.corroboration.moHit ? 1 : 0);
+  // The second signal is read off the FIR the search is bound to, not off the
+  // officer's own filter — a hit that only restates the filter is shown but
+  // never counted (faces.js "Step 2b").
+  const corr = cand.corroboration || {};
+  const checked = corr.basis === 'case-record';
+  const anyHit = corr.districtHit === true || corr.moHit === true;
+  const verdict = !checked
+    ? t('identify.cand.notChecked')
+    : corr.twoSignals
+      ? t('identify.cand.twoSignals')
+      : band === 'lead' && anyHit && !corr.independent
+        ? t('identify.cand.filterOnly')
+        : band === 'lead'
+          ? t('identify.cand.oneSignal')
+          : t('identify.cand.noSignal');
   const decided = decisions.filter((d) => d.personKey === cand.personKey);
   const last = decided[decided.length - 1] || null;
   const canRecord = rationale.trim().length >= 10 && !deciding;
@@ -70,19 +90,19 @@ export default function CandidateCard({ cand, floor, deadBand, searchId, decisio
           width="72"
           height="72"
           loading="lazy"
-          className="h-[72px] w-[72px] shrink-0 rounded-lg border border-grid bg-base object-cover"
+          className="h-[72px] w-[72px] shrink-0 rounded-lg border border-grid bg-canvas object-cover"
         />
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="num text-[11px] text-muted">#{cand.rank}</span>
-            <Link to={`/offenders/${encodeURIComponent(cand.personKey)}`} className="text-sm font-semibold text-ink hover:text-amber transition-colors truncate">
+            <Link to={`/offenders/${encodeURIComponent(cand.personKey)}`} className="inline-flex min-h-[24px] items-center text-sm font-semibold text-ink hover:text-amber transition-colors truncate">
               {cand.name || cand.personKey}
             </Link>
             <span className="num text-[11px] text-muted">{cand.personKey}</span>
             <StatusPill status={status} label={t(`identify.cand.band.${band}`)} />
           </div>
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <PlainTerm term="faceConfidence" vars={{ floor: Math.round(floor * 100) }} className="text-[11px] text-muted" />
+            <PlainTerm term="faceConfidence" vars={{ floor: Math.round(floor * 100) }} className="text-[11px] text-muted" size="lg" />
             <span className="num text-base font-semibold text-ink">{pct === null ? '—' : t('identify.cand.confidenceOf', { n: pct })}</span>
             <Badge tone={cand.engine === 'zia-identity-scanner' ? 'teal' : 'slate'}>
               {cand.engine === 'zia-identity-scanner' ? t('identify.cand.engineZia') : t('identify.cand.engineLocal')}
@@ -92,13 +112,24 @@ export default function CandidateCard({ cand, floor, deadBand, searchId, decisio
           <ConfidenceBar confidence={cand.confidence} floor={floor} deadBand={deadBand} label={`${cand.name || cand.personKey}: ${pct === null ? '—' : pct}`} />
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] text-muted">{t('identify.cand.signals')}:</span>
-            <Signal on={band === 'lead'} label={t('identify.cand.signalFace')} />
-            <Signal on={cand.corroboration.districtHit} label={t('identify.cand.signalDistrict')} />
-            <Signal on={cand.corroboration.moHit} label={t('identify.cand.signalMo')} />
-            <span className={`text-[11px] ${cand.corroboration.twoSignals ? 'text-teal' : 'text-muted'}`}>
-              {cand.corroboration.twoSignals ? t('identify.cand.twoSignals') : signals === 1 ? t('identify.cand.oneSignal') : t('identify.cand.noSignal')}
-            </span>
+            <Signal on={band === 'lead'} label={t('identify.cand.signalFace')} unknownLabel={t('identify.cand.signalUnknown')} />
+            <Signal
+              on={checked ? corr.districtHit : null}
+              label={t('identify.cand.signalDistrict')}
+              note={corr.fromFilter && corr.fromFilter.district ? t('identify.cand.fromFilter') : null}
+              unknownLabel={t('identify.cand.signalUnknown')}
+            />
+            <Signal
+              on={checked ? corr.moHit : null}
+              label={t('identify.cand.signalMo')}
+              note={corr.fromFilter && corr.fromFilter.mo ? t('identify.cand.fromFilter') : null}
+              unknownLabel={t('identify.cand.signalUnknown')}
+            />
+            <span className={`text-[11px] ${corr.twoSignals ? 'text-teal' : 'text-muted'}`}>{verdict}</span>
           </div>
+          {(corr.moMatches || []).length > 0 && (
+            <p className="text-[11px] text-muted num">{t('identify.cand.moMatched', { tags: corr.moMatches.join(', ') })}</p>
+          )}
           <div className="flex flex-wrap gap-1.5 text-[11px] text-muted">
             <span>{t('identify.cand.risk', { n: fmtInt(Math.round(cand.riskScore || 0)) })}</span>
             <span>·</span>

@@ -561,7 +561,7 @@ export default function Alerts() {
         ref={(el) => { if (el) cardRefs.current.set(id, el); else cardRefs.current.delete(id); }}
         tabIndex={-1}
         onFocus={() => setFocusId(id)}
-        className={`rounded-xl outline-none ${focused ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-base' : ''}`}
+        className={`rounded-xl outline-none ${focused ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-canvas' : ''}`}
         style={{ scrollMarginTop: 96, scrollMarginBottom: 24 }}
       >
         <AlertCard

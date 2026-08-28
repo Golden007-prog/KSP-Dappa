@@ -17,7 +17,7 @@ const STATUS_TONE = { open: 'red', reviewed: 'slate', ack: 'teal', dismissed: 's
 
 function Stat({ label, value, tone = 'text-ink' }) {
   return (
-    <div className="flex min-w-[5.5rem] flex-col rounded-lg border border-grid/70 bg-base/30 px-2.5 py-1.5">
+    <div className="flex min-w-[5.5rem] flex-col rounded-lg border border-grid/70 bg-canvas/30 px-2.5 py-1.5">
       <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</span>
       <span className={`num text-base font-semibold leading-tight ${tone}`}>{value}</span>
     </div>
