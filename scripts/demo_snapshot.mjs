@@ -351,6 +351,20 @@ const FILTERED = [
   ['/cases', { page: 1, perPage: 1 }],    // FacetRail count probe
 ];
 
+// The unfiltered shape first: the Case Explorer's deep scan and the facet
+// rail's count probes fire before any filter is chosen, and without these the
+// rail renders every count empty on the static demo.
+for (const [p, base] of FILTERED) await snapGet(p, base);
+
+// Facet-rail count probes: one 1-row page per facet value, read for meta.total
+// (routes/cases/FacetRail.jsx). Gravity is the one facet dimension the
+// filtered sweep above does not already carry.
+for (const g of constants.GRAVITIES.map((x) => String(x.id))) {
+  await snapGet('/cases', { gravityId: g, page: 1, perPage: 1 });
+  await snapGet('/cases', { gravityId: g, page: 1, perPage: 50 });
+  for (const h of HEADS) await snapGet('/cases', { gravityId: g, crimeHeadId: h, page: 1, perPage: 1 });
+}
+
 for (const d of D_ALL) {
   for (const [p, base] of FILTERED) await snapGet(p, { ...base, districtId: d });
 }
