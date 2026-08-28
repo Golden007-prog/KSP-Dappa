@@ -5,6 +5,7 @@
 export default {
   // navigation
   'nav.group': 'Officer tiers',
+  'station.tableScrollAria': 'Wide table — scroll sideways to see every column',
   'nav.beat': 'My beat',
   'nav.station': 'Station',
   'nav.state': 'State',

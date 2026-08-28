@@ -156,7 +156,7 @@ export default function Station() {
             </div>
 
             <Card title={t('tier.station.byHead.title')} subtitle={t('tier.station.byHead.sub')} padded={false}>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={t('tier.station.tableScrollAria')}>
                 <table className="w-full min-w-[640px] text-xs">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wide text-muted">
@@ -257,7 +257,7 @@ export default function Station() {
 
             <Card title={t('tier.station.caseload.title')} subtitle={t('tier.station.caseload.sub')} padded={false}>
               {d.caseload.length === 0 ? <EmptyState compact title={t('tier.station.caseload.none')} /> : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={t('tier.station.tableScrollAria')}>
                   <table className="w-full min-w-[520px] text-xs">
                     <thead>
                       <tr className="text-left text-[10px] uppercase tracking-wide text-muted">

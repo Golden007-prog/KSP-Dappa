@@ -18,9 +18,15 @@ import { fmtInt, fmtNum, dateLabel, getFormatLocale } from '../../lib/format.js'
 import { useT, useNames } from '../../lib/i18n.jsx';
 import { sevKey, SEV_TONE, direction, statusKey } from './severity.js';
 
+// Container opacity composites into every descendant, including text, and no
+// token clamp can reach it — a dimmed acknowledged card put three chips under
+// 4.5:1 (caught by the axe gate once the demo carried real acknowledgements).
+// A recessed surface and a muted border say "handled" without touching the
+// contrast of the words, and the status chip already carries the meaning in
+// colour + glyph + word.
 function cardBorder(sev, acked, snoozed) {
-  if (acked) return 'opacity-80';
-  if (snoozed) return 'opacity-70 border-grid';
+  if (acked) return 'border-grid bg-canvas/40';
+  if (snoozed) return 'border-grid bg-canvas/60';
   if (sev === 'critical') return 'border-signal/70 animate-pulse-glow';
   if (sev === 'high') return 'border-signal/50 animate-pulse-glow';
   return 'border-signal/30';
