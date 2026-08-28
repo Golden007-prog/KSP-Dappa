@@ -7,7 +7,7 @@
 //
 // Rendered as plain elements rather than a chart: a 53×7 grid of 11px cells
 // scrolls cleanly at 360px and prints without a canvas rasterisation step.
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import Card from '../../components/Card.jsx';
 import Tooltip from '../../components/Tooltip.jsx';
 import { dateLabel, fmtInt } from '../../lib/format.js';
@@ -27,6 +27,7 @@ const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0
 const mondayIdx = (d) => (d.getDay() + 6) % 7;
 
 export default function RegistrationCalendar({ rows, onDayClick, scopeLabel }) {
+  const dayInputId = useId();
   const t = useT();
   const [open, setOpen] = useState(() => readJson(STORAGE_KEY, true) !== false);
 
@@ -109,7 +110,28 @@ export default function RegistrationCalendar({ rows, onDayClick, scopeLabel }) {
     <Card
       title={t('cases.cal.title')}
       subtitle={t('cases.cal.subtitle', { scope: scopeLabel })}
-      actions={<button type="button" className="btn !py-1 !px-2 text-xs" onClick={toggle} aria-expanded>{t('cases.profile.hide')}</button>}
+      actions={(
+        <div className="flex flex-wrap items-center gap-2">
+          {/* WCAG 2.5.8 "Equivalent": the 11-px heat cells are the whole point
+              of a year-at-a-glance grid and cannot be 24 px, so the same
+              function — filter the list to one day — is offered by this
+              conforming control, and each cell points at it with
+              data-a11y-equivalent. It is also simply the faster way in for
+              anyone who already knows the date. */}
+          <label className="flex items-center gap-1.5 text-[11px] text-muted">
+            <span>{t('cases.cal.pickDay')}</span>
+            <input
+              id={dayInputId}
+              type="date"
+              className="input-dark !py-1 !px-2 text-xs min-h-[32px]"
+              min={model.first}
+              max={model.last}
+              onChange={(e) => e.target.value && onDayClick?.(e.target.value)}
+            />
+          </label>
+          <button type="button" className="btn !py-1 !px-2 text-xs" onClick={toggle} aria-expanded>{t('cases.profile.hide')}</button>
+        </div>
+      )}
     >
       <div className="overflow-x-auto -mx-1 px-1 pb-1">
         <div className="inline-flex gap-1.5 min-w-min">
@@ -143,6 +165,7 @@ export default function RegistrationCalendar({ rows, onDayClick, scopeLabel }) {
                       aria-label={cell.count
                         ? t('cases.cal.cellTip', { date: dateLabel(cell.key), n: fmtInt(cell.count) })
                         : undefined}
+                      data-a11y-equivalent={dayInputId}
                       className={`h-[11px] w-[11px] rounded-[2px] transition-transform ${
                         cell.count ? 'cursor-pointer hover:scale-150 hover:ring-1 hover:ring-amber' : 'cursor-default'
                       }`}

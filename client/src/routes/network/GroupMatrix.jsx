@@ -68,7 +68,8 @@ export default function GroupMatrix({ nodes = [], edges = [], activePair = null,
             <caption className="sr-only">{t('network.matrix.caption')}</caption>
             <thead>
               <tr>
-                <th scope="col" className="w-10" />
+                {/* corner cell of a cross-tab: it heads the row-label column, so it needs a name a screen reader can announce even though it is visually blank */}
+                <th scope="col" className="w-10"><span className="sr-only">{t('network.matrix.rowHeader')}</span></th>
                 {grid.ids.map((c) => (
                   <th key={c} scope="col" className="px-1 py-0.5 font-normal text-muted whitespace-nowrap">
                     <span className="inline-flex items-center gap-1">

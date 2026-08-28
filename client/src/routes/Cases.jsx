@@ -177,7 +177,7 @@ const buildColumnDefs = ({
     render: (r) => <CrimeNoInline crimeNo={r.crimeNo} />,
   },
   {
-    key: '_select', label: '', chooserLabel: t('cases.col.select.chooser'), locked: true, width: 44, align: 'center',
+    key: '_select', label: '', srLabel: t('cases.col.select.chooser'), chooserLabel: t('cases.col.select.chooser'), locked: true, width: 44, align: 'center',
     render: (r) => {
       // One checkbox, two jobs: compare (cap 3) by default, bulk working-set
       // (cap 500) while bulk mode is on.
@@ -235,7 +235,7 @@ const buildColumnDefs = ({
     render: (r) => (r.anomalyFlag ? <Badge tone="red" pulse>{t('cases.badge.anomaly')}</Badge> : null),
   },
   {
-    key: '_actions', label: '', chooserLabel: t('cases.col.actions.chooser'), locked: true, width: 170, align: 'right',
+    key: '_actions', label: '', srLabel: t('cases.col.actions.chooser'), chooserLabel: t('cases.col.actions.chooser'), locked: true, width: 170, align: 'right',
     render: (r) => {
       const starred = !!stars[String(r.caseMasterId)];
       return (
@@ -1226,6 +1226,7 @@ export default function Cases() {
           />
         ) : (
           <DataTable
+            scrollAriaLabel={t('cases.table.scrollAria')}
             exportFilename="dappa-cases"
             columns={activeColumns}
             rows={pageRows}

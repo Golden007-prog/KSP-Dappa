@@ -5,6 +5,8 @@
 export default {
   'nav.group': 'ಅಧಿಕಾರಿ ಹಂತಗಳು',
   'station.tableScrollAria': 'ಅಗಲವಾದ ಕೋಷ್ಟಕ — ಎಲ್ಲಾ ಕಾಲಂಗಳನ್ನು ನೋಡಲು ಪಕ್ಕಕ್ಕೆ ಸ್ಕ್ರಾಲ್ ಮಾಡಿ',
+  'station.byHeadScrollAria': 'ಈ ವಾರ ಅಪರಾಧ ಶೀರ್ಷಿಕೆವಾರು — ಎಂಟು ವಾರದ ಕಾಲಂಗಳಿಗೆ ಪಕ್ಕಕ್ಕೆ ಸ್ಕ್ರಾಲ್ ಮಾಡಿ',
+  'station.caseloadScrollAria': 'ಅಧಿಕಾರಿ ಪ್ರಕರಣ ಹೊರೆ ಕೋಷ್ಟಕ — ಹೆಚ್ಚಿನ ಕಾಲಂಗಳಿಗೆ ಪಕ್ಕಕ್ಕೆ ಸ್ಕ್ರಾಲ್ ಮಾಡಿ',
   'nav.beat': 'ನನ್ನ ಬೀಟ್',
   'nav.station': 'ಠಾಣೆ',
   'nav.state': 'ರಾಜ್ಯ',

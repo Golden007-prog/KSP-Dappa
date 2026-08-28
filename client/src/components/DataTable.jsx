@@ -39,12 +39,15 @@ export default function DataTable({
   total, page = 1, perPage = 50, onPageChange,
   sort, onSortChange, onRowClick, dense = false, stickyFirst = true,
   exportable = true, exportFilename = 'dappa-export',
-  filterable = false, filterPlaceholder, className = '',
+  filterable = false, filterPlaceholder, className = '', scrollAriaLabel,
 }) {
   const [localSort, setLocalSort] = useState(null);
   const [quickFilter, setQuickFilter] = useState('');
   const toast = useToast();
   const t = useT();
+  // Two tables on one page must not share a landmark name (axe landmark-unique):
+  // the caller passes what this table is, and the generic name is the fallback.
+  const scrollLabel = scrollAriaLabel || t('a11y.scroll.rows');
   const activeSort = onSortChange ? sort : localSort;
 
   // WCAG 4.1.3: say how many rows arrived when a load finishes (server page
@@ -163,7 +166,7 @@ export default function DataTable({
           content is a sort button or a row link is reachable anyway, but one
           made of plain cells is not — so the scroller always takes tabindex=0
           (WCAG 2.1.1) and a name for the landmark that creates. */}
-      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={t('a11y.scroll.rows')}>
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={scrollLabel}>
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-grid">
@@ -177,6 +180,7 @@ export default function DataTable({
                     aria-sort={sorted ? (activeSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                     className={`${ALIGN[col.align] || 'text-left'} text-[11px] font-semibold uppercase tracking-wide text-muted select-none ${col.className || ''}${stickyCls(ci)} ${col.sortable ? 'p-0' : cellPad}`}
                   >
+                    {!col.label && col.srLabel ? <span className="sr-only">{col.srLabel}</span> : null}
                     {col.sortable ? (
                       <button
                         type="button"

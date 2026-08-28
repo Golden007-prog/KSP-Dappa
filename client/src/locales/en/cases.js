@@ -2,6 +2,9 @@
 // Source of truth for the key set — kn/cases.js mirrors it 1:1.
 // Generic buttons/states (Retry, Clear, Apply, Loading…) come from `common`.
 export default {
+  'cal.pickDay': 'Jump to a day',
+  'stationLoad.scrollAria': 'Station caseload table — scroll sideways for more columns',
+  'table.scrollAria': 'Case results table — scroll sideways for more columns',
   // ——— explorer page shell ———
   'page.title': 'Case Explorer',
   'page.subtitle': 'Server-paginated FIR registry',

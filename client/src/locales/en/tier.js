@@ -6,6 +6,8 @@ export default {
   // navigation
   'nav.group': 'Officer tiers',
   'station.tableScrollAria': 'Wide table — scroll sideways to see every column',
+  'station.byHeadScrollAria': 'This week by crime head — scroll sideways for the eight-week columns',
+  'station.caseloadScrollAria': 'Officer caseload table — scroll sideways for more columns',
   'nav.beat': 'My beat',
   'nav.station': 'Station',
   'nav.state': 'State',

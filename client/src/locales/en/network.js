@@ -3,6 +3,7 @@
 // filename. Generic buttons/states (Retry, Export CSV, Loading…) stay in the
 // shared 'common' namespace and are NOT duplicated here.
 export default {
+  'matrix.rowHeader': 'Group',
   // ── Network Explorer: page chrome ──────────────────────────────────────
   'title': 'Network Explorer',
   'subtitle': 'Co-accused communities and shared-case links from identity-resolved persons',

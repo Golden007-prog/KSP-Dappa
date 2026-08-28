@@ -187,6 +187,7 @@ export default function StationLoad({ rows, scopeLabel, onStation }) {
       <Card padded={false}>
         <DataTable
           dense
+          scrollAriaLabel={t('cases.stationLoad.scrollAria')}
           exportFilename="dappa-station-load"
           columns={columns}
           rows={model.list}
