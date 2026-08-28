@@ -178,7 +178,12 @@ export default function DataTable({
                     scope="col"
                     style={col.width ? { width: col.width } : undefined}
                     aria-sort={sorted ? (activeSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                    className={`${ALIGN[col.align] || 'text-left'} text-[11px] font-semibold uppercase tracking-wide text-muted select-none ${col.className || ''}${stickyCls(ci)} ${col.sortable ? 'p-0' : cellPad}`}
+                    // `relative` because an sr-only label is position:absolute:
+                    // without a positioning context here it resolves against a
+                    // far ancestor, lands past the viewport and stretches the
+                    // document (a 360px page measured 1,225px wide from one
+                    // hidden "Quick actions" span).
+                    className={`relative ${ALIGN[col.align] || 'text-left'} text-[11px] font-semibold uppercase tracking-wide text-muted select-none ${col.className || ''}${stickyCls(ci)} ${col.sortable ? 'p-0' : cellPad}`}
                   >
                     {!col.label && col.srLabel ? <span className="sr-only">{col.srLabel}</span> : null}
                     {col.sortable ? (

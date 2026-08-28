@@ -62,10 +62,36 @@ console.log(`deploy: ${injected.length} value(s) injected from .env.deploy: ${in
 if (missing.length) console.log(`deploy: still empty after injection (console-pending unless set there): ${missing.join(', ')}`);
 if (dryRun) process.exit(0);
 
+// A VITE_STATIC_DEMO build reads its answers from client/dist/demo — which
+// this script deliberately strips before uploading, because the Catalyst zip
+// sanitizer rejects ~5,200 files. Deploying one therefore ships a client that
+// 404s on every API call and renders empty shells, and the API smoke suite
+// still passes because the FUNCTION is fine. That combination is very easy to
+// miss, so refuse it here: a static-demo bundle is for GitHub Pages only.
+// (Reproducing the CI a11y environment locally is exactly how this happens —
+// that build overwrites client/dist.)
+//
+// This check runs BEFORE the secrets are written into the tracked config:
+// exiting after that write leaves a live credential in a tracked file, which
+// is how the first version of this guard nearly committed one.
+if (!dryRun && fs.existsSync(path.join(ROOT, 'client/dist'))) {
+  const assets = path.join(ROOT, 'client/dist/assets');
+  const entry = fs.existsSync(assets)
+    ? fs.readdirSync(assets).find((f) => /^index-.*\.js$/.test(f))
+    : null;
+  if (entry && fs.readFileSync(path.join(assets, entry), 'utf8').includes('demo/api')) {
+    console.error('deploy: REFUSING — client/dist is a VITE_STATIC_DEMO build (it fetches demo/api/*.json).');
+    console.error('deploy: that bundle only works on GitHub Pages. Rebuild the Catalyst client first:');
+    console.error('deploy:   cd client && npm run build');
+    process.exit(1);
+  }
+}
+
 for (const k of injected) env[k] = secrets[k];
 fs.writeFileSync(CONFIG, JSON.stringify(config, null, 2) + '\n');
 const DEMO = path.join(ROOT, 'client/dist/demo');
 const DEMO_ASIDE = path.join(ROOT, 'client/.dist-demo-aside');
+
 let demoMoved = false;
 let status = 1;
 try {

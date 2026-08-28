@@ -112,7 +112,7 @@ export function ToastProvider({ children }) {
           role="region"
           aria-live="polite"
           aria-label={t('shell.toast.region')}
-          className="no-print fixed z-80 bottom-20 md:bottom-6 right-3 left-3 md:left-auto md:right-6 md:w-96 flex flex-col gap-2 pointer-events-none mb-safe"
+          className="no-print fixed z-80 bottom-20 md:bottom-6 right-3 left-3 md:left-auto md:right-6 md:w-96 max-w-[calc(100vw-1.5rem)] flex flex-col gap-2 pointer-events-none mb-safe"
         >
           {toasts.length >= 3 && (
             <div className="flex justify-end">
@@ -141,7 +141,12 @@ export function ToastProvider({ children }) {
                 <div className={`w-1 shrink-0 ${tone.bar}`} aria-hidden="true" />
                 <div className={`flex items-center pl-3 ${tone.text}`}><ToneIcon tone={item.tone} /></div>
                 <div className="flex-1 min-w-0 px-3 py-3">
-                  <p className="text-sm text-ink leading-snug">{item.message}</p>
+                  {/* break-words: a toast can carry an 18-digit CrimeNo or a
+                      pasted query, and one unbreakable token used to widen the
+                      toast, then the document, and then every fixed element
+                      that sizes to it — the mobile tab bar measured 1,235px
+                      inside a 360px viewport because of this. */}
+                  <p className="text-sm text-ink leading-snug break-words">{item.message}</p>
                   {item.action && (
                     <button
                       type="button"
