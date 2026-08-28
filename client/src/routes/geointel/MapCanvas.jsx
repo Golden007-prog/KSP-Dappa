@@ -897,12 +897,18 @@ export default function MapCanvas({
       <div className={`absolute inset-0 z-0 ${nightDim ? 'gi-night' : ''}`}>
         <div ref={elRef} className="absolute inset-0" aria-label={t('geointel.mapAria')} />
       </div>
-      {/* cursor coordinate readout — desktop only, click copies (briefings) */}
+      {/* Cursor coordinate readout — desktop only, click copies (briefings).
+          bottom-7, not bottom-3: Leaflet's attribution bar is 17 px tall and
+          pinned to the map's bottom edge, so a 12 px offset left this readout's
+          last 5 px sitting over it. The attribution is a licensing requirement
+          and has to stay legible, so the readout clears it. (Below md this is
+          hidden, and `.leaflet-bottom` gets its own lift in index.css so the
+          same controls clear the time scrubber.) */}
       <button
         type="button"
         onClick={copyCoords}
         title={t('geointel.coords.title')}
-        className="gi-noprint hidden md:flex absolute z-10 bottom-3 right-14 items-center gap-1 rounded-lg
+        className="gi-noprint hidden md:flex absolute z-10 bottom-7 right-14 items-center gap-1 rounded-lg
           border border-grid bg-panel/90 px-2 py-1 text-[10px] num text-muted hover:text-ink transition-colors"
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
