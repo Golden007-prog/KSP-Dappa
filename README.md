@@ -47,11 +47,15 @@ publishes the design tokens with their measured contrast ratios.
   and "R Kumar" across districts into one Offender-360 profile with an MO
   signature — the "impossible in isolated Excel sheets" moment, made visible.
 - **Catalyst-native maximalism.** 35 Catalyst services mapped by
-  `GET /meta/services`, 30 with a real call site; on the deployed build 10 are
-  live and 9 more are active behind a flag, 2 are documented as unavailable in
-  the IN data centre, and every remaining row names the console step that flips
-  it (checked 28 Aug 2026); no external AI, hosting, database, or auth service
-  anywhere.
+  [`GET /meta/services`](https://project-rainfall-60079891305.development.catalystserverless.in/server/dappa_api/api/v1/meta/services),
+  30 with a real call site. On the deployed build, measured 29 Aug 2026: **10
+  live** (functions, event functions, cron, Data Store, Search, NoSQL, Stratus,
+  File Store, Cache, Authentication), **8 active behind a flag** (Push, Zia Text
+  Analytics, Zia OCR, Zia Face Analytics, Zia Identity Scanner, Zia Vision,
+  QuickML pipelines, SmartBrowz), **2 platform** (web hosting, API gateway),
+  **2 unavailable in the IN data centre** and said so rather than left pending
+  (Circuits, Zia AutoML), and **13 console-pending**, each naming the step that
+  would flip it. No external AI, hosting, database or auth service anywhere.
 - **Demo-proof AI.** Heavy analytics (DBSCAN hotspots, Louvain communities,
   Holt-Winters forecasts) are precomputed into Data Store tables; live AI
   (QuickML, Zia, LLM/RAG copilot) sits behind feature flags with
