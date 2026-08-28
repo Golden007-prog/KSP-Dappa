@@ -675,7 +675,7 @@ diagonal is each capability's total.
 | **C6** | 13 | 3 | 28 | 8 | 6 | **85** |
 The heavy pairs are unsurprising and defensible: **C1∩C4 = 53**, **C1∩C3 = 33**, **C3∩C6 = 27**, **C2∩C5 = 19** — a hotspot you can see *and* that a statistic found is both C1 and C4; a risk score is a predictive dashboard and an ML model; anomaly and socio call-outs are rendered visually; the graph engine serves link analysis and organised-crime roll-up alike.
 
-If a judge prefers a strict partition with no feature counted twice, attributing each feature to its single strongest capability, the numbers become **C1 143, C2 82, C3 59, C4 48, C5 36, C6 44** (324 distinct features). That view is defensible but misleading: it collapses C4 largely because most of its output is also rendered visually, which is a fact about how the app draws discovery rather than about whether discovery happens.
+If a judge prefers a strict partition with no feature counted twice, attributing each feature to its single strongest capability, the numbers become **C1 143, C2 82, C3 59, C4 48, C5 36, C6 44** (412 distinct features). That view is defensible but misleading: it collapses C4 largely because most of its output is also rendered visually, which is a fact about how the app draws discovery rather than about whether discovery happens.
 
 ---
 

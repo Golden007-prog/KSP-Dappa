@@ -6,7 +6,28 @@ import { API_BASE } from '../../lib/api.js';
 import { useT } from '../../lib/i18n.jsx';
 import { fileToProbe, svgToProbe } from './imageUtil.js';
 
-const SAMPLE_KEYS = ['P001', 'P002', 'P003', 'P004', 'P005'];
+// Last-resort keys only. The gallery's real PersonKey width is data, not a
+// constant: the deployed gallery numbers people P00001 while this list assumed
+// P001, so every "Use a sample capture" click 404'd on /identify/thumb and the
+// panel could only report that the image would not decode. Ask the gallery for
+// its own keys first and keep these purely as an offline fallback.
+const FALLBACK_SAMPLE_KEYS = ['P00001', 'P00002', 'P00003', 'P00004', 'P00005'];
+
+let sampleKeysMemo = null;
+
+async function sampleKeys() {
+  if (sampleKeysMemo) return sampleKeysMemo;
+  try {
+    const res = await fetch(`${API_BASE}/identify/gallery?limit=5`);
+    if (!res.ok) throw new Error('gallery');
+    const body = await res.json();
+    const keys = ((body && body.data && body.data.items) || [])
+      .map((i) => i && i.personKey)
+      .filter((k) => typeof k === 'string' && k);
+    if (keys.length) { sampleKeysMemo = keys; return keys; }
+  } catch { /* fall through to the bundled keys */ }
+  return FALLBACK_SAMPLE_KEYS;
+}
 
 export default function ProbeUpload({ probe, onProbe, gate, disabled = false }) {
   const t = useT();
@@ -35,7 +56,8 @@ export default function ProbeUpload({ probe, onProbe, gate, disabled = false }) 
     setError(null);
     setBusy(true);
     try {
-      const key = SAMPLE_KEYS[sampleIdx % SAMPLE_KEYS.length];
+      const keys = await sampleKeys();
+      const key = keys[sampleIdx % keys.length];
       const res = await fetch(`${API_BASE}/identify/thumb/${encodeURIComponent(key)}.svg?size=256`);
       if (!res.ok) throw new Error('sample');
       const svg = await res.text();

@@ -115,6 +115,11 @@ else {
 const strictLine = /single strongest capability[^\n]*?(C[1-6] [\d,]+(?:, C[1-6] [\d,]+){5})/.exec(capabilities);
 if (strictLine) {
   for (const m of strictLine[1].matchAll(/(C[1-6]) ([\d,]+)/g)) if (num(m[2]) !== strict[m[1]]) fail(`CAPABILITIES.md strict partition ${m[1]} = ${m[2]}, tags give ${strict[m[1]]}`);
+  // A strict partition assigns each feature exactly once, so its parenthetical
+  // total IS the distinct-feature count. Unchecked, it stayed at 324 while the
+  // six numbers beside it summed to 412.
+  const strictTotal = /single strongest capability[\s\S]{0,400}?\(([\d,]+) distinct features\)/.exec(capabilities);
+  if (strictTotal && num(strictTotal[1]) !== distinct) fail(`CAPABILITIES.md strict-partition total is ${strictTotal[1]}, tags give ${distinct}`);
 }
 
 // ---------------------------------------------------------------- README.md
@@ -126,8 +131,24 @@ for (const c of CAPS) {
   if (pass && !/clears/.test(row[2])) fail(`README.md ${c} should read "clears 100"`);
   if (!pass && !/short by (\d+)/.test(row[2])) fail(`README.md ${c} should read "short by ${BAR - counts[c]}"`);
 }
-const readmeTotal = /\*\*([\d,]+) cataloged features\.\*\*/.exec(readme);
-if (readmeTotal && num(readmeTotal[1]) !== total) fail(`README.md says ${readmeTotal[1]} cataloged features, FEATURES.md has ${total}`);
+// The headline sentence carries BOTH totals: "**1,138 cataloged features, 412
+// of them analytic.**" An earlier version of this regex required a period
+// immediately after "features", so it never matched the real comma form and
+// the pair sat at 905/324 — two catalogue revisions stale — while this script
+// reported OK. Match the sentence as written and check both halves.
+const readmeTotal = /\*\*([\d,]+) cataloged features,\s*([\d,]+) of them analytic\.\*\*/.exec(readme);
+if (!readmeTotal) fail('README.md: no "**N cataloged features, M of them analytic.**" headline');
+else {
+  if (num(readmeTotal[1]) !== total) fail(`README.md says ${readmeTotal[1]} cataloged features, FEATURES.md has ${total}`);
+  if (num(readmeTotal[2]) !== distinct) fail(`README.md says ${readmeTotal[2]} analytic, tags give ${distinct}`);
+}
+// The body repeats the same split in prose; keep it tied to the tags too.
+const readmeSplit = /Of the ([\d,]+) catalogued entries, ([\d,]+) deliver analytic[\s\S]{0,80}?and ([\d,]+) are enabling/.exec(readme);
+if (readmeSplit) {
+  if (num(readmeSplit[1]) !== total) fail(`README.md prose says ${readmeSplit[1]} catalogued entries, tags give ${total}`);
+  if (num(readmeSplit[2]) !== distinct) fail(`README.md prose says ${readmeSplit[2]} analytic, tags give ${distinct}`);
+  if (num(readmeSplit[3]) !== infra) fail(`README.md prose says ${readmeSplit[3]} infrastructure, tags give ${infra}`);
+}
 
 // ---------------------------------------------------------------- docs/capability_counts.json
 // The deck (scripts/deck_content.py) and any generated copy read this file, so the
