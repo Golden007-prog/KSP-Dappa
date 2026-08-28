@@ -354,10 +354,12 @@ html[data-fontsize='large'] {
 
 /* On a phone the time-scrubber panel overlays the bottom of the map, and
    Leaflet's bottom controls (attribution — a licensing requirement — and the
-   scale bar) ended up underneath it. Lift them clear of the panel. */
+   scale bar) ended up underneath it. Lift them clear of the panel. 5.25rem,
+   not 4.25: the Kannada swipe-up label is a taller line box than the English
+   one and reclaimed the 7 px the smaller lift left. */
 @media (max-width: 767px) {
   .leaflet-bottom {
-    margin-bottom: 4.25rem;
+    margin-bottom: 5.25rem;
   }
 }
 
