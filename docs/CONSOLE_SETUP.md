@@ -252,7 +252,30 @@ job-pool names accept letters and digits only; a table's *Search Index*
 toggle exists for Var Char columns only; "Deploy to Production" migrates
 schema and code but neither rows nor env values.
 
-> **Set on `dappa_api`:** `FILESTORE_FOLDER_ID=50643000000453759` (tracked — it is an id, not a credential) · **Flip:** nothing
+> **Set on `dappa_api`:** `FILESTORE_FOLDER_ID=50643000000453759` (tracked — it
+> is an id, not a credential) and `JOB_POOL_NAME=dappanightly` in
+> `functions/dappa_api/.env.deploy` (the tracked config keeps it empty, so a
+> fresh clone reports Job Scheduling as `console-pending` until this is added) ·
+> **Flip:** nothing
+
+**The job pool needs a `job`-typed target, and only `functions/dappa_job` is
+one.** A Function job pool cannot invoke `dappa_nightly`, which is typed `cron`:
+`submitJob` fails with *"The given function is not a job function."* and
+`lib/jobs.js` falls back to running the same steps inline with an honest note —
+so the failure is invisible unless a job is actually submitted. Two further
+constraints the SDK only reports at submit time: `job_name` must match
+`[A-Za-z0-9_]{1,20}` (no hyphens, 20 characters maximum). All three are covered
+by `test/round2/phase8-catalyst.test.mjs`; the story is [D-026](DECISIONS.md).
+
+To confirm it end to end rather than by status alone:
+
+```bash
+curl -s -X POST -H 'X-Admin-Token: demo-admin' -H 'Content-Type: application/json'   -d '{"send":false,"trigger":"verify"}'   "<URL>/server/dappa_api/api/v1/admin/jobs/nightly-refresh"
+# expect mode:"job", source:"catalyst-jobs", jobpool:"dappanightly" — NOT mode:"inline"
+```
+
+Then check **Job Scheduling ▸ Jobs** in the console: the run appears with source
+type API and a Success status.
 
 ---
 
