@@ -69,6 +69,9 @@ function predictLocal(body) {
     probabilities: { [classes[0]]: round(pFirst, 4), [classes[1]]: round(1 - pFirst, 4) },
     classes,
     modelAuc: toNum(model.auc, null),
+    // false when the shipped asset is the hand-set placeholder rather than a
+    // trained model, so the UI never badges an invented number as measured.
+    modelAucMeasured: model.aucMeasured !== false,
     featuresUsed: used
   };
 }
@@ -295,7 +298,10 @@ function modelRegistry(deps) {
       status: 'serving',
       service: 'in-function',
       trainedAt: model.trainedAt || model.trained_at || null,
-      metrics: { auc: toNum(model.auc, null), features: (model.features || []).length },
+      metrics: { auc: toNum(model.auc, null), aucMeasured: model.aucMeasured !== false, features: (model.features || []).length },
+      caveat: model.aucMeasured === false
+        ? 'Illustrative hand-set coefficients; the AUC is a placeholder constant, not a measured ROC-AUC.'
+        : null,
       endpoint: 'POST /predict/outcome',
       fallbackFor: null
     },

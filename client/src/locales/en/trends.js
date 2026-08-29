@@ -421,6 +421,7 @@ export default {
   'predict.outcome.sourceFallback': 'Embedded logistic · local fallback',
   'predict.outcome.sourceLive': 'QuickML · live endpoint',
   'predict.outcome.auc': 'ROC-AUC {value}',
+  'predict.outcome.aucIllustrative': 'ROC-AUC {value} · illustrative, not measured',
   'predict.outcome.deltaTip': 'Change in detection probability vs the previous run',
   'predict.outcome.deltaBadge': '{delta} pts vs last run',
   'predict.outcome.classA': 'A (detected) {p}',

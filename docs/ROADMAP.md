@@ -35,14 +35,26 @@ landed; the rest are re-scoped against what Round 2 learned about the platform.
 
 ## Still ahead
 
-1. **Finish the Production environment.** The environment exists and answers at
-   `project-rainfall-60079891305.catalystserverless.in`, but Catalyst migrates
-   code and metadata only — the Data Store arrives empty and env values do not
-   travel. Completing it means `node scripts/prod_load.mjs` (~350,000 rows,
-   resumable, answers the CLI's Stratus-bucket prompt), re-entering the function
-   env under the Production switch, re-pointing `APP_BASE_URL`, and a second
-   *Deploy to Production*. Development is the submitted URL until then, and the
-   README says so rather than implying otherwise.
+1. **Finish the Production environment — data done, env still pending.** The
+   environment answers at `project-rainfall-60079891305.catalystserverless.in`,
+   and as of **29 Aug 2026 its Data Store is fully loaded**: `node
+   scripts/prod_load.mjs` imported all 34 tables (34 ok, 0 failed) and
+   `/healthz` there now reports **100% completeness across all 13 tracked
+   tables** — 45,000 CaseMaster, 53,836 Victim, 60,948 ActSectionAssociation.
+   The loader needed one fix to get there: the CLI asks *two* questions, and
+   answering only the Stratus-bucket prompt left every import parked on "Do you
+   like to download the report of this job? (y/N)".
+
+   What remains is **environment variables**, and it is a console step by
+   construction: `catalyst deploy` has no `--production` flag (it deploys to
+   Development only), and the console's *Deploy to Production* migrates code and
+   schema but neither rows nor env values. So Production currently runs with
+   `quickml`, `zia`, `smartbrowz`, `mail`, `push` and `circuit` all **off** — it
+   serves real data through the documented fallbacks, and `/about` reports each
+   service honestly. Completing it means re-entering the function env under the
+   Production switch, re-pointing `APP_BASE_URL`, and redeploying. Development
+   remains the submitted URL, and the README says so rather than implying
+   otherwise.
 
 2. **A real identity-resolution scorer.** The current one measures precision
    0.032 / recall 0.571 at threshold 0.92 on the planted ground truth, and the

@@ -1,7 +1,11 @@
 {
-  "note": "Placeholder logistic-regression coefficients for case-outcome prediction (chargesheet A vs C). The integration step overwrites this file with the model trained by pipeline/analytics.py. Caste/religion are NEVER features.",
-  "classes": ["A", "C"],
+  "note": "Illustrative logistic-regression coefficients for case-outcome prediction (chargesheet A vs C), hand-set \u2014 NOT the output of a training run. The integration step in pipeline/analytics.py was intended to overwrite this file and never did: it trains snake_case features (gravity_heinous, victim_count, ...) while the ones below are camelCase/one-hot, which is how you can tell no run produced them. `auc` is therefore a placeholder constant, not a measured ROC-AUC, and aucMeasured says so to every consumer. Caste/religion are NEVER features.",
+  "classes": [
+    "A",
+    "C"
+  ],
   "auc": 0.78,
+  "aucMeasured": false,
   "intercept": -0.35,
   "features": [
     "victimCount",

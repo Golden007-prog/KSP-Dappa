@@ -47,7 +47,14 @@ export function tierForRole(role) {
 
 function readTier() {
   try {
-    const q = new URLSearchParams((typeof window !== 'undefined' && window.location.hash.split('?')[1]) || '').get('tier');
+    // `|| window.location.search` matches what readStoredLang does in
+    // lib/i18n.jsx — tier was the one reader missing it. Without the fallback a
+    // link of the documented form .../app/index.html?tier=beat never reached
+    // here at all, because the query sits BEFORE the hash, so the judges'
+    // shortcut the README advertises was silently ignored.
+    const hashQuery = (typeof window !== 'undefined' && window.location.hash.split('?')[1]) || '';
+    const search = (typeof window !== 'undefined' && window.location.search) || '';
+    const q = new URLSearchParams(hashQuery || search).get('tier');
     if (q && TIERS.includes(q)) return q;
   } catch { /* ignore */ }
   try { const s = localStorage.getItem(KEY); if (s && TIERS.includes(s)) return s; } catch { /* storage unavailable */ }

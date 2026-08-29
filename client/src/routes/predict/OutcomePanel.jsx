@@ -348,8 +348,14 @@ export default function OutcomePanel() {
                       : t('trends.predict.outcome.sourceLive')}
                   </Badge>
                 </span>
+                {/* The embedded asset ships hand-set coefficients its own note calls a
+                    placeholder, and its 0.78 was never produced by a training run. A teal
+                    badge reading "ROC-AUC 0.78" presented that constant as a measured
+                    score. When the API says it is not measured, say so instead. */}
                 {result.modelAuc != null && (
-                  <Badge tone="teal">{t('trends.predict.outcome.auc', { value: fmtNum(result.modelAuc, 2) })}</Badge>
+                  result.modelAucMeasured === false
+                    ? <Badge tone="amber">{t('trends.predict.outcome.aucIllustrative', { value: fmtNum(result.modelAuc, 2) })}</Badge>
+                    : <Badge tone="teal">{t('trends.predict.outcome.auc', { value: fmtNum(result.modelAuc, 2) })}</Badge>
                 )}
                 {deltaPts !== null && (
                   <span title={t('trends.predict.outcome.deltaTip')}>

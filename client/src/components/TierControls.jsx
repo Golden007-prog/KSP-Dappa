@@ -13,7 +13,7 @@
 //                            to a tier (useAuthTier → applyRole).
 // The switcher never grants a capability — it changes what is shown first and
 // how it is worded (lib/tier.js).
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TIERS, TIER_HOME, useTierStore } from '../lib/tier.js';
 import { useAuthTier } from '../lib/tierApi.js';
@@ -34,9 +34,26 @@ export function TierSwitcher({ className = '', size = 'sm' }) {
   const fromRole = useTierStore((s) => s.fromRole);
 
   // ?tier= deep link (a judge pastes /#/beat?tier=beat) wins over storage.
+  //
+  // It must NAVIGATE, not just re-word. Setting the tier alone left the visitor
+  // on whichever route they landed on — so the README's "?tier=beat deep-links
+  // straight to the constable view" put a constable-worded analyst Dashboard on
+  // screen, and now that Dashboard claims the district tier itself
+  // (useTierRoute('district')), the deep link would be reset a tick later.
+  // Sending them to TIER_HOME is exactly what choose() does for a click.
+  const deepLinked = useRef(false);
   useEffect(() => {
-    const q = searchParams.get('tier');
-    if (q && TIERS.includes(q) && q !== tier) setTier(q);
+    // useSearchParams reads the HASH query under HashRouter, so it is blind to
+    // the pre-hash `…/index.html?tier=beat` form the README advertises. Fall
+    // back to window.location.search, the same way lib/tier.js readTier does.
+    const q = searchParams.get('tier')
+      || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tier') : null);
+    if (!q || !TIERS.includes(q)) return;
+    if (q !== tier) setTier(q);
+    if (!deepLinked.current && TIER_HOME[q] && window.location.hash.replace(/^#/, '').split('?')[0] !== TIER_HOME[q]) {
+      deepLinked.current = true; // once per mount: never fight the user's later navigation
+      navigate(`${TIER_HOME[q]}?tier=${q}`, { replace: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 

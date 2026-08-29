@@ -421,6 +421,7 @@ export default {
   'predict.outcome.sourceFallback': 'ಅಂತರ್ಗತ ಲಾಜಿಸ್ಟಿಕ್ · ಸ್ಥಳೀಯ ಪರ್ಯಾಯ',
   'predict.outcome.sourceLive': 'QuickML · ನೇರ ಎಂಡ್‌ಪಾಯಿಂಟ್',
   'predict.outcome.auc': 'ROC-AUC {value}',
+  'predict.outcome.aucIllustrative': 'ROC-AUC {value} · ನಿದರ್ಶನ, ಅಳೆದದ್ದಲ್ಲ',
   'predict.outcome.deltaTip': 'ಹಿಂದಿನ ಚಾಲನೆಗೆ ಹೋಲಿಸಿ ಪತ್ತೆ ಸಂಭವನೀಯತೆಯ ಬದಲಾವಣೆ',
   'predict.outcome.deltaBadge': 'ಹಿಂದಿನ ಚಾಲನೆಗೆ ಹೋಲಿಸಿ {delta} ಅಂಕ',
   'predict.outcome.classA': 'A (ಪತ್ತೆಯಾದ) {p}',
