@@ -105,6 +105,10 @@ export default {
   'purpose': 'Produced for patrol allocation and supervision (BNSS s.168) — never as grounds for suspicion of an individual (s.170).',
   'compareOthers': 'Compared with others',
   'usual': 'Usual level',
+  // The chip used to render the bare count, so an SHO could not tell whether
+  // "Property Crimes 7" was a spike or a normal Tuesday. weekByHead already
+  // carries usualPerWeek.
+  'station.week.headChip': '{head} {n} (usual {usual})',
   'thisWeek': 'This week',
   'thisMonth': 'This month',
   'lastMonth': 'Last month',

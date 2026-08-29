@@ -450,6 +450,7 @@ export default {
 
   'brief.kpi.totalFirs': 'ಒಟ್ಟು ಎಫ್‌ಐಆರ್',
   'brief.kpi.totalFirsSub': 'ಈ ಅವಧಿಯಲ್ಲಿ ದಾಖಲಾದವು',
+  'brief.kpi.inMonth': '{month}ರಲ್ಲಿ ದಾಖಲಾದವು',
   'brief.kpi.mom': 'ತಿಂಗಳ ಬದಲಾವಣೆ',
   'brief.kpi.momSub': 'ಹಿಂದಿನ ತಿಂಗಳಿಗೆ ಹೋಲಿಸಿ',
   'brief.kpi.heinous': 'ಘೋರ ಪ್ರಕರಣಗಳು',
@@ -498,6 +499,7 @@ export default {
 
   'exec.stop': '.',
   'exec.firs': '{days} ದಿನಗಳ ಅವಧಿ {from} – {to} ರಲ್ಲಿ {n} ಎಫ್‌ಐಆರ್‌ಗಳು ದಾಖಲಾಗಿವೆ',
+  'exec.firsMonth': '{month}ರಲ್ಲಿ {n} ಎಫ್‌ಐಆರ್‌ಗಳು ದಾಖಲಾಗಿವೆ',
   'exec.level': ', ಹಿಂದಿನ {days} ದಿನಗಳಿಗೆ ಸಮನಾಗಿ',
   'exec.up': ', ಹಿಂದಿನ {days} ದಿನಗಳಿಗಿಂತ {pct}% ಹೆಚ್ಚು',
   'exec.down': ', ಹಿಂದಿನ {days} ದಿನಗಳಿಗಿಂತ {pct}% ಕಡಿಮೆ',

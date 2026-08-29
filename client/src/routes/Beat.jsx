@@ -62,7 +62,7 @@ function timeLabel(iso, lang) {
 
 export default function Beat() {
   const { t, lang, tName } = useI18n();
-  const { fmt, term } = usePlain();
+  const { fmt, term, plain } = usePlain();
   const toast = useToast();
   const tier = useTierStore((s) => s.tier);
   useTierRoute('beat'); // arriving from the sidebar must switch the app into beat wording
@@ -208,7 +208,14 @@ export default function Beat() {
                   <div key={a.alertId} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-grid bg-panel-raised px-3 py-2 min-h-[52px]">
                     <StatusPill status={a.statusWord} size="md" />
                     <span className="text-sm font-medium text-ink">{tName('crimeHeads', a.crimeHeadId, a.headName)}</span>
-                    <span className="basis-full text-xs text-muted" data-readable="">{fmt('zscore', a.zScore)} · {fmtInt(a.observed)} vs {fmtInt(a.expected)}{a.narrative ? ` · ${a.narrative}` : ''}</span>
+                    {/* The server narrative ends in the raw statistic — "(robust z
+                        -2.7). Severity 1." — and this is the one tier where plain
+                        language is ON by default (lib/tier.js). Appending it here
+                        undid the plain phrase immediately to its left, on the screen
+                        built for the least data-literate reader. Nothing is lost by
+                        dropping it in plain mode: the line already carries the plain
+                        phrase and the observed-vs-expected comparison. */}
+                    <span className="basis-full text-xs text-muted" data-readable="">{fmt('zscore', a.zScore)} · {fmtInt(a.observed)} vs {fmtInt(a.expected)}{!plain && a.narrative ? ` · ${a.narrative}` : ''}</span>
                   </div>
                 ))}
               </div>

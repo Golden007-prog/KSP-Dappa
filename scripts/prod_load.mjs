@@ -44,18 +44,26 @@ function runImport(table, csv) {
     const child = spawn('catalyst', ['ds:import', '--table', table, '--production', csv], {
       cwd: REPO, shell: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
-    let answered = false;
+    // The CLI asks TWO questions, not one. Answering only the bucket prompt
+    // left every import parked forever on "Do you like to download the report
+    // of this job to your cmd execution directory? (y/N)" — the table imports
+    // fine and the job id is printed, but the process never exits, so a run
+    // stalls after the first table and no state is ever written. Each prompt
+    // gets its own latch so one cannot mask the other.
+    let askedBucket = false;
+    let askedReport = false;
     let buf = '';
     const started = Date.now();
+    const say = (text) => setTimeout(() => { try { child.stdin.write(text); } catch { /* closed */ } }, 400);
     const onData = (chunk) => {
       const text = chunk.toString();
       const clean = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
       buf += clean;
       process.stdout.write(clean);
-      if (!answered && /Select a bucket/i.test(text)) {
-        answered = true;
-        setTimeout(() => { try { child.stdin.write('\n'); } catch { /* closed */ } }, 400);
-      }
+      if (!askedBucket && /Select a bucket/i.test(clean)) { askedBucket = true; say('\n'); }
+      // 'n' — the report is a convenience download; the authoritative check is
+      // /healthz completeness against the source CSV row counts.
+      if (!askedReport && /download the report/i.test(clean)) { askedReport = true; say('n\n'); }
     };
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);

@@ -1099,7 +1099,15 @@ export default function Layout() {
                 {ICONS.link}
               </button>
             </Tooltip>
-            <TierSwitcher className="hidden xl:inline-flex" /><PlainLanguageToggle className="hidden xl:inline-flex" />
+            {/* md, not xl. The tier switcher is the product's central idea, and it
+                had exactly two render sites: this one at >=1280px, and the More
+                sheet, whose only opener lives in the md:hidden bottom tab bar.
+                Between 768px and 1279px — every tablet, every scaled laptop —
+                neither was reachable, so an officer on those widths could not
+                change tier at all. Measured: 0/4 tier buttons visible at 768,
+                900, 1024 and 1180. PlainLanguageToggle stays at xl so the row
+                gains one control, not two. */}
+            <TierSwitcher className="hidden md:inline-flex" /><PlainLanguageToggle className="hidden xl:inline-flex" />
             <DisplayMenu open={displayOpen} onOpen={() => setDisplayOpen(true)} onClose={() => setDisplayOpen(false)} />
             {zen && (
               <Tooltip label={t('shell.zen.exit')} position="bottom">

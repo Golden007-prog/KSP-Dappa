@@ -39,12 +39,23 @@ export function composeExecutiveSummary(brief, t = en, tName = passThrough) {
   const pk = brief.prevKpis?.data || {};
 
   if (Number.isFinite(Number(k.totalFirs))) {
-    let s = t('alerts.exec.firs', {
-      n: fmtInt(k.totalFirs), days: win.days, from: dateLabel(win.from), to: dateLabel(win.to),
-    });
+    // /summary/kpis is month-anchored and ignores from/to entirely: the same
+    // 1,151 comes back for every window. Printing it as "{days}-day window
+    // {from} – {to}" made the brief's FIRST SENTENCE false by roughly 4x, and
+    // because the prior-window call is the same endpoint it returned the same
+    // object — so the delta compared a number with itself and rendered "level
+    // with the preceding 7 days" as a finding of stability. Say which month the
+    // figure covers, and when both queries resolved to the same anchor month
+    // (which proves no comparison happened) print no delta at all.
+    const sameAnchor = k.asOfYm && pk.asOfYm && k.asOfYm === pk.asOfYm;
+    let s = k.asOfYm
+      ? t('alerts.exec.firsMonth', { n: fmtInt(k.totalFirs), month: monthLabel(k.asOfYm) })
+      : t('alerts.exec.firs', {
+        n: fmtInt(k.totalFirs), days: win.days, from: dateLabel(win.from), to: dateLabel(win.to),
+      });
     const c = Number(k.totalFirs);
     const p = Number(pk.totalFirs);
-    if (Number.isFinite(p) && p > 0) {
+    if (!sameAnchor && Number.isFinite(p) && p > 0) {
       const pct = ((c - p) / p) * 100;
       s += Math.abs(pct) < 0.5
         ? t('alerts.exec.level', { days: win.days })

@@ -483,6 +483,9 @@ export default {
   // Headline indicators
   'brief.kpi.totalFirs': 'Total FIRs',
   'brief.kpi.totalFirsSub': 'registered this window',
+  // Shown instead of the window subtitle when the KPI payload names its anchor
+  // month, because /summary/kpis is month-anchored and ignores from/to.
+  'brief.kpi.inMonth': 'registered in {month}',
   'brief.kpi.mom': 'MoM change',
   'brief.kpi.momSub': 'vs previous month',
   'brief.kpi.heinous': 'Heinous cases',
@@ -533,6 +536,9 @@ export default {
   // Auto-composed executive summary (sentence templates)
   'exec.stop': '.',
   'exec.firs': '{n} FIRs were registered in the {days}-day window {from} – {to}',
+  // Used when the KPI payload names its anchor month, because /summary/kpis
+  // is month-anchored and ignores the brief's date window.
+  'exec.firsMonth': '{n} FIRs were registered in {month}',
   'exec.level': ', level with the preceding {days} days',
   'exec.up': ', up {pct}% on the preceding {days} days',
   'exec.down': ', down {pct}% on the preceding {days} days',

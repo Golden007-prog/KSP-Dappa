@@ -120,6 +120,12 @@ export default function BriefContent({
   const noneOn = DEFAULT_ORDER.every((key) => !show(key));
   const k = kpis.data || {};
   const pk = prevKpis?.data || {};
+  // /summary/kpis ignores the brief's from/to and always answers for its own
+  // anchor month, so the prior-window call returns the SAME object. When both
+  // resolve to one anchor there was no comparison to render — a 0.0% Delta
+  // against yourself reads as measured stability. Label the month instead.
+  const kpiSameAnchor = Boolean(k.asOfYm && pk.asOfYm && k.asOfYm === pk.asOfYm);
+  const kpiSub = k.asOfYm ? t('alerts.brief.kpi.inMonth', { month: monthLabel(k.asOfYm) }) : null;
   const asPct = (v) => Number(v); // server contract: detectionRate is a PERCENT (0-100)
   const detectionPct = asPct(k.detectionRate);
 
@@ -198,7 +204,7 @@ export default function BriefContent({
             <StatBox
               label={t('alerts.brief.kpi.totalFirs')}
               value={fmtInt(k.totalFirs)}
-              sub={<>{t('alerts.brief.kpi.totalFirsSub')}{' '}<Delta cur={k.totalFirs} prev={pk.totalFirs} /> {Number.isFinite(Number(pk.totalFirs)) ? priorLabel : ''}</>}
+              sub={<>{kpiSub || t('alerts.brief.kpi.totalFirsSub')}{kpiSameAnchor ? null : <>{' '}<Delta cur={k.totalFirs} prev={pk.totalFirs} /> {Number.isFinite(Number(pk.totalFirs)) ? priorLabel : ''}</>}</>}
             />
             <StatBox
               label={t('alerts.brief.kpi.mom')}
@@ -210,7 +216,7 @@ export default function BriefContent({
               label={t('alerts.brief.kpi.heinous')}
               value={fmtInt(k.heinousCount)}
               color={RED}
-              sub={<>{t('alerts.brief.kpi.heinousSub')}{' '}<Delta cur={k.heinousCount} prev={pk.heinousCount} /> {Number.isFinite(Number(pk.heinousCount)) ? priorLabel : ''}</>}
+              sub={<>{kpiSub || t('alerts.brief.kpi.heinousSub')}{kpiSameAnchor ? null : <>{' '}<Delta cur={k.heinousCount} prev={pk.heinousCount} /> {Number.isFinite(Number(pk.heinousCount)) ? priorLabel : ''}</>}</>}
             />
             <StatBox
               label={t('alerts.brief.kpi.detection')}

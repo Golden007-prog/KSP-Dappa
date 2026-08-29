@@ -88,6 +88,7 @@ import {
   joinSocio, polygonCensusRate, monthEndDate, emergingMovers, SOCIO_INDICATOR_KEYS,
 } from './dashboard/analytics.js';
 import { buildDashboardPoster } from './dashboard/poster.js';
+import { useTierRoute } from './tiers/bits.jsx';
 
 const DETECTION_TARGET = 65; // state target, %
 
@@ -299,6 +300,11 @@ const intervalLabel = (s, t) => (s >= 60
 // ---------------------------------------------------------------------------
 
 export default function Dashboard() {
+  // Beat/Station/State each own their tier via useTierRoute; the Dashboard
+  // did not, so visiting /beat once pinned the store to 'beat' for that
+  // browser and nothing — no sidebar row, not the Dashboard itself —
+  // ever put it back to district. The route now owns its tier symmetrically.
+  useTierRoute('district');
   const toast = useToast();
   const t = useT();
   const tName = useNames();

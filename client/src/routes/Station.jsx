@@ -125,7 +125,7 @@ export default function Station() {
                       {risingHeads.map((r) => (
                         <li key={r.crimeHeadId} className="chip !py-1 min-h-[32px]">
                           <StatusPill status={r.statusWord} />
-                          <span>{tName('crimeHeads', r.crimeHeadId, r.headName)} {fmtInt(r.thisWeek)}</span>
+                          <span>{t('tier.station.week.headChip', { head: tName('crimeHeads', r.crimeHeadId, r.headName), n: fmtInt(r.thisWeek), usual: fmtNum(r.usualPerWeek, 1) })}</span>
                         </li>
                       ))}
                     </ul>

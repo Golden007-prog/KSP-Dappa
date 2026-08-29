@@ -328,7 +328,23 @@ export function normalizeSeasonality(data) {
   let days = DAY_LABELS;
   if (Array.isArray(data.matrix)) {
     matrix = data.matrix.map((row) => hours.map((h) => num(row?.[h])));
-    if (Array.isArray(data.days) && data.days.length === data.matrix.length) days = data.days.map(str);
+    // The API sends `weekdays`, Sunday-first — not `days`. Checking only for
+    // `days` meant the guard never fired: labels stayed at the Mon-first
+    // DAY_LABELS default while the matrix kept the server's Sunday-first rows,
+    // so every row on the dashboard heatmap was labelled one day late (the
+    // busiest row, server label Tue, rendered as Wed). Rotating the rows as
+    // well as the labels — rather than just relabelling — is what keeps
+    // seasonalitySplits' hardcoded weekend indices 5 and 6 pointing at Sat and
+    // Sun; relabelling alone would leave that badge reading Fri+Sat.
+    const src = Array.isArray(data.days) ? data.days : (Array.isArray(data.weekdays) ? data.weekdays : null);
+    if (src && src.length === matrix.length) {
+      let labels = src.map(str);
+      if (/^sun/i.test(labels[0] || '')) {
+        labels = labels.slice(1).concat(labels.slice(0, 1));
+        matrix = matrix.slice(1).concat(matrix.slice(0, 1));
+      }
+      days = labels;
+    }
   } else {
     const rows = asArray(data.cells ?? data);
     if (rows.length) {

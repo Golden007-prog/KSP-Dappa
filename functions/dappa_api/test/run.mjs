@@ -301,6 +301,12 @@ const GET_CASES = [
   ['/risk/stations?horizon=30', (d) => Array.isArray(d) && d.length === 15 && hasKeys(d[0], ['unitId', 'unitName', 'districtId', 'riskScore', 'drivers', 'spark']) && d[0].riskScore >= d[1].riskScore && d.every((r) => Array.isArray(r.spark) && r.spark.length === 6) && d.some((r) => r.spark.some((v) => v > 0))],
   ['/cases?page=1&perPage=10', (d, meta) => Array.isArray(d) && d.length === 10 && hasKeys(d[0], ['caseMasterId', 'crimeNo', 'caseNo', 'registeredDate', 'districtName', 'unitName', 'headName', 'subHeadName', 'statusName', 'gravityName', 'anomalyFlag']) && meta.total === 52 && meta.page === 1 && meta.perPage === 10],
   ['/cases?districtId=0103&perPage=200', (d) => d.length === 8],
+  // A jurisdiction filter must fail CLOSED. An unresolved districtId used to
+  // drop the predicate entirely, so this returned the whole corpus (live:
+  // districtId=9999 -> 45,000 rows across 22 districts) while the UI still
+  // showed a district filter as active.
+  ['/cases?districtId=9999&perPage=200', (d, meta) => Array.isArray(d) && d.length === 0 && meta.total === 0],
+  ['/cases?districtId=not-an-id&perPage=200', (d) => Array.isArray(d) && d.length === 0],
   ['/cases?perPage=500', (d, meta) => meta.perPage === 200],
   // --- second-pass endpoints -------------------------------------------------
   ['/meta/challenge', (d) => Array.isArray(d.capabilities) && d.capabilities.length === 6

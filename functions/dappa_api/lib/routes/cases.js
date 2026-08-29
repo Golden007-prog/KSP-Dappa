@@ -15,7 +15,16 @@ async function caseWhere(ctx, filters) {
   else if (filters.districtId) {
     const lk = await getLookups(ctx);
     const units = lk.unitsOfDistrict(filters.districtId).map((u) => u.unitId);
-    if (units.length) where.push({ col: 'PoliceStationID', op: 'in', val: units });
+    // An unresolved district must NARROW, never widen. Guarding the push with
+    // `if (units.length)` meant a stale or malformed districtId dropped the
+    // predicate entirely, so /cases?districtId=9999 answered with all 45,000
+    // rows across 22 districts while the UI still showed a district filter as
+    // active — a jurisdiction filter failing open, which is the wrong direction
+    // for police software. An impossible unit id keeps the same `in` operator
+    // (no new type behaviour) and lets the existing empty state say so.
+    // lib/routes/depth.js:313 takes the other valid route and 400s; both are
+    // fail-closed, which is the point.
+    where.push({ col: 'PoliceStationID', op: 'in', val: units.length ? units : ['-1'] });
   }
   if (filters.crimeSubHeadId) where.push({ col: 'CrimeMinorHeadID', op: '=', val: filters.crimeSubHeadId });
   else if (filters.crimeHeadId) where.push({ col: 'CrimeMajorHeadID', op: '=', val: filters.crimeHeadId });
