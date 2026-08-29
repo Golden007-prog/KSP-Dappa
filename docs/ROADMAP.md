@@ -35,26 +35,39 @@ landed; the rest are re-scoped against what Round 2 learned about the platform.
 
 ## Still ahead
 
-1. **Finish the Production environment — data done, env still pending.** The
-   environment answers at `project-rainfall-60079891305.catalystserverless.in`,
-   and as of **29 Aug 2026 its Data Store is fully loaded**: `node
-   scripts/prod_load.mjs` imported all 34 tables (34 ok, 0 failed) and
-   `/healthz` there now reports **100% completeness across all 13 tracked
-   tables** — 45,000 CaseMaster, 53,836 Victim, 60,948 ActSectionAssociation.
-   The loader needed one fix to get there: the CLI asks *two* questions, and
-   answering only the Stratus-bucket prompt left every import parked on "Do you
-   like to download the report of this job? (y/N)".
+1. **Production is live and at parity with Development (29 Aug 2026).** The
+   environment answers at `project-rainfall-60079891305.catalystserverless.in`
+   and now runs the same application:
 
-   What remains is **environment variables**, and it is a console step by
-   construction: `catalyst deploy` has no `--production` flag (it deploys to
-   Development only), and the console's *Deploy to Production* migrates code and
-   schema but neither rows nor env values. So Production currently runs with
-   `quickml`, `zia`, `smartbrowz`, `mail`, `push` and `circuit` all **off** — it
-   serves real data through the documented fallbacks, and `/about` reports each
-   service honestly. Completing it means re-entering the function env under the
-   Production switch, re-pointing `APP_BASE_URL`, and redeploying. Development
-   remains the submitted URL, and the README says so rather than implying
-   otherwise.
+   - **Data** — `node scripts/prod_load.mjs` imported all 34 tables (34 ok, 0
+     failed); `/healthz` reports **100% completeness across all 13 tracked
+     tables** (45,000 CaseMaster, 53,836 Victim, 60,948 ActSectionAssociation).
+     The loader needed a fix first: the CLI asks *two* questions, and answering
+     only the Stratus-bucket prompt parked every import on "Do you like to
+     download the report of this job? (y/N)".
+   - **Code** — a console Development ⇒ Production deployment (4 services, 18
+     components, 57 entities) carried the Round-2 build wave across. Production
+     had been a 27 Aug snapshot serving 11 routes; it now serves the identical
+     client bundle with all 19, including the officer tiers, face identification,
+     CSV ingest and the FIR scanner, plus all four functions (`dappa_job`
+     included). Row counts were compared before and after: **zero tables
+     changed** — the migration carries code and schema, not rows.
+   - **Environment** — Catalyst migrates neither rows nor env values, so all 29
+     non-secret variables from the tracked config were entered against the
+     Production switch, with `APP_BASE_URL` pointed at the Production host
+     rather than copied. `GET /meta/services` on both environments now reports
+     **no differing feature flags**.
+
+   What is left is genuinely per-environment console provisioning, and it is why
+   Production reads 15 `console-pending` rows against Development's 12: its own
+   File Store folder (`FILESTORE_FOLDER_ID` is deliberately *not* copied — a
+   Development folder id would be wrong there), its own Job Scheduling pool, its
+   own Search Index constraints, and `QUICKML_STATUS_ENDPOINT_KEY`, which lives
+   only in the gitignored `.env.deploy`. Development remains the submitted URL.
+
+   Note for anyone checking: `catalyst deploy` has no `--production` flag — it
+   targets Development only, and `ds:import --production` is the sole
+   production-targeting CLI command. Everything else is the console.
 
 2. **A real identity-resolution scorer.** The current one measures precision
    0.032 / recall 0.571 at threshold 0.92 on the planted ground truth, and the
