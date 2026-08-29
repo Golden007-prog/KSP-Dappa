@@ -21,6 +21,23 @@ CLAUDE.md
 AGENTS.md
 memory/
 
+# Operational runbooks: these carry account emails, org ids and billing state.
+# They are working notes for the operator, never public-repo content.
+*RUNBOOK*.md
+scripts/*RUNBOOK*
+
+# Data exported FROM the running app (alert CSVs, case extracts) is a test
+# artefact, not a source file — it lands in docs/ when a download defaults there.
+docs/*.csv
+docs/*.xlsx
+
+# Per-phase build logs. `decisions-*` are kept because source files cite them as
+# the provenance for a decision (grep "decisions-phase" in functions/ and
+# client/); the `features-phase*` lists were folded into FEATURES.md, which is
+# the canonical catalogue that scripts/check_capabilities.mjs derives from.
+docs/round2/features-phase*.md
+docs/round2/console-steps-*.md
+
 # docs/: engineering docs are tracked; the strategy kit, agent master prompts,
 # organizer material (ER diagram + its text extract), media and decks stay local.
 docs/0*_*.md

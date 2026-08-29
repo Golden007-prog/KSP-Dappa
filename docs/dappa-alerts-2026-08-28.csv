@@ -1,5 +1,0 @@
-Alert ID,Severity,Severity band code,Status,Direction,District,Crime head,Period start,Period end,Observed,Expected,Deviation,z-score,Sigma,Assignee,Triage note,Narrative
-AL-001,Critical,3,Open,Surge,Mysuru City,Property Crimes,2026-08-01,2026-08-28,42,18.5,23.5,4.2,5.6,,,Chain snatching resurgence in Mysuru City
-AL-002,High,2,Open,Surge,Mangaluru City,Cyber Crimes,2026-08-01,2026-08-28,66,23.1,42.9,3.4,12.62,,,Cyber fraud spike in Mangaluru City
-AL-003,Medium,1,Open,Surge,Bengaluru City,Property Crimes,2026-08-01,2026-08-28,30,19,11,2.4,4.58,,,Night burglary uptick in Peenya belt
-AL-004,Medium,1,Acknowledged,Surge,Belagavi City,Crimes Against Body,2026-06-01,2026-06-28,12,9,3,2.1,1.43,,,Assault cluster acknowledged
