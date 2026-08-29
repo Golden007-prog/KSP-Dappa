@@ -30,6 +30,7 @@ Visualization Platform."*
 [Environment variables](#environment-variables) · [API overview](#api-overview)
 
 **About the work** · [**What I did**](#what-i-did) ·
+[Production verification](docs/PRODUCTION_VERIFICATION.md) ·
 [Data ethics & disclaimer](#data-ethics--disclaimer) ·
 [Repository layout](#repository-layout) · [License](#license) · [Team](#team)
 
@@ -925,7 +926,8 @@ pipeline/          generate.py (synthetic ER data) + analytics.py (derived intel
 data/geo/          Karnataka districts GeoJSON (23 KB, 30 features)
 scripts/           bulk_load.js · verify_load.mjs · smoke_test.mjs · warmup.mjs · deploy.mjs ·
                    gen_service_table.mjs · check_i18n.mjs · check_tree_hygiene.mjs · hooks/
-docs/              DECISIONS.md · ROADMAP.md · CONTRACTS.md · CONSOLE_SETUP.md · benchmarks/ ·
+docs/              DECISIONS.md · ROADMAP.md · CONTRACTS.md · CONSOLE_SETUP.md ·
+                   PRODUCTION_VERIFICATION.md (section-by-section browser test) · benchmarks/ ·
                    screenshots/ · ROUND2_BASELINE.md (engineering docs; strategy kit stays local)
 video/script/      Narration, timeline and subtitles of the 3-minute demo video
 FEATURES.md        Catalog of user-visible features, tagged by scored capability

@@ -24,6 +24,12 @@ const TABLE_ORDER = [
   'Act', 'Section', 'CrimeHead', 'CrimeSubHead', 'CrimeHeadActSection', 'Court',
   'CaseMaster', 'ComplainantDetails', 'Victim', 'Accused', 'ActSectionAssociation', 'ArrestSurrender', 'ChargesheetDetails',
   'AggMonthly', 'HotspotCluster', 'ForecastMonthly', 'AnomalyAlert', 'NetworkEdge', 'OffenderProfile', 'StationRisk', 'SocioEconomic',
+  // Console-created tables that the first pass missed. Without FaceGallery,
+  // /identify has no gallery at all: "Use a sample capture" reports that the
+  // image could not be read, and a search can never run. CaseAnomaly drives
+  // the case-explorer anomaly flag and degrades quietly, which is exactly why
+  // its absence went unnoticed.
+  'FaceGallery', 'CaseAnomaly',
 ];
 
 const args = process.argv.slice(2);
