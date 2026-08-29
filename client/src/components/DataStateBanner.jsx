@@ -26,10 +26,17 @@ const EMPTY_PCT = 1;
 
 export default function DataStateBanner() {
   const t = useT();
-  // Same key as the /about provenance panel, so the two share one probe
-  // instead of racing for it.
+  // Its OWN key. This deliberately does NOT reuse ['about-healthz']: react-query
+  // caches by key, so two hooks sharing a key with different queryFns do not
+  // share a probe — they race, and whichever resolves first defines the cached
+  // shape for both. Reusing it meant this banner's raw /healthz payload could
+  // land in the slot /about's useProvenance expects to hold its normalized
+  // {tables, incomplete, unknown, ...}, so ProvenancePanel read `unknown` and
+  // HonestyLedger read `incomplete` off an object that had neither and the
+  // whole About page died in its error boundary. One extra cheap probe is the
+  // right price for not corrupting another component's cache entry.
   const { data } = useQuery({
-    queryKey: ['about-healthz'],
+    queryKey: ['shell-datastate-healthz'],
     queryFn: ({ signal }) => apiGet('/healthz', {}, { signal }).then((r) => r.data || {}),
     staleTime: 5 * 60 * 1000,
     retry: 1,

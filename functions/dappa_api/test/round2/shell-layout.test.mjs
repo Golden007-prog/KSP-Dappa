@@ -121,6 +121,25 @@ export async function run(h) {
 
   // ---- int-3: a Card is never allowed to widen its own track ----------------
   {
+    // react-query caches by key, so two hooks that share a key with different
+    // queryFns do not share a probe — they race, and the winner defines the
+    // cached SHAPE for both. DataStateBanner once reused ['about-healthz'] and
+    // its raw /healthz payload landed in the slot useProvenance expects to hold
+    // {tables, incomplete, unknown, ...}; ProvenancePanel read `unknown` and
+    // HonestyLedger read `incomplete` off an object with neither, and /about —
+    // the page written to prove the app is real — died in its error boundary on
+    // BOTH deployments. The static-demo build hid it, because there the probe
+    // fails and never writes the cache, so the a11y sweep passed too.
+    {
+      const banner = read('client/src/components/DataStateBanner.jsx');
+      const about = read('client/src/routes/about/useAboutIntrospection.js');
+      const keyOf = (src) => (src.match(/queryKey:\s*\[\s*'([^']+)'/) || [])[1] || null;
+      const bannerKey = keyOf(banner);
+      const aboutKeys = [...about.matchAll(/queryKey:\s*\[\s*'([^']+)'/g)].map((m) => m[1]);
+      check('DataStateBanner does not share a react-query key with /about introspection',
+        Boolean(bannerKey) && !aboutKeys.includes(bannerKey), `banner=${bannerKey} about=${aboutKeys.join(',')}`);
+    }
+
     const card = read('client/src/components/Card.jsx');
     check('Card: the section carries min-w-0 (int-3)', /<section className=\{`min-w-0 bg-panel/.test(card), card.slice(0, 400));
     check(
