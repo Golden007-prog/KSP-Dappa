@@ -210,6 +210,12 @@ export default {
   'offline.checkNow': 'Check now',
   'offline.checking': 'Checking…',
 
+  // Shown on every route when /healthz reports the Data Store is empty, so a
+  // dashboard of zeros is never mistaken for a finding (see DataStateBanner).
+  'nodata.title': 'No case records are loaded in this environment.',
+  'nodata.body': 'Every figure on this screen will read zero — that is a missing data load, not a crime rate. The submitted demonstration runs on the Development deployment.',
+  'nodata.link': 'See what this environment has',
+
   // ---- PrintHeader ----
   'print.fullName': 'Data Analytics & Predictive Policing Assistant',
   'print.generated': 'Generated {stamp} IST',

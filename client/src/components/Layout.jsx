@@ -29,6 +29,7 @@ import DensityToggle from './DensityToggle.jsx';
 import FontSizeControl from './FontSizeControl.jsx';
 import LanguageToggle from './LanguageToggle.jsx';
 import OfflineBanner from './OfflineBanner.jsx';
+import DataStateBanner from './DataStateBanner.jsx';
 import PrintHeader from './PrintHeader.jsx';
 import PulseDot from './PulseDot.jsx';
 import ScrollTopButton from './ScrollTopButton.jsx';
@@ -1127,6 +1128,10 @@ export default function Layout() {
           <main id="main-content" tabIndex={-1} className="p-4 md:p-6 pb-24 md:pb-8 focus:outline-none">
             <PrintHeader viewName={viewName} />
             <TierEyebrow pathname={location.pathname} />
+            {/* In flow, not fixed: a second fixed banner would stack on top of
+                OfflineBanner. Renders only when /healthz says the store is
+                empty, so it is invisible on the submitted deployment. */}
+            <DataStateBanner />
             <Outlet />
           </main>
         </div>
